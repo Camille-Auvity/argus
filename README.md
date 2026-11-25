@@ -188,6 +188,16 @@ Entrée installée dans la crontab (heure de Paris, toutes les 15 min en semaine
 
 `scripts/cron_refresh.sh` appelle `scripts/refresh.py` et écrit dans `logs/refresh.log`. Chaque job est aussi journalisé dans la table `refresh_log`, dont la date du dernier passage s'affiche dans la barre latérale de la plateforme. Le scoring de sentiment traite au plus 100 news par passage.
 
+**Rétention des données** (appliquée automatiquement après chaque rafraîchissement des options) :
+- chaînes d'options : tous les snapshots des 7 derniers jours, puis le dernier snapshot de chaque jour par sous-jacent ;
+- journal des tâches : 90 jours.
+
+Pour l'appliquer à la main et récupérer l'espace disque :
+
+```bash
+python scripts/maintenance.py --vacuum
+```
+
 ## Simplifications assumées (pistes d'évolution)
 
 - Volatilité plate par pricer : pas encore de surface de vol locale/stochastique calibrée sur le smile.

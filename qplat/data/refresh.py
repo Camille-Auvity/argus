@@ -48,6 +48,10 @@ def run_jobs(db: Database, tickers: list[str], jobs: tuple[str, ...] = JOBS) -> 
             run(f"options:{t}", lambda t=t: market.fetch_option_chain(db, t))
         if "news" in jobs:
             run(f"news:{t}", lambda t=t: news.fetch_news(db, t))
+    if "options" in jobs:
+        # retention: intraday snapshots for a week, then one per day (deleted pages are reused, no VACUUM needed)
+        run("retention", lambda: {"option_rows_deleted": db.prune_option_snapshots(),
+                                  "log_rows_deleted": db.prune_refresh_log()})
     if "rates" in jobs:
         run("rates", lambda: market.fetch_all_curves(db))
     if "sentiment" in jobs:

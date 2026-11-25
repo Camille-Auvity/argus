@@ -274,5 +274,40 @@ class Database:
         with self.connect() as con:
             return con.execute("DELETE FROM positions").rowcount
 
+    # --- retention -----------------------------------------------------------------
+
+    def prune_option_snapshots(self, keep_days: int = 7) -> int:
+        """Keep every option snapshot of the last `keep_days`; before that, only the last one of each day
+        per ticker (a full daily history stays available). Returns the number of rows deleted."""
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat()
+        with self.connect() as con:
+            con.execute("DROP TABLE IF EXISTS temp.keep_snapshots")
+            con.execute("""CREATE TEMP TABLE keep_snapshots AS
+                           SELECT ticker, MAX(asof) AS asof FROM option_quotes
+                           WHERE asof < ? GROUP BY ticker, substr(asof, 1, 10)""", (cutoff,))
+            deleted = con.execute("""DELETE FROM option_quotes WHERE asof < ? AND NOT EXISTS (
+                                         SELECT 1 FROM keep_snapshots k
+                                         WHERE k.ticker = option_quotes.ticker AND k.asof = option_quotes.asof)""",
+                                  (cutoff,)).rowcount
+            con.execute("DROP TABLE temp.keep_snapshots")
+        return deleted
+
+    def prune_refresh_log(self, keep_days: int = 90) -> int:
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat()
+        with self.connect() as con:
+            return con.execute("DELETE FROM refresh_log WHERE ts < ?", (cutoff,)).rowcount
+
+    def vacuum(self) -> None:
+        """Give the freed space back to the disk (rewrites the file; run occasionally, not every refresh)."""
+        con = sqlite3.connect(self.path)
+        try:
+            con.execute("VACUUM")
+        finally:
+            con.close()
+
     def refresh_log(self, limit: int = 50) -> pd.DataFrame:
         return self.query("SELECT * FROM refresh_log ORDER BY ts DESC LIMIT ?", (limit,))

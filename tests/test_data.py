@@ -158,3 +158,26 @@ def test_old_unscored_news_are_not_sent_for_scoring(db):
     db.insert_news([old, _news(2)])
     assert db.unscored_news("m")["id"].tolist() == ["n2"]
     assert set(db.unscored_news("m", max_age_days=None)["id"]) == {"n1", "n2"}
+
+
+def test_option_snapshot_retention(db):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+    def snap(asof, ticker="SPY"):
+        return {"asof": asof.isoformat(), "ticker": ticker, "expiry": "2030-01-01", "strike": 100.0,
+                "option_type": "call", "bid": 1.0, "ask": 1.1, "last": 1.0, "volume": 1.0,
+                "open_interest": 1.0, "vendor_iv": 0.2, "spot": 100.0}
+
+    old_day = (now - timedelta(days=20)).replace(hour=14, minute=0)
+    rows = [snap(old_day), snap(old_day + timedelta(hours=1)), snap(old_day + timedelta(hours=2)),  # same old day
+            snap(old_day + timedelta(hours=2), "AAPL"),
+            snap(now - timedelta(days=1)), snap(now - timedelta(days=1, hours=1))]                   # recent
+    db.upsert_options(rows)
+    assert db.prune_option_snapshots(keep_days=7) == 2          # two older intraday SPY snapshots
+    left = db.query("SELECT ticker, asof FROM option_quotes ORDER BY ticker, asof")
+    assert len(left) == 4
+    spy_old = left[(left.ticker == "SPY") & (left["asof"] < (now - timedelta(days=7)).isoformat())]
+    assert spy_old["asof"].tolist() == [(old_day + timedelta(hours=2)).isoformat()]  # last of the day kept
+    assert db.prune_option_snapshots(keep_days=7) == 0          # idempotent
