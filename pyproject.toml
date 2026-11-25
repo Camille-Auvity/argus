@@ -1,0 +1,11 @@
+[project]
+name = "qplat"
+version = "0.1.0"
+description = "Local quant pricing platform: pricing engine, market data layer, FastAPI + React web app, LLM news sentiment"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
