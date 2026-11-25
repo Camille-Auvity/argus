@@ -15,6 +15,8 @@ La plateforme est organisée en quatre couches, chacune ignorant le fonctionneme
 | Interface | `api/` (FastAPI), `web/` (React) | L'API expose le moteur et la base ; l'interface web l'appelle. |
 | Orchestration | `scripts/refresh.py`, crontab | Rafraîchissement automatique pendant les heures de marché. |
 
+**Version en ligne.** Sur GitHub Pages, la même application FastAPI s'exécute dans le navigateur du visiteur grâce à Pyodide (Python compilé en WebAssembly), sur une copie allégée de la base republiée chaque heure par GitHub Actions. Tous les calculs décrits dans ce document sont donc faits sur la machine du visiteur, avec le même code.
+
 **Séparation instrument / pricer.** Un instrument (`EuropeanOption`, `BarrierOption`, `Autocallable`, `FixedRateBond`…) est un conteneur de données immuable : il ne sait pas se pricer. Un pricer reçoit l'instrument et expose la même interface : `price`, `delta`, `gamma`, `vega`, `theta`, `rho`, `greeks()`. Le même objet peut ainsi être pricé par plusieurs méthodes sans duplication.
 
 ---
@@ -754,6 +756,10 @@ Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafra�
 
 Chaque tâche est journalisée dans la table `refresh_log`. Une erreur sur un sous-jacent n'interrompt pas les autres.
 
+Pour la version en ligne, GitHub Actions exécute la même tâche toutes les heures en semaine (de 7h à 21h UTC), puis republie le site.
+
+Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 100 par passage. Ainsi, une interruption, comme un crédit épuisé, ne se transforme jamais en grosse facture de rattrapage.
+
 ---
 
 ## 16. Sentiment des news par IA
@@ -784,7 +790,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 17. Validation
 
-*Dossier : `tests/` — 109 tests*
+*Dossier : `tests/` — 111 tests*
 
 | Référence | Vérification |
 |---|---|

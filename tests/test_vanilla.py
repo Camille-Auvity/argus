@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import pytest
 
 from qplat.curves import FlatCurve, InterpolatedCurve
@@ -137,3 +138,26 @@ def test_lattice_matches_price_and_backward_induction():
     cont = prm.step_disc[i] * (prm.p[i] * lat.values[i + 1][j] + (1 - prm.p[i]) * lat.values[i + 1][j + 1])
     assert lat.values[i][j] == pytest.approx(max(cont, am.payoff(lat.spots[i][j])))
     assert lat.exercised[8].sum() == 0  # no "early" exercise flag at maturity
+
+
+def test_vectorised_implied_vol_matches_scalar():
+    from qplat.pricers.black_scholes import bs_price, implied_volatility_vec
+
+    rng = np.random.default_rng(1)
+    n = 200
+    k = rng.uniform(60, 140, n)
+    t = rng.uniform(0.02, 2.0, n)
+    vol = rng.uniform(0.05, 1.2, n)
+    types = np.where(rng.random(n) < 0.5, "call", "put")
+    phi = np.where(types == "call", 1, -1)
+    prices = bs_price(100, k, t, 0.03, 0.01, vol, phi)
+    iv = implied_volatility_vec(prices, 100, k, t, 0.03, 0.01, types)
+    # the implied price is recovered exactly everywhere ...
+    assert np.allclose(bs_price(100, k, t, 0.03, 0.01, iv, phi), prices, atol=1e-8)
+    # ... and the vol wherever it is identifiable (deep ITM / tiny vol: vega ~ 0, the vol is ill-defined)
+    from scipy.stats import norm
+    d1 = (np.log(100 / k) + (0.03 - 0.01 + 0.5 * vol**2) * t) / (vol * np.sqrt(t))
+    vega = 100 * np.exp(-0.01 * t) * norm.pdf(d1) * np.sqrt(t)
+    ok = vega > 1e-2
+    assert np.allclose(iv[ok], vol[ok], atol=1e-7)
+    assert np.isnan(implied_volatility_vec([0.5], 42, [40], 0.5, 0.10, 0.0, ["call"])[0])  # below intrinsic

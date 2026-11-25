@@ -1,4 +1,7 @@
 // Typed client for the FastAPI backend (/api, proxied by Vite in dev).
+// In the static build the same API runs in the browser (see src/engine).
+
+import { engineRequest, STATIC_MODE } from "../engine/bridge";
 
 export type Currency = "USD" | "EUR";
 
@@ -59,6 +62,7 @@ export interface Status {
   last_refresh: string | null;
   sentiment_model: string;
   anthropic_configured: boolean;
+  static?: boolean;
 }
 
 export interface History {
@@ -200,6 +204,21 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (STATIC_MODE) {
+    // static build: the API runs in the browser (Pyodide worker), same routes and payloads
+    const { status, body } = await engineRequest(init?.method ?? "GET", path, (init?.body as string | undefined) ?? null);
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      /* non-JSON body */
+    }
+    if (status >= 400) {
+      const detail = (parsed as { detail?: unknown } | null)?.detail;
+      throw new ApiError(status, typeof detail === "string" ? detail : JSON.stringify(detail ?? body));
+    }
+    return parsed as T;
+  }
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },

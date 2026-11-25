@@ -1,0 +1,82 @@
+# Publishes the online version of Argus on GitHub Pages.
+#
+# Every run: restore the previously published database, refresh market data and
+# news (with Claude sentiment, key from the ANTHROPIC_API_KEY secret), export a
+# trimmed copy, build the static web app and deploy it. In the browser, the
+# FastAPI app runs on that database with Pyodide: no server is involved.
+
+name: Publish site
+
+on:
+  schedule:
+    - cron: "7 7-21 * * 1-5"   # hourly on weekdays, 07:07-21:07 UTC (covers EU and US sessions)
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore the published database
+        # keeps price history, news and already-scored sentiment between runs
+        run: |
+          mkdir -p data
+          curl -fsSL "https://camille-auvity.github.io/argus/engine/qplat.db" -o data/qplat.db \
+            || echo "No published database yet: building one from scratch."
+
+      - name: Refresh market data, news and sentiment
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # a failing source (e.g. Yahoo rate-limiting cloud IPs) must not block publishing:
+        # the site then keeps the data from the previous run
+        run: python scripts/refresh.py --force || echo "::warning::some refresh jobs failed, see the log above"
+
+      - name: Export the database and Python sources for the browser
+        run: python scripts/export_static.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the static web app
+        working-directory: web
+        run: |
+          npm ci
+          npm run build:static
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

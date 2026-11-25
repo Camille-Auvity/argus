@@ -53,9 +53,11 @@ export default function Sentiment() {
             Titres scorés par {status?.sentiment_model ?? "Claude"} de −1 à +1 (impact attendu à quelques séances), moyenne pondérée par la récence (demi-vie 3 jours).
           </div>
         </div>
-        <button className="btn primary" onClick={() => score.mutate()} disabled={score.isPending || !s?.pending}>
-          <Bot size={15} /> {score.isPending ? "Scoring…" : `Scorer ${s?.pending ?? 0} news en attente`}
-        </button>
+        {!status?.static && (
+          <button className="btn primary" onClick={() => score.mutate()} disabled={score.isPending || !s?.pending}>
+            <Bot size={15} /> {score.isPending ? "Scoring…" : `Scorer ${s?.pending ?? 0} news en attente`}
+          </button>
+        )}
       </div>
       <ErrorBox error={score.error ?? summary.error} />
       {score.data && <div className="info-box" style={{ marginBottom: 12 }}>{score.data.scored} news scorées.</div>}

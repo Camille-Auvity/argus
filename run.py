@@ -31,6 +31,8 @@ def needs_build() -> bool:
     dist = WEB / "dist" / "index.html"
     if not dist.exists():
         return True
+    if (WEB / "dist" / "404.html").exists():
+        return True  # dist/ holds the GitHub Pages build (in-browser engine): rebuild the local one
     built = dist.stat().st_mtime
     sources = [p for p in (WEB / "src").rglob("*") if p.is_file()] + [WEB / "index.html", WEB / "package.json"]
     return any(p.stat().st_mtime > built for p in sources)

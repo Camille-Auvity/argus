@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { EngineGate } from "./components/EngineGate";
 import { Layout } from "./components/Layout";
 import { Skeleton } from "./components/ui";
 import { TickerProvider } from "./lib/hooks";
@@ -41,7 +42,8 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
+        <EngineGate>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <TickerProvider>
             <Layout>
               <Suspense fallback={<Skeleton height={400} />}>
@@ -78,6 +80,7 @@ createRoot(document.getElementById("root")!).render(
             </Layout>
           </TickerProvider>
         </BrowserRouter>
+        </EngineGate>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

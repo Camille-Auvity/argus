@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:static": "tsc -b && VITE_STATIC=1 VITE_BASE=${VITE_BASE:-/argus/} vite build",
     "typecheck": "tsc -b"
   },
   "dependencies": {

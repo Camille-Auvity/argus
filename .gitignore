@@ -1,6 +1,6 @@
 .env
-data/
-logs/
+/data/
+/logs/
 __pycache__/
 .pytest_cache/
 *.pyc
@@ -8,3 +8,4 @@ __pycache__/
 web/node_modules/
 web/dist/
 *.tsbuildinfo
+web/public/engine/

@@ -34,6 +34,36 @@ python run.py --dev
 python -m pytest
 ```
 
+## Version en ligne (GitHub Pages)
+
+Le site public fonctionne **sans serveur** : l'application FastAPI et tout le moteur Python tournent dans le navigateur du visiteur grâce à [Pyodide](https://pyodide.org), c'est-à-dire Python compilé en WebAssembly.
+
+| Élément | Rôle |
+|---|---|
+| `.github/workflows/pages.yml` | Chaque heure en semaine : récupère la base déjà publiée, rafraîchit marchés, taux et news, score le sentiment avec Claude (clé dans le secret `ANTHROPIC_API_KEY`), exporte, construit et déploie le site. |
+| `scripts/export_static.py` | Copie allégée de la base (dernier snapshot d'options, 90 jours de news, aucune position personnelle) et archive du code Python, dans `web/public/engine/`. |
+| `web/src/engine/` | Web worker qui charge Pyodide, numpy, scipy, pandas et FastAPI, puis sert les appels de l'interface. |
+| `api/browser.py` | Passe chaque requête à l'application FastAPI sans réseau ni threads. |
+
+**Différences avec la version locale** :
+- les données sont mises à jour par le workflow, et non à la demande ;
+- le scoring du sentiment se fait dans le workflow ;
+- le portefeuille de chaque visiteur est enregistré dans son propre navigateur.
+
+Le premier chargement télécharge environ 25 Mo, mis en cache ensuite.
+
+Pour tester la version statique en local :
+
+```bash
+python scripts/export_static.py
+```
+
+```bash
+cd web && npm run build:static
+```
+
+Le site est alors généré dans `web/dist/`, prévu pour être servi sous `/argus/`.
+
 ## Documentation
 
 La documentation technique complète, avec toutes les formules, est dans [docs/METHODOLOGIE.md](docs/METHODOLOGIE.md). Elle couvre les conventions, les courbes et le bootstrap, les obligations et futures, Black-Scholes et ses grecques, l'arbre CRR, Monte Carlo et Longstaff-Schwartz, les barrières (Reiner-Rubinstein, BGK), les autocalls, le smile, les données et le sentiment. Le même fichier s'affiche dans la plateforme (menu « Documentation »), avec les formules mises en forme.
@@ -55,7 +85,7 @@ web/                      frontend React + TypeScript (Vite, ECharts, TanStack Q
 docs/                     documentation technique (formules)
 run.py                    lanceur (build du frontend + serveur)
 scripts/refresh.py        point d'entrée du scheduler (cron)
-tests/                    109 tests (moteur, modèles, risques, données, API)
+tests/                    111 tests (moteur, modèles, risques, données, API)
 ```
 
 1. **Moteur** (`instruments`, `pricers`, `curves`) : numpy/scipy uniquement. Aucune dépendance à l'affichage ni au stockage.

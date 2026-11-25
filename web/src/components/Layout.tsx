@@ -5,6 +5,7 @@ import {
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { api } from "../api/client";
+import { STATIC_MODE } from "../engine/bridge";
 import { ccySymbol, num, relativeTime } from "../lib/format";
 import { useStatus, useTicker, useTickers } from "../lib/hooks";
 import { useTheme } from "../lib/theme";
@@ -45,7 +46,7 @@ function Sidebar() {
       <div className="brand">
         <div className="brand-mark"><LineChart size={17} /></div>
         <div className="brand-text">
-          <div className="brand-name">QPLAT</div>
+          <div className="brand-name">ARGUS</div>
           <div className="brand-sub">Quant Pricing Platform</div>
         </div>
       </div>
@@ -65,7 +66,14 @@ function Sidebar() {
           <Clock size={12} /> Données {relativeTime(status?.last_refresh)}
         </span>
         <span>Sentiment : {status?.sentiment_model ?? "—"}</span>
-        <a href="/docs" target="_blank" rel="noreferrer">Documentation de l'API ↗</a>
+        {STATIC_MODE ? (
+          <>
+            <span>Version en ligne : le moteur tourne dans votre navigateur</span>
+            <a href="https://github.com/Camille-Auvity/argus" target="_blank" rel="noreferrer">Code source sur GitHub ↗</a>
+          </>
+        ) : (
+          <a href="/docs" target="_blank" rel="noreferrer">Documentation de l'API ↗</a>
+        )}
       </div>
     </nav>
   );
@@ -117,11 +125,17 @@ function TopBar() {
             </span>
           );
         })}
-      <button className="btn" onClick={() => refresh.mutate()} disabled={refresh.isPending}
-        title={`Télécharger maintenant les données de ${ticker}`}>
-        <RefreshCw size={14} className={refresh.isPending ? "spin" : ""} />
-        <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
-      </button>
+      {STATIC_MODE ? (
+        <span className="market-chip" title="Les données sont mises à jour automatiquement par GitHub Actions">
+          <Clock size={13} /> Données {relativeTime(status?.last_refresh)}
+        </span>
+      ) : (
+        <button className="btn" onClick={() => refresh.mutate()} disabled={refresh.isPending}
+          title={`Télécharger maintenant les données de ${ticker}`}>
+          <RefreshCw size={14} className={refresh.isPending ? "spin" : ""} />
+          <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
+        </button>
+      )}
       <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
         title={mode === "dark" ? "Thème clair" : "Thème sombre"}>
         {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}

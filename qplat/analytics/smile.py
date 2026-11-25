@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from qplat.curves.rate_curve import RateCurve
-from qplat.pricers.black_scholes import implied_volatility
+from qplat.pricers.black_scholes import implied_volatility_vec
 
 EXPIRY_CLOSE_TZ = ZoneInfo("America/New_York")  # listed US options expire at the 16:00 NY close
 
@@ -35,10 +35,9 @@ def compute_smile(chain: pd.DataFrame, dividend_yield: float, curve: RateCurve,
            | ((df["option_type"] == "put") & (df["strike"] < spot)))
     lo, hi = moneyness_range
     df = df[otm & (df["T"] > min_days / 365) & (df["mid"] > 0) & df["moneyness"].between(lo, hi)].copy()
-    df["iv"] = [
-        implied_volatility(r.mid, spot, r.strike, r.T, float(curve.zero_rate(r.T)), dividend_yield, r.option_type)
-        for r in df.itertuples()
-    ]
+    rates = np.asarray(curve.zero_rate(df["T"].to_numpy(float)), float)
+    df["iv"] = implied_volatility_vec(df["mid"].to_numpy(float), spot, df["strike"].to_numpy(float),
+                                      df["T"].to_numpy(float), rates, dividend_yield, df["option_type"].to_numpy())
     cols = ["expiry", "T", "option_type", "strike", "moneyness", "mid", "iv", "vendor_iv"]
     return df.dropna(subset=["iv"]).sort_values(["expiry", "strike"])[cols].reset_index(drop=True)
 

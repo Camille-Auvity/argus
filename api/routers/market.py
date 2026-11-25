@@ -41,7 +41,14 @@ def status():
         "last_refresh": None if log.empty else log.ts.iloc[0],
         "sentiment_model": config.SENTIMENT_MODEL,
         "anthropic_configured": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "static": config.STATIC_MODE,
     }
+
+
+def _forbid_in_static(action: str) -> None:
+    if config.STATIC_MODE:
+        raise HTTPException(403, f"{action} n'est pas disponible dans la version en ligne : "
+                                 "les données sont mises à jour automatiquement par le serveur de publication.")
 
 
 @router.get("/tickers")
@@ -75,6 +82,7 @@ def ticker_history(ticker: str, days: int = Query(500, ge=5, le=5000)):
 @router.post("/refresh/{ticker}")
 def refresh_ticker(ticker: str):
     """Fetch prices, options, news (and both curves) now for one ticker."""
+    _forbid_in_static("Le rafraîchissement manuel")
     report = run_jobs(services.get_db(), [ticker.upper()], ("info", "prices", "options", "rates", "news"))
     _smile_cached.cache_clear()
     return report
@@ -149,6 +157,7 @@ def sentiment_summary():
 @router.post("/sentiment/score")
 def score_sentiment(limit: int = Query(100, ge=1, le=500)):
     """Send unscored headlines to Claude (billed API calls)."""
+    _forbid_in_static("Le scoring à la demande")
     from qplat.data.sentiment import SentimentScorer
 
     try:

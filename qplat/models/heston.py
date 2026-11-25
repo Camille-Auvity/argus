@@ -25,7 +25,7 @@ from scipy.stats import norm
 from qplat.curves.rate_curve import RateCurve
 from qplat.instruments.options import ExerciseStyle, VanillaOption
 from qplat.pricers.base import FiniteDifferencePricer
-from qplat.pricers.black_scholes import implied_volatility
+from qplat.pricers.black_scholes import implied_volatility_vec
 
 
 @dataclass(frozen=True)
@@ -187,8 +187,7 @@ def calibrate_heston(spot: float, strikes, maturities, option_types, market_ivs,
 
     # exact implied-vol errors at the solution (not the first-order proxy)
     prices = model_prices(sol.x)
-    model_ivs = np.array([implied_volatility(pr, spot, k, t, r, q, ty)
-                          for pr, k, t, r, ty in zip(prices, strikes, maturities, rates, types)])
+    model_ivs = implied_volatility_vec(prices, spot, strikes, maturities, rates, q, types)
     err = model_ivs - market_ivs
     ok = np.isfinite(err)
     return CalibrationResult(
@@ -206,7 +205,7 @@ def heston_implied_vols(spot: float, strikes, t: float, r: float, q: float, p: H
     fwd = spot * math.exp((r - q) * t)
     types = np.where(strikes < fwd, "put", "call")
     prices = heston_prices(spot, strikes, t, r, q, p, types)
-    return np.array([implied_volatility(pr, spot, k, t, r, q, ty) for pr, k, ty in zip(prices, strikes, types)])
+    return implied_volatility_vec(prices, spot, strikes, t, r, q, types)
 
 
 # ----------------------------------------------------------------------------- simulation

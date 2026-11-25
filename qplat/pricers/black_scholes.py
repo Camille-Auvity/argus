@@ -92,3 +92,36 @@ def implied_volatility(price: float, spot: float, strike: float, t: float, r: fl
         return brentq(f, lo, hi, xtol=1e-10, maxiter=200)
     except ValueError:
         return float("nan")
+
+
+def implied_volatility_vec(prices, spot, strikes, t, r, q, option_types, lo: float = 1e-4, hi: float = 5.0,
+                           iterations: int = 70) -> np.ndarray:
+    """Vectorised implied vol by bisection (all options solved at once); NaN outside no-arbitrage bounds.
+
+    Same answer as `implied_volatility` (to ~1e-10 after 70 halvings of [1e-4, 5]) but without a
+    Python-level loop: this is what keeps the smile fast in the browser (Pyodide).
+    """
+    prices = np.asarray(prices, float)
+    strikes = np.asarray(strikes, float)
+    t = np.broadcast_to(np.asarray(t, float), prices.shape)
+    r = np.broadcast_to(np.asarray(r, float), prices.shape)
+    q = np.broadcast_to(np.asarray(q, float), prices.shape)
+    phi = np.where(np.asarray([str(o) for o in np.atleast_1d(option_types)]) == "put", -1.0, 1.0)
+    phi = np.broadcast_to(phi, prices.shape)
+    fwd_disc = spot * np.exp(-q * t)
+    k_disc = strikes * np.exp(-r * t)
+    intrinsic = np.maximum(phi * (fwd_disc - k_disc), 0.0)
+    upper = np.where(phi > 0, fwd_disc, k_disc)
+    valid = (prices > intrinsic - 1e-12) & (prices < upper) & (t > 0)
+    a = np.full(prices.shape, lo)
+    b = np.full(prices.shape, hi)
+    with np.errstate(all="ignore"):
+        valid &= bs_price(spot, strikes, t, r, q, a, phi) <= prices   # root bracketed from below
+        for _ in range(iterations):
+            mid = 0.5 * (a + b)
+            above = bs_price(spot, strikes, t, r, q, mid, phi) > prices
+            b = np.where(above, mid, b)
+            a = np.where(above, a, mid)
+    out = 0.5 * (a + b)
+    # the bracket can't reach hi: treat as no solution, like the scalar solver
+    return np.where(valid & (out < hi - 1e-6), out, np.nan)

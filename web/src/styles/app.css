@@ -1230,3 +1230,76 @@ table.data td.strong {
     padding: 22px 18px;
   }
 }
+
+/* ------------------------------------------------------------------ static build boot screen */
+
+.boot {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.boot-card {
+  width: min(520px, 100%);
+  padding: 28px;
+}
+
+.boot-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+  margin: 18px 0 14px;
+}
+
+.boot-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.boot-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.boot-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.boot-steps li.done {
+  color: var(--text-secondary);
+}
+
+.boot-steps li.done svg {
+  color: var(--good-ink);
+}
+
+.boot-steps li.active {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.boot-steps .dot {
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.boot-steps .dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--axis);
+}

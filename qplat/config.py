@@ -33,6 +33,9 @@ DB_PATH = Path(os.environ.get("QPLAT_DB", ROOT / "data" / "qplat.db"))
 TICKERS = [t.strip().upper() for t in os.environ.get("QPLAT_TICKERS", DEFAULT_TICKERS).split(",") if t.strip()]
 ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY")
 SENTIMENT_MODEL = os.environ.get("QPLAT_SENTIMENT_MODEL", "claude-opus-5-5")
+# static build (GitHub Pages): the API runs in the visitor's browser on a published database,
+# so anything that fetches data or spends API credit is disabled
+STATIC_MODE = os.environ.get("QPLAT_STATIC") == "1"
 
 
 @dataclass(frozen=True)

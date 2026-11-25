@@ -151,3 +151,10 @@ def test_select_expiries_spreads_the_term_structure():
     chosen = select_expiries(listed, today)
     assert chosen[0] == "2026-10-21" and chosen[-1] == "2028-01-21"  # ~1 week ... ~1.5 years
     assert len(chosen) == len(set(chosen)) <= 9
+
+
+def test_old_unscored_news_are_not_sent_for_scoring(db):
+    old = {**_news(1), "published": "2020-01-01T00:00:00+00:00"}
+    db.insert_news([old, _news(2)])
+    assert db.unscored_news("m")["id"].tolist() == ["n2"]
+    assert set(db.unscored_news("m", max_age_days=None)["id"]) == {"n1", "n2"}
