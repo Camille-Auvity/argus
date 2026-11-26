@@ -7,10 +7,12 @@ import { Card, Delta, ErrorBox, Skeleton, Sparkline } from "../components/ui";
 import { ccySymbol, num, pct, relativeTime, signed, tenorLabel } from "../lib/format";
 import { useTicker, useTickers } from "../lib/hooks";
 import { useTheme, type ChartPalette } from "../lib/theme";
+import { SurveillanceMap } from "../components/Ocelli";
 
 export default function Overview() {
   const { data: tickers, error, isLoading } = useTickers();
   const { ticker, snapshot } = useTicker();
+  const { design } = useTheme();
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
@@ -23,7 +25,8 @@ export default function Overview() {
       </div>
       <ErrorBox error={error} />
       {isLoading && <div className="grid cols-4">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} height={104} />)}</div>}
-      {tickers && (
+      {tickers && design === "eyes" && <SurveillanceMap tickers={tickers} />}
+      {tickers && design !== "eyes" && (
         <>
           <MarketSection title="États-Unis" list={tickers.filter((t) => t.market === "US")} />
           <MarketSection title="Europe" list={tickers.filter((t) => t.market === "EU")} />

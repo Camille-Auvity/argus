@@ -236,3 +236,72 @@
 @media (max-width: 1080px) {
   :root[data-design] .nav-section { display: none; }
 }
+
+/* ---- Les cent yeux: the surveillance map (overview) */
+.surveillance { margin-bottom: 14px; }
+.surveillance-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 24px;
+  padding: 14px 16px 16px;
+}
+.ocelli-group + .ocelli-group { margin-top: 10px; }
+.ocelli-label {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ocelli { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.eye {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  width: 92px;
+  padding: 2px 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s;
+}
+.eye:hover { background: var(--surface-2); }
+.eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* focus quiets the context: hovering one eye dims the others */
+.ocelli:hover .eye:not(:hover) { opacity: 0.5; }
+.eye .pupil {
+  fill: #0b1f24;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.eye:hover .pupil, .eye.selected .pupil { transform: scale(1.35); }
+.eye-select { fill: none; stroke: var(--rail, var(--accent)); stroke-width: 1.5; stroke-dasharray: 2 3; }
+.eye-sym { font-weight: 650; font-size: 12.5px; color: var(--text-primary); margin-top: -2px; }
+.eye-move { font-size: 11.5px; }
+.ocelli-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.ocelli-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ocelli-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.lg-ring { background: var(--gold); box-shadow: inset 0 0 0 3px #0e7c86; }
+.lg-up { background: var(--good); }
+.lg-down { background: var(--critical); }
+.surveillance table.data tbody tr { cursor: pointer; }
+.surveillance table.data tbody tr.selected td { background: var(--accent-soft); }
+.surveillance table.data td .muted { font-weight: 400; }
+.surveillance .name-cell { display: flex; gap: 6px; align-items: baseline; max-width: 260px; }
+.surveillance .name-cell .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (max-width: 1280px) {
+  .surveillance-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eye, .eye .pupil { transition: none; }
+}
