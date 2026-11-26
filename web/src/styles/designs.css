@@ -305,3 +305,50 @@
 @media (prefers-reduced-motion: reduce) {
   .eye, .eye .pupil { transition: none; }
 }
+
+/* ---- Plan de métro: line colour per navigation group, the active page as a station ring */
+:root[data-design="metro"] [data-group="marches"],
+:root[data-design="metro"] [data-group="portefeuille"] { --line: #2ba84a; }
+:root[data-design="metro"] [data-group="pricing"] { --line: #e5484d; }
+:root[data-design="metro"] [data-group="taux"] { --line: #f2a541; }
+:root[data-design="metro"] [data-group="recherche"],
+:root[data-design="metro"] [data-group="reference"] { --line: #a78bfa; }
+:root[data-design="metro"] .nav-link { position: relative; }
+:root[data-design="metro"] .nav-link.active::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f4f1e8;
+  box-shadow: 0 0 0 3px var(--line, #4d8bf0);
+}
+@media (max-width: 1080px) {
+  :root[data-design="metro"] .nav-link.active::after { right: 4px; top: 4px; width: 6px; height: 6px; }
+}
+
+/* ---- Plan de métro: the network map (overview) */
+.transit { margin-bottom: 14px; }
+.transit-body { padding: 8px 16px 14px; }
+.transit-svg { display: block; width: 100%; height: auto; max-height: 300px; overflow: visible; }
+.transit .station { cursor: pointer; outline: none; }
+.transit .stop { fill: #f4f1e8; stroke-width: 3.5; transition: r 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.transit .hub { fill: #f4f1e8; stroke: #0b1430; stroke-width: 3.5; }
+.transit .station:hover .stop, .transit .station:focus-visible .stop { r: 9; }
+.transit .station-label { fill: var(--text-secondary); font-size: 13px; font-weight: 500; transition: fill 0.15s; }
+.transit .station:hover .station-label, .transit .station:focus-visible .station-label { fill: #ffffff; }
+.transit .station:focus-visible .station-label { text-decoration: underline; }
+.transit .here .station-label { fill: #ffffff; font-weight: 700; }
+.transit .here-ring { fill: none; stroke: #f4f1e8; stroke-width: 2; stroke-dasharray: 3 3; }
+.transit .suspended .stop, .transit .suspended .hub { fill: #0f1a3a; stroke-dasharray: 3 2.5; }
+.transit .suspended .station-label { fill: var(--text-muted); }
+.transit-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.transit-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.transit-legend i { display: inline-block; width: 18px; height: 5px; border-radius: 3px; }
+.transit-legend i.lg-hub { width: 12px; height: 12px; border-radius: 50%; background: #f4f1e8; box-shadow: inset 0 0 0 2.5px #0b1430, 0 0 0 1px #f4f1e8; }
+.transit-legend i.lg-suspended { width: 12px; height: 12px; border-radius: 50%; border: 2px dashed var(--warning); }
+.transit-legend .warn { color: var(--warning); }
+@media (prefers-reduced-motion: reduce) {
+  .transit .stop, .transit .station-label { transition: none; }
+}

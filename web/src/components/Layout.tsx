@@ -12,13 +12,13 @@ import { DESIGNS, useTheme, type Design } from "../lib/theme";
 import { Delta } from "./ui";
 
 const NAV = [
-  { section: "Marchés" },
+  { section: "Marchés", group: "marches" },
   { to: "/", label: "Vue d'ensemble", icon: LayoutDashboard },
   { to: "/sentiment", label: "News & sentiment", icon: Newspaper },
-  { section: "Portefeuille" },
+  { section: "Portefeuille", group: "portefeuille" },
   { to: "/portfolio", label: "Portefeuille & risques", icon: Briefcase },
   { to: "/allocation", label: "Allocation de portefeuille", icon: PieChart },
-  { section: "Pricing" },
+  { section: "Pricing", group: "pricing" },
   { to: "/options", label: "Options vanille", icon: Sigma },
   { to: "/methods", label: "Méthodes de pricing", icon: FlaskConical },
   { to: "/volatility", label: "Volatilité implicite", icon: Activity },
@@ -26,14 +26,14 @@ const NAV = [
   { to: "/exotics", label: "Options exotiques", icon: Shapes },
   { to: "/variance", label: "Swaps de variance", icon: AudioWaveform },
   { to: "/structured", label: "Produits structurés", icon: BarChart3 },
-  { section: "Taux, change & crédit" },
+  { section: "Taux, change & crédit", group: "taux" },
   { to: "/rates", label: "Courbes & obligations", icon: Landmark },
   { to: "/rates-fx", label: "Options de taux & change", icon: ArrowLeftRight },
   { to: "/credit", label: "Crédit : CDS & Merton", icon: ShieldAlert },
-  { section: "Recherche" },
+  { section: "Recherche", group: "recherche" },
   { to: "/research", label: "Volatility-managed (Moreira-Muir)", icon: Microscope },
   { to: "/theory", label: "Théorie appliquée", icon: GraduationCap },
-  { section: "Référence" },
+  { section: "Référence", group: "reference" },
   { to: "/documentation", label: "Documentation", icon: BookOpen },
 ] as const;
 
@@ -49,6 +49,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
 function Sidebar() {
   const { data: status } = useStatus();
+  let group = "";
   return (
     <nav className="sidebar" aria-label="Navigation principale">
       <div className="brand">
@@ -58,17 +59,19 @@ function Sidebar() {
           <div className="brand-sub">Quant Pricing Platform</div>
         </div>
       </div>
-      {NAV.map((item, i) =>
-        "section" in item ? (
-          <div key={i} className="nav-section">{item.section}</div>
-        ) : (
-          <NavLink key={item.to} to={item.to} end={item.to === "/"} title={item.label}
+      {NAV.map((item, i) => {
+        if ("section" in item) {
+          group = item.group;
+          return <div key={i} className="nav-section" data-group={item.group}>{item.section}</div>;
+        }
+        return (
+          <NavLink key={item.to} to={item.to} end={item.to === "/"} title={item.label} data-group={group}
             className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
             <item.icon size={17} />
             <span className="label">{item.label}</span>
           </NavLink>
-        ),
-      )}
+        );
+      })}
       <div className="sidebar-footer">
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Clock size={12} /> Données {relativeTime(status?.last_refresh)}

@@ -8,6 +8,7 @@ import { ccySymbol, num, pct, relativeTime, signed, tenorLabel } from "../lib/fo
 import { useTicker, useTickers } from "../lib/hooks";
 import { useTheme, type ChartPalette } from "../lib/theme";
 import { SurveillanceMap } from "../components/Ocelli";
+import { TransitMap } from "../components/TransitMap";
 
 export default function Overview() {
   const { data: tickers, error, isLoading } = useTickers();
@@ -24,6 +25,7 @@ export default function Overview() {
         </div>
       </div>
       <ErrorBox error={error} />
+      {design === "metro" && <TransitMap />}
       {isLoading && <div className="grid cols-4">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} height={104} />)}</div>}
       {tickers && design === "eyes" && <SurveillanceMap tickers={tickers} />}
       {tickers && design !== "eyes" && (
