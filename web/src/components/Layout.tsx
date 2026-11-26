@@ -3,7 +3,7 @@ import {
   Activity, ArrowLeftRight, AudioWaveform, GraduationCap, Microscope, PieChart, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { STATIC_MODE } from "../engine/bridge";
 import { ccySymbol, num, relativeTime } from "../lib/format";
@@ -37,12 +37,26 @@ const NAV = [
   { to: "/documentation", label: "Documentation", icon: BookOpen },
 ] as const;
 
+/** Navigation group of the current route (drives per-section colour in some designs). */
+function routeGroup(pathname: string): string {
+  let group = "";
+  let best = { group: "marches", len: 0 };
+  for (const item of NAV) {
+    if ("section" in item) group = item.group;
+    else if ((item.to === "/" ? pathname === "/" : pathname.startsWith(item.to)) && item.to.length > best.len) {
+      best = { group, len: item.to.length };
+    }
+  }
+  return best.group;
+}
+
 export function Layout({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
   return (
     <div className="shell">
       <Sidebar />
       <TopBar />
-      <main className="main">{children}</main>
+      <main className="main" data-group={routeGroup(pathname)}>{children}</main>
     </div>
   );
 }

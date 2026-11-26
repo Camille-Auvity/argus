@@ -153,7 +153,7 @@
 :root[data-design="billets"] .sidebar { background: #ffffff; }
 :root[data-design="billets"] .nav-section {
   color: #ffffff;
-  background: var(--line, #8a8d91);
+  background: color-mix(in srgb, var(--line, #8a8d91) 72%, #1c2230);
   margin: 12px 4px 4px;
   padding: 4px 8px;
   border-radius: 2px;
@@ -352,3 +352,63 @@
 @media (prefers-reduced-motion: reduce) {
   .transit .stop, .transit .station-label { transition: none; }
 }
+
+/* ---- Série de billets: one denomination hue per part of the app (20 blue, 10 red, 50 orange, 100 green,
+   500 violet, 5 grey; 200 yellow is kept for alerts) */
+:root[data-design="billets"] [data-group="marches"] { --line: #2f5da8; }
+:root[data-design="billets"] [data-group="portefeuille"] { --line: #c8423b; }
+:root[data-design="billets"] [data-group="pricing"] { --line: #d9812b; }
+:root[data-design="billets"] [data-group="taux"] { --line: #2e8b57; }
+:root[data-design="billets"] [data-group="recherche"] { --line: #7b4b94; }
+:root[data-design="billets"] [data-group="reference"] { --line: #8a8d91; }
+/* the section's hue owns the page head and the active controls */
+:root[data-design="billets"] .main[data-group] { --accent: var(--line); }
+:root[data-design="billets"] .main[data-group] .page-head {
+  /* the hue deepened toward the ink so white text keeps a 4.5:1 contrast */
+  background: color-mix(in srgb, var(--line) 72%, #1c2230);
+  color: #ffffff;
+  margin: -4px 0 18px;
+  padding: 16px 20px;
+  border-radius: 3px;
+}
+:root[data-design="billets"] .main[data-group] .page-head .page-title { color: #ffffff; }
+:root[data-design="billets"] .main[data-group] .page-head .page-sub { color: #ffffff; }
+:root[data-design="billets"] .nav-link.active { color: var(--line); background: color-mix(in srgb, var(--line) 10%, #ffffff); }
+:root[data-design="billets"] .tabs button.on,
+:root[data-design="billets"] .subnav a.on { border-bottom-color: var(--line, var(--accent)); }
+
+/* ---- Série de billets: the face value (overview) */
+.face-value {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 18px;
+  min-height: 200px;
+  border-color: color-mix(in srgb, var(--line) 35%, #ffffff);
+}
+.face-value .guilloche { position: absolute; inset: 0; width: 100%; height: 100%; }
+.face-value .guilloche path { fill: none; stroke: var(--line); stroke-width: 0.6; opacity: 0.32; }
+.fv-body { position: relative; padding: 30px 32px 24px; max-width: 640px; }
+.fv-name { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.fv-value {
+  font-size: 76px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--line);
+  margin: 10px 0 14px;
+}
+.fv-ccy { font-size: 34px; font-weight: 700; margin-left: 8px; letter-spacing: 0; }
+.fv-meta { display: flex; flex-wrap: wrap; gap: 8px 26px; font-size: 13px; color: var(--text-muted); }
+.fv-meta b { color: var(--text-primary); font-weight: 650; margin-left: 4px; }
+.fv-corner { position: absolute; font-weight: 800; color: var(--line); letter-spacing: 0.04em; }
+.fv-corner.tl { top: 14px; right: 20px; font-size: 14px; }
+.fv-corner.br { bottom: 10px; right: 18px; font-size: 30px; opacity: 0.85; }
+@media (max-width: 720px) {
+  .fv-value { font-size: 48px; }
+  .fv-ccy { font-size: 22px; }
+  .fv-corner.br { display: none; }
+}
+/* the overview's market headings reuse .nav-section: keep them plain labels inside the page */
+:root[data-design="billets"] .main .nav-section,
+:root[data-design="metro"] .main .nav-section { background: none; color: var(--text-muted); margin: 0; padding: 0 0 8px; border-radius: 0; }
+:root[data-design="metro"] .main .nav-section::before { display: none; }
