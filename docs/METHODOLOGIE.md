@@ -1123,9 +1123,9 @@ Le rapport moyenne / variance, qui fixe l'exposition optimale $w^* = \mu / (\gam
 
 ---
 
-## 19. Théorie appliquée : réplication, couverture, calcul stochastique
+## 19. Théorie appliquée : réplication, couverture, calcul stochastique, P et Q
 
-*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
+*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
 
 ### 19.1 Réplication dans l'arbre binomial
 
@@ -1195,6 +1195,25 @@ Avec $Y = dQ/dP = \exp(\theta B_T - \tfrac12\theta^2 T)$, on a $\mathbb E_P[Y] =
 **Application.** On lit le théorème dans l'autre sens : on simule sous une mesure où l'événement rare devient typique, puis on corrige par $dP/dQ$ (section 7.3). La page compare le Monte Carlo simple et l'échantillonnage préférentiel sur un call, un put ou une digitale très hors de la monnaie :
 - le prix exact, la réduction de variance et la convergence ;
 - l'erreur standard en fonction de $\theta$. Elle est minimale près de $\theta^*$ et remonte au-delà, quand quelques poids deviennent énormes.
+
+### 19.6 Monde réel P et risque-neutre Q sur un vrai titre
+
+**Deux lognormales, une seule vol.** Sous $P$, $\ln S_T \sim N\big(\ln S_0 + (\mu - q - \tfrac12\sigma^2)T,\ \sigma^2 T\big)$ ; sous $Q$, $\mu$ est remplacé par $r$. Girsanov change la dérive de $\lambda = (\mu - r)/\sigma$, le prix de marché du risque, et laisse $\sigma$ inchangée : les deux lois utilisent la vol implicite à la monnaie de la maturité. Pour une lognormale, $\text{mode} = e^{m - s^2} < \text{médiane} = e^{m} < \text{moyenne} = e^{m + s^2/2}$, avec $m$ et $s^2$ la moyenne et la variance de $\ln S_T$. Sous $Q$, la moyenne est le forward $S_0 e^{(r-q)T}$.
+
+**Le $Q$ du marché (Breeden-Litzenberger, 1978).** Avec $C(K) = D\,\mathbb E_Q[(S_T - K)^+]$ :
+$$Q(S_T \le K) = 1 + \frac{1}{D}\frac{\partial C}{\partial K}, \qquad q(K) = \frac{1}{D}\frac{\partial^2 C}{\partial K^2}.$$
+Les prix de calls viennent de la surface SVI (section 15) sur une grille uniforme de 2 001 strikes, de $F e^{-12\sigma\sqrt T}$ à $F e^{6\sigma\sqrt T}$, et les dérivées sont prises par différences finies centrées. Contrôles affichés : masse de la densité, $\mathbb E_Q[S_T]$ contre le forward (écart de l'ordre de 0,01 % sur SPY), masse négative (arbitrage papillon), masse hors de la grille. Le skew épaissit la queue gauche : à vol ATM égale, $Q(S_T < 0{,}8\,S_0)$ à 3 mois est d'environ 6 % pour SPY, contre 1,5 % pour la lognormale. Pour garder la moyenne au forward, la médiane et le mode remontent au-dessus du spot.
+
+**Le rendement espéré $\mu$.** Trois sources possibles :
+- CAPM : $\mu = r + \beta \cdot \text{prime}$, avec $\beta$ estimé contre SPY sur l'historique et la prime de marché égale à la moyenne arithmétique du facteur marché de Fama-French depuis 1926 (environ 7,8 % par an) ;
+- historique du titre : $\hat\mu = 252\,\overline{\Delta \ln S} + \tfrac12\hat\sigma^2 + q$, d'erreur standard $\hat\sigma/\sqrt{\text{années}}$, soit environ 12 points pour SPY sur deux ans. C'est la raison du CAPM par défaut ;
+- une valeur libre.
+
+La page superpose aussi la loi empirique : les rendements historiques sur l'horizon, en fenêtres qui se chevauchent et donc très corrélées.
+
+**Éventail et noyau de prix.** Les quantiles à 5, 50 et 95 % sont tracés selon l'horizon sous $P$, sous $Q$ lognormale et sous le $Q$ du marché. Le rapport $q/p$ est la densité des prix d'état au facteur d'actualisation près. Pour deux lognormales, il vaut $\exp(-\lambda W_T - \tfrac12\lambda^2 T)$, décroissant en $S_T$ quand $\mu > r$. Avec le smile, il est beaucoup plus pentu à gauche, et sa forme non monotone autour du spot est le *pricing kernel puzzle* (Jackwerth, 2000).
+
+**Tests.** Sur un smile plat, Breeden-Litzenberger redonne la lognormale (densité à $10^{-5}$ près, fonction de répartition à $10^{-5}$ près, moyenne égale au forward). Sont aussi testés : l'ordre mode < médiane < moyenne et les formules fermées, un décalage de tous les quantiles de $e^{(\mu - r)T}$ entre $P$ et $Q$, la queue gauche plus épaisse sous un skew avec la moyenne inchangée, la décroissance du noyau quand $\mu > r$, et l'erreur standard de $\hat\mu$ sur 40 ans simulés.
 
 ---
 
@@ -1470,7 +1489,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 218 tests*
+*Dossier : `tests/` — 225 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1491,6 +1510,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Risques | swap de variance en portefeuille (valeur nulle au strike juste, vega et gamma au départ, variance réalisée d'un swap en cours de vie, choc de vol) ; cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
 | Calcul stochastique et Girsanov | variation totale ≈ √(2N/π), variation quadratique → T avec un écart-type √(2/N), sommes d'Itô et au point droit (espérances 0 et T), martingales et non-martingales, Girsanov (E_P[Y] = 1, moyenne θT), échantillonnage préférentiel sans biais avec une variance divisée par plus de 100 hors de la monnaie, grecques Monte Carlo avec échantillonnage préférentiel |
 | Théorie appliquée | exemple du cours (put 10,714 puis 11,820, Δ et B de chaque nœud, Q(S₂ = 96) = 0,46875), autofinancement à chaque nœud, absence d'arbitrage d < R < u, market maker couvert sur tous les chemins, convergence de l'arbre vers Black-Scholes, erreur de couverture en 1/√N (Derman-Kamal), indépendance du drift, P&L à vol réalisée ≠ implicite, backtest synthétique |
+| Monde réel P et risque-neutre Q | Breeden-Litzenberger sur smile plat = lognormale (densité et répartition à 1e-5, moyenne = forward), mode < médiane < moyenne, quantiles décalés de e^{(μ−r)T}, skew : queue gauche plus épaisse à forward inchangé, noyau de prix décroissant si μ > r, erreur standard de μ̂ en σ/√années |
 | Recherche (Moreira-Muir) | rendement mensuel composé et variance réalisée, MCO Newey-West, même volatilité par construction, variance constante → stratégie = facteur, alpha positif sous régimes de volatilité et nul sans, version temps réel sans look-ahead, plafond de levier et coûts |
 | Allocation | minimum variance et moyenne-variance sans contrainte égaux aux formules fermées, frontière contrainte au-dessus de la frontière de Markowitz, tangence de Sharpe maximal (y compris la formule Σ⁻¹(μ − r)), long-only et plafonds respectés, LASSO inactif en long-only et actif avec shorts, coûts qui réduisent puis gèlent la rotation, Ledoit-Wolf défini positif et moins rétréci avec plus de données, conversion en euros, backtest sans look-ahead |
 | Swaps de variance | variance réalisée (convention sans moyenne), smile plat → σ², réplication du smile de Heston = variance espérée de Heston, convexité du swap de vol (Jensen et approximation), formule du VIX sur une chaîne Black-Scholes, troncature de la bande, interpolation à 30 jours, valeur d'un swap en cours de vie et vega |

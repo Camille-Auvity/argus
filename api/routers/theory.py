@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from functools import lru_cache
 from typing import Literal, Optional
 
@@ -209,3 +210,49 @@ def _importance(payload: str) -> dict:
 def importance(req: ImportanceRequest):
     """Plain vs importance-sampled Monte Carlo (Girsanov drift shift) on a far out-of-the-money payoff."""
     return _importance(req.model_dump_json())
+
+
+# ----------------------------------------------------------------------------- real world P vs risk-neutral Q
+
+@lru_cache(maxsize=32)
+def _measures(ticker: str, days: int, mu_source: str, mu_custom: float, asof: str) -> dict:
+    from api.routers.models import _market, _surface
+    from qplat.theory.measures import beta, compare_measures, empirical_terminal, historical_drift
+
+    _, spot, q, curve = _market(ticker, asof)
+    surface = _surface(ticker, asof)
+    T = days / 365
+    D = float(curve.discount(T))
+    r = -math.log(D) / T
+    sigma = float(surface.implied_vol(0.0, T))
+    db = services.get_db()
+    closes = daily_closes(db.spot_history(ticker))
+    hist = historical_drift(closes.to_numpy())
+    # CAPM: mu = r + beta * equity premium, the premium from the Fama-French market factor since 1926
+    f = db.factors()
+    erp = float(f["mkt_rf"].mean() * 252) if not f.empty else 0.06
+    spy = daily_closes(db.spot_history("SPY"))
+    both = pd.DataFrame({"a": closes, "m": spy}).dropna()
+    b = 1.0 if ticker == "SPY" or len(both) < 60 else beta(np.diff(np.log(both["a"])), np.diff(np.log(both["m"])))
+    candidates = {"history": hist["mu"] + q, "capm": r + b * erp, "custom": mu_custom}
+    mu = float(candidates[mu_source])
+    emp = empirical_terminal(closes.to_numpy(), spot, max(1, round(days * 252 / 365)))
+    out = compare_measures(spot, T, r, q, mu, sigma, lambda K: surface.implied_vol_strike(K, T),
+                           empirical=emp, vol_at=lambda h: (lambda K: surface.implied_vol_strike(K, h)))
+    out.update({"ticker": ticker, "asof": asof, "days": days, "mu_source": mu_source,
+                "drift": {"history": candidates["history"], "history_se": hist["se"], "history_years": hist["years"],
+                          "realized_vol": hist["sigma"], "capm": candidates["capm"], "beta": b, "equity_premium": erp,
+                          "custom": mu_custom},
+                "last_expiry_days": int(round(float(surface.times[-1]) * 365))})
+    return out
+
+
+@router.get("/measures/{ticker}")
+def measures(ticker: str, days: int = 91, mu_source: Literal["history", "capm", "custom"] = "capm", mu: float = 0.08):
+    """S_T under the real-world P (GBM with drift mu), the risk-neutral Q (drift r) and the market's Q
+    (Breeden-Litzenberger on the SVI smile); quantile fan and pricing kernel."""
+    from api.routers.models import _chain_version
+
+    if not 7 <= days <= 730 or not -1 <= mu <= 1:
+        raise HTTPException(422, "horizon 7-730 jours, μ dans [-100 %, 100 %]")
+    return _measures(ticker, days, mu_source, round(mu, 4), _chain_version(ticker))

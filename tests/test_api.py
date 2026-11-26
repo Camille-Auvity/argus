@@ -226,6 +226,8 @@ def test_theory_endpoints(client):
     h = client.post("/api/theory/hedge", json={"n_paths": 2000, "n_rebalance": 26}).json()
     assert len(h["convergence"]) == 6 and h["pnl"]["sd"] > 0 and len(h["path"]["spot"]) == 27
     assert client.get("/api/theory/hedge-backtest").status_code == 409      # no SPY / VIX history here
+    assert client.get("/api/theory/measures/AAPL?days=60").status_code == 422   # fixture chain too thin for SVI
+    assert client.get("/api/theory/measures/MC.PA").status_code == 404
 
 
 def test_market_endpoints(client):

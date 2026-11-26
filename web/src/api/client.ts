@@ -970,6 +970,30 @@ export const theoryApi = {
     request<HedgeBacktestResponse>(`/api/theory/hedge-backtest?horizon=${horizon}&option_type=${option_type}`),
 };
 
+export interface MeasureStats {
+  mean: number; median: number; mode: number | null; sd: number; n?: number;
+  quantiles: Record<string, number>; prob_below: Record<string, number>;
+}
+
+export interface MeasuresResponse {
+  ticker: string; asof: string; days: number; mu_source: "history" | "capm" | "custom";
+  S0: number; T: number; r: number; q: number; mu: number; sigma: number; forward: number; market_price_of_risk: number;
+  density: { K: number[]; P: number[]; Q: number[]; Q_smile: number[]; smile_vol: number[] };
+  checks: { mass: number; mean: number; forward: number; negative_mass: number; below_grid: number; above_grid: number };
+  stats: { P: MeasureStats; Q: MeasureStats; Q_smile: MeasureStats; P_empirical?: MeasureStats };
+  kernel: { K: number[]; smile: number[]; lognormal: number[] };
+  fan: { quantiles: number[]; rows: { T: number; P: number[]; Q: number[]; Q_smile: number[] }[] } | null;
+  empirical_hist?: { edges: number[]; density: number[] };
+  drift: { history: number; history_se: number; history_years: number; realized_vol: number; capm: number; beta: number;
+    equity_premium: number; custom: number };
+  last_expiry_days: number;
+}
+
+export const measuresApi = {
+  get: (ticker: string, days: number, mu_source: string, mu: number) =>
+    request<MeasuresResponse>(`/api/theory/measures/${encodeURIComponent(ticker)}?days=${days}&mu_source=${mu_source}&mu=${mu}`),
+};
+
 export interface BrownianResponse {
   paths: { t: number[]; paths: number[][]; band: number[] };
   variations: { n: number; total_variation: number; total_variation_theory: number; quadratic_variation: number;

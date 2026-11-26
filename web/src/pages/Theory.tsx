@@ -1,11 +1,11 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { stochasticApi, theoryApi, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
+import { measuresApi, stochasticApi, theoryApi, type MeasureStats, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
 import { EChart } from "../components/EChart";
 import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { num, pct } from "../lib/format";
-import { useDebounced } from "../lib/hooks";
+import { useDebounced, useTicker } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
 
 export const THEORY_PAGES = [
@@ -13,6 +13,7 @@ export const THEORY_PAGES = [
   { path: "couverture", label: "Couverture dynamique en delta" },
   { path: "calcul-stochastique", label: "Calcul stochastique" },
   { path: "girsanov", label: "Girsanov et échantillonnage préférentiel" },
+  { path: "p-vs-q", label: "Monde réel et risque-neutre" },
 ] as const;
 
 export default function Theory() {
@@ -651,3 +652,184 @@ export function GirsanovLab() {
     </div>
   );
 }
+
+// ----------------------------------------------------------------------------- real world P vs risk-neutral Q
+
+const HORIZONS = [{ value: 30, label: "1 mois" }, { value: 91, label: "3 mois" }, { value: 182, label: "6 mois" }, { value: 365, label: "1 an" }];
+type MuSource = "capm" | "history" | "custom";
+
+export function MeasuresLab() {
+  const { ticker } = useTicker();
+  const [days, setDays] = useState(91);
+  const [source, setSource] = useState<MuSource>("capm");
+  const [mu, setMu] = useState(0.08);
+  const debouncedMu = useDebounced(mu, 400);
+  const { data: d, error, isFetching } = useQuery({
+    queryKey: ["measures", ticker, days, source, debouncedMu],
+    queryFn: () => measuresApi.get(ticker, days, source, debouncedMu), placeholderData: keepPreviousData, retry: false,
+  });
+  const fit = d && d.ticker === ticker;
+
+  const densityOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    const k = d.density.K;
+    const lo = d.stats.Q_smile.quantiles["0.05"] * 0.75, hi = d.stats.P.quantiles["0.95"] * 1.15;
+    const inRange = (i: number) => k[i] >= lo && k[i] <= hi;
+    const line = (arr: number[]) => k.map((x, i) => [x, arr[i]]).filter((_, i) => inRange(i));
+    const series: object[] = [
+      { type: "line", name: "P : lognormale, dérive μ", showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: line(d.density.P),
+        markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" }, label: { color: p.muted, fontSize: 10, position: "end" },
+          data: [{ xAxis: d.S0, label: { formatter: "S₀" } }] } },
+      { type: "line", name: "Q : lognormale, dérive r", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: line(d.density.Q) },
+      { type: "line", name: "Q du marché : smile SVI (Breeden-Litzenberger)", showSymbol: false, color: p.series[2], lineStyle: { width: 2.5 },
+        areaStyle: { opacity: 0.12 }, data: line(d.density.Q_smile) },
+    ];
+    if (d.empirical_hist) {
+      const e = d.empirical_hist;
+      series.push({ type: "bar", name: "P empirique (historique)", color: p.muted, itemStyle: { opacity: 0.35 }, barWidth: "90%", barGap: "-100%",
+        data: e.density.map((v, i) => [(e.edges[i] + e.edges[i + 1]) / 2, v]).filter((x) => x[0] >= lo && x[0] <= hi) });
+    }
+    return {
+      legend: { top: 0 },
+      grid: { top: 60, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 5) },
+      xAxis: { type: "value", name: "S_T", nameLocation: "middle", nameGap: 26, min: lo, max: hi, axisLabel: { showMinLabel: false, showMaxLabel: false, formatter: (v: number) => num(v, 0) } },
+      yAxis: { type: "value", name: "densité", axisLabel: { formatter: (v: number) => num(v, 3) } },
+      series,
+    };
+  }, [d]);
+
+  const fanOption = useCallback((p: ChartPalette) => {
+    if (!d?.fan) return {};
+    const rows = d.fan.rows;
+    const x = rows.map((r) => Math.round(r.T * 365));
+    const mk = (key: "P" | "Q" | "Q_smile", idx: number, name: string | undefined, color: string, type: string, width: number) => ({
+      type: "line", name, showSymbol: false, color, lineStyle: { width, type }, data: rows.map((r, i) => [x[i], r[key][idx]]),
+    });
+    return {
+      legend: { top: 0 },
+      grid: { top: 40, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 2) },
+      xAxis: { type: "value", name: "jours", nameLocation: "middle", nameGap: 26, min: 0, max: x[x.length - 1] },
+      yAxis: { type: "value", scale: true, axisLabel: { formatter: (v: number) => num(v, 0) } },
+      series: [
+        mk("P", 2, "P : médiane", p.series[0], "solid", 2.5), mk("P", 0, "P : quantiles 5 % et 95 %", p.series[0], "dotted", 1.2), mk("P", 4, undefined, p.series[0], "dotted", 1.2),
+        mk("Q", 2, "Q lognormale : médiane", p.series[1], "dashed", 2), mk("Q", 0, undefined, p.series[1], "dotted", 1), mk("Q", 4, undefined, p.series[1], "dotted", 1),
+        mk("Q_smile", 2, "Q du marché : médiane", p.series[2], "solid", 2), mk("Q_smile", 0, "Q du marché : quantiles 5 % et 95 %", p.series[2], "dashed", 1.2),
+        mk("Q_smile", 4, undefined, p.series[2], "dashed", 1.2),
+      ],
+    };
+  }, [d]);
+
+  const kernelOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    const k = d.kernel;
+    return {
+      legend: { top: 0 },
+      grid: { top: 40, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 3) },
+      xAxis: { type: "value", name: "S_T", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax", axisLabel: { showMinLabel: false, showMaxLabel: false, formatter: (v: number) => num(v, 0) } },
+      yAxis: { type: "log", name: "q / p", axisLabel: { formatter: (v: number) => num(v, v < 1 ? 2 : 0) } },
+      series: [
+        { type: "line", name: "Smile du marché / P", showSymbol: false, color: p.series[2], lineStyle: { width: 2.5 },
+          data: k.K.map((x, i) => [x, Math.max(k.smile[i], 1e-3)]) },
+        { type: "line", name: "Lognormale Q / P (Girsanov)", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" },
+          data: k.K.map((x, i) => [x, k.lognormal[i]]),
+          markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" }, label: { show: false }, data: [{ yAxis: 1 }] } },
+      ],
+    };
+  }, [d]);
+
+  const cols: { key: keyof MeasuresResponseStats; label: string }[] = [
+    { key: "P", label: "P (lognormale)" }, { key: "Q", label: "Q (lognormale)" }, { key: "Q_smile", label: "Q du marché (smile)" },
+    ...(d?.stats.P_empirical ? [{ key: "P_empirical" as const, label: "P empirique" }] : []),
+  ];
+  const rows: { label: string; get: (s: MeasureStats) => string }[] = [
+    { label: "Moyenne", get: (s) => num(s.mean, 2) },
+    { label: "Médiane", get: (s) => num(s.median, 2) },
+    { label: "Mode", get: (s) => (s.mode == null ? "—" : num(s.mode, 2)) },
+    { label: "Quantile 5 %", get: (s) => num(s.quantiles["0.05"], 2) },
+    { label: "Quantile 95 %", get: (s) => num(s.quantiles["0.95"], 2) },
+    { label: "P(S_T < S₀)", get: (s) => pct(s.prob_below["1.00"], 1) },
+    { label: "P(S_T < 90 % S₀)", get: (s) => pct(s.prob_below["0.90"], 1) },
+    { label: "P(S_T < 80 % S₀)", get: (s) => pct(s.prob_below["0.80"], 1) },
+  ];
+  const sourceFoot = d ? {
+    capm: `r + β · prime de marché = ${pct(d.r, 2)} + ${num(d.drift.beta, 2)} × ${pct(d.drift.equity_premium, 1)} (Fama-French depuis 1926)`,
+    history: `${num(d.drift.history_years, 1)} ans d'historique : ± ${pct(1.96 * d.drift.history_se, 0)} à 95 %`,
+    custom: "Valeur libre",
+  }[source] : undefined;
+
+  return (
+    <div className="grid">
+      <ErrorBox error={error} />
+      <Explainer>
+        Le prix d'une option ne dépend pas de μ, mais S<sub>T</sub> a bien deux lois. Sous la probabilité réelle P, l'action croît au
+        rendement espéré μ ; sous la probabilité risque-neutre Q, elle croît au taux sans risque r. Girsanov passe de l'une à l'autre en
+        changeant la dérive, pas la volatilité. Le marché, lui, publie sa propre loi Q à travers le smile : la dérivée seconde du prix des
+        calls par rapport au strike donne la densité risque-neutre (Breeden-Litzenberger, 1978).
+      </Explainer>
+      <Card title={`Paramètres — ${ticker}`}>
+        <div className="toolbar-grid">
+          <SelectField label="Horizon" value={days} onChange={setDays} options={HORIZONS} />
+          <SelectField label="Rendement espéré μ" value={source} onChange={setSource}
+            options={[{ value: "capm", label: "CAPM" }, { value: "history", label: "Historique" }, { value: "custom", label: "Libre" }]} />
+          {source === "custom" && <NumberField label="μ" value={mu} suffix="%" scale={100} min={-1} max={1} digits={1} onChange={setMu} />}
+        </div>
+      </Card>
+      <div className="grid cols-4">
+        <Stat label="Rendement espéré (sous P)" value={fit ? pct(d.mu, 1) : "—"} foot={sourceFoot} busy={isFetching} />
+        <Stat label="Taux sans risque (sous Q)" value={fit ? pct(d.r, 2) : "—"} foot={fit ? `Dividende q = ${pct(d.q, 2)}, forward ${num(d.forward, 2)}` : undefined} busy={isFetching} />
+        <Stat label="Vol implicite à la monnaie" value={fit ? pct(d.sigma, 1) : "—"} foot={fit ? `La même sous P et Q · vol réalisée ${pct(d.drift.realized_vol, 1)}` : undefined} busy={isFetching} />
+        <Stat label="Prix de marché du risque" value={fit ? num(d.market_price_of_risk, 2) : "—"} foot="λ = (μ − r) / σ, la dérive de Girsanov" busy={isFetching} />
+      </div>
+      <Card title={`Loi du cours dans ${days} jours`}>
+        {fit ? <EChart option={densityOption} height={360} ariaLabel="Densités de S_T sous P, sous Q et sous le Q du marché" /> : <Skeleton height={320} />}
+        {fit && (
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            Contrôles de la densité extraite du smile : masse {num(d.checks.mass, 4)}, E<sub>Q</sub>[S<sub>T</sub>] = {num(d.checks.mean, 2)} contre
+            un forward de {num(d.checks.forward, 2)} (le prix actualisé est une martingale sous Q). L'histogramme empirique empile
+            {d.stats.P_empirical ? ` ${d.stats.P_empirical.n}` : ""} rendements sur {days} jours qui se chevauchent : ils sont très corrélés entre eux.
+          </p>
+        )}
+      </Card>
+      <Card title="Mode, médiane, moyenne et probabilités de baisse">
+        {fit ? (
+          <div className="table-wrap">
+            <table className="data">
+              <thead><tr><th />{cols.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.label}><td className="strong">{r.label}</td>
+                    {cols.map((c) => { const st = d.stats[c.key]; return <td key={c.key}>{st ? r.get(st) : "—"}</td>; })}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <Skeleton height={260} />}
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+          Sous une lognormale, mode &lt; médiane &lt; moyenne : la plupart des trajectoires finissent sous l'espérance, tirée par quelques
+          fortes hausses. Le smile renverse en partie cet ordre : sa queue gauche épaisse (krachs chers) déplace de la masse vers les fortes
+          baisses, et pour garder la moyenne au forward, la médiane et le mode remontent.
+        </p>
+      </Card>
+      <div className="grid cols-2">
+        <Card title="Éventail des quantiles selon l'horizon">
+          {fit && d.fan ? <EChart option={fanOption} height={320} ariaLabel="Quantiles 5, 50 et 95 % de S_T selon l'horizon" /> : <Skeleton height={280} />}
+        </Card>
+        <Card title="Noyau de prix : densité risque-neutre / densité réelle">
+          {fit ? <EChart option={kernelOption} height={320} ariaLabel="Rapport des densités risque-neutre et réelle" /> : <Skeleton height={280} />}
+        </Card>
+      </div>
+      <InfoBox>
+        Le rapport q / p est la densité des prix d'état, au facteur d'actualisation près : le prix d'un euro reçu si S<sub>T</sub> tombe
+        dans un intervalle, divisé par la probabilité réelle de cet intervalle. Avec μ &gt; r, il décroît : un euro dans les états de krach
+        vaut plus que sa probabilité, car c'est là que tout le monde en manque. Le smile accentue fortement la pente à gauche. Un rapport
+        non monotone autour du spot est le « pricing kernel puzzle » (Jackwerth, 2000). Enfin, μ est très mal estimé : avec deux ans
+        d'historique, l'intervalle de confiance couvre plusieurs dizaines de points de rendement, d'où le CAPM par défaut.
+      </InfoBox>
+    </div>
+  );
+}
+
+type MeasuresResponseStats = { P: MeasureStats; Q: MeasureStats; Q_smile: MeasureStats; P_empirical?: MeasureStats };
