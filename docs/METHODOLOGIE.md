@@ -10,7 +10,7 @@ La plateforme est organisée en quatre couches, chacune ignorant le fonctionneme
 
 | Couche | Dossier | Rôle |
 |---|---|---|
-| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/credit`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
+| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/credit`, `qplat/fx`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
 | Données | `qplat/data` | Téléchargement des marchés, bilans, taux et news ; stockage SQLite ; scoring du sentiment par Claude. |
 | Interface | `api/` (FastAPI), `web/` (React) | L'API expose le moteur et la base ; l'interface web l'appelle. |
 | Orchestration | `scripts/refresh.py`, crontab | Rafraîchissement automatique pendant les heures de marché. |
@@ -941,11 +941,109 @@ La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On
 
 ---
 
-## 17. Données et orchestration
+## 17. Options de taux et de change
+
+*Fichiers : `qplat/pricers/capfloor.py`, `qplat/fx/options.py`, `qplat/fx/smile.py`, `api/routers/caps_fx.py`*
+
+### 17.1 Caps et floors
+
+Un cap de maturité $T$ et de fréquence $f$ est une série de caplets sur les périodes $(t_{i-1}, t_i]$, avec $t_i = i/f$. La première période, déjà fixée aujourd'hui, est exclue. Le taux forward simple est lu sur la courbe :
+
+$$
+F_i = \frac{1}{\tau_i} \left( \frac{P(0, t_{i-1})}{P(0, t_i)} - 1 \right), \qquad \tau_i = t_i - t_{i-1}
+$$
+
+Le caplet $i$ est une option sur $L_i$, fixé en $t_{i-1}$ et payé en $t_i$.
+
+**Black-76** (taux log-normal) :
+
+$$
+\text{Caplet}_i = N \tau_i P(0,t_i) \left[ F_i N(d_1) - K N(d_2) \right], \qquad d_{1,2} = \frac{\ln(F_i/K) \pm \sigma^2 t_{i-1}/2}{\sigma \sqrt{t_{i-1}}}
+$$
+
+**Bachelier** (taux normal, utilisable avec des taux nuls ou négatifs ; vol en points de base) :
+
+$$
+\text{Caplet}_i = N \tau_i P(0,t_i) \left[ (F_i - K) N(d) + \sigma_n \sqrt{t_{i-1}}\, n(d) \right], \qquad d = \frac{F_i - K}{\sigma_n \sqrt{t_{i-1}}}
+$$
+
+Les floorlets sont les puts correspondants.
+
+**Parité** : cap − floor = swap payeur $= \sum_i N \tau_i P(0,t_i)(F_i - K)$. Le strike **ATM** est le taux swap forward des mêmes périodes, $S = \dfrac{P(0,t_1) - P(0,t_n)}{\sum_i \tau_i P(0,t_i)}$ ; à ce strike, cap et floor valent la même chose.
+
+**Prime en running** : prime divisée par l'annuité $\sum_i N \tau_i P(0,t_i)$.
+
+**Vol plate implicite** : la vol unique qui reprice le cap entier, obtenue par Brent. C'est la cotation usuelle du marché.
+
+**Grecques** :
+- **DV01** : variation pour une translation de +1 bp de la courbe, vol inchangée ; le **gamma** est la différence seconde sur ±1 bp.
+- **Vega** : pour 1 % de vol log-normale ou 1 bp de vol normale.
+- **Theta** : toutes les dates rapprochées d'un jour.
+
+Le tableau des caplets donne pour chacun la contribution, le delta pour 1 bp de forward et le vega.
+
+**Limites.**
+- Les vols de caps ne sont pas diffusées gratuitement : elles sont saisies.
+- Les forwards sont tirés des courbes d'État (Treasury, BCE), pas des courbes swap SOFR / €STR.
+
+### 17.2 Options de change : Garman-Kohlhagen
+
+Le sous-jacent est le prix d'une unité de devise **étrangère** en devise **domestique** (EUR/USD : étranger EUR, domestique USD). Le taux étranger joue le rôle d'un dividende :
+
+$$
+V = \varphi \left[ S e^{-r_f T} N(\varphi d_1) - K e^{-r_d T} N(\varphi d_2) \right], \qquad F = S e^{(r_d - r_f) T}
+$$
+
+$r_d$ et $r_f$ sont les taux zéro-coupon USD et EUR à l'échéance. Les points forward $(F - S) \times 10^4$ découlent de la parité des taux couverte, sans base cross-currency.
+
+**Grecques** (formules fermées, vérifiées par différences finies) :
+- **Delta** : delta spot $\varphi e^{-r_f T} N(\varphi d_1)$, delta forward $\varphi N(\varphi d_1)$, et delta ajusté de la prime, égal au delta spot moins $V/S$.
+- **Gamma, vega, vanna et volga**, ces deux dernières étant les sensibilités croisées qui pilotent le smile.
+- **Theta**.
+- **Deux rhos** : domestique $\varphi K T e^{-r_d T} N(\varphi d_2)$ et étranger $-\varphi S T e^{-r_f T} N(\varphi d_1)$.
+
+### 17.3 Le smile FX coté en delta
+
+Pour chaque échéance, le marché des changes cote trois nombres.
+- **ATM** : la vol du straddle delta-neutre, de strike $K_{ATM} = F e^{\sigma_{ATM}^2 T / 2}$ (les deltas du call et du put s'annulent).
+- **Risk reversal 25Δ** : $RR = \sigma_{25C} - \sigma_{25P}$, l'asymétrie du smile.
+- **Butterfly 25Δ de marché** (*broker fly*) : une seule vol $\sigma_{ATM} + BF_{mkt}$ price le strangle dont les strikes sont les 25 deltas à cette vol.
+
+**Strike d'un delta** (delta spot, non ajusté de la prime) :
+
+$$
+K = F \exp\left( -\varphi N^{-1}\!\left(\varphi\, \Delta\, e^{r_f T}\right) \sigma \sqrt T + \tfrac12 \sigma^2 T \right)
+$$
+
+Au-delà d'un an, on prend le delta forward, sans le facteur $e^{r_f T}$.
+
+**Butterfly de smile** (Clark, 2011). Le butterfly de marché n'est pas la moyenne $(\sigma_{25C} + \sigma_{25P})/2 - \sigma_{ATM}$ du smile. On cherche par Brent le butterfly de smile $BF_s$ tel que :
+- les piliers sont $\sigma_{25C/P} = \sigma_{ATM} + BF_s \pm RR/2$, à leurs propres strikes 25 delta ;
+- le smile qu'ils définissent reprice exactement le strangle de marché.
+
+### 17.4 Interpolation Vanna-Volga
+
+Avec les trois piliers $K_1 < K_2 = K_{ATM} < K_3$ (Castagna et Mercurio, 2007), le prix d'un call de strike $K$ est le prix Black-Scholes à la vol ATM, corrigé par le surcoût de marché des trois options piliers :
+
+$$
+C(K) = C_{BS}(K, \sigma_{ATM}) + \sum_{i=1}^{3} x_i(K) \left[ C_{BS}(K_i, \sigma_i) - C_{BS}(K_i, \sigma_{ATM}) \right]
+$$
+
+Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la vanna et la volga du portefeuille de piliers à ceux de l'option en $K$. La vol affichée est la vol implicite de ce prix. L'approximation au premier ordre est une interpolation de Lagrange des trois vols en $\ln K$ ; elle est tracée en comparaison et s'en écarte dans les ailes.
+
+**Densité risque-neutre** : $q(K) = e^{r_d T} \partial^2 C / \partial K^2$, par différences finies sur les prix Vanna-Volga. Une densité négative signalerait un arbitrage papillon.
+
+**Option pricée sur le smile.** Pour un strike donné par un delta, le strike et la vol dépendent l'un de l'autre : on itère jusqu'au point fixe. L'**effet du smile** est la différence entre la prime à la vol du smile et la prime à la vol ATM.
+
+**Limite.** Les cotations ATM, RR et BF ne sont pas diffusées gratuitement. La vol ATM part de la vol réalisée sur un an d'EUR/USD ; le risk reversal et le butterfly sont saisis.
+
+---
+
+## 18. Données et orchestration
 
 *Fichiers : `qplat/data/*.py`, `scripts/refresh.py`*
 
-### 17.1 Sources
+### 18.1 Sources
 
 | Donnée | Source | Fréquence |
 |---|---|---|
@@ -958,7 +1056,7 @@ La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
-### 17.2 Volatilité réalisée
+### 18.2 Volatilité réalisée
 
 Volatilité par défaut des pricers et vol 1 mois de la vue d'ensemble :
 
@@ -968,7 +1066,7 @@ $$
 
 sur les 252 derniers rendements journaliers (1 an) ou les 21 derniers (1 mois).
 
-### 17.3 Rafraîchissement
+### 18.3 Rafraîchissement
 
 Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafraîchit que les sous-jacents dont le marché est ouvert :
 
@@ -985,11 +1083,11 @@ Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 1
 
 ---
 
-## 18. Sentiment des news par IA
+## 19. Sentiment des news par IA
 
 *Fichier : `qplat/data/sentiment.py` — modèle `claude-opus-5-5`, effort `low`*
 
-### 18.1 Scoring
+### 19.1 Scoring
 
 Les titres non encore notés sont envoyés à Claude par paquets de 25, regroupés par sous-jacent. La consigne demande, pour chaque titre, l'impact probable sur le cours du sous-jacent dans les prochaines séances, vu par un actionnaire. Les titres sont traités comme des données, jamais comme des instructions. La réponse est contrainte par un schéma JSON :
 
@@ -999,7 +1097,7 @@ Les titres non encore notés sont envoyés à Claude par paquets de 25, regroup�
 | `label` | very_negative, negative, neutral, positive ou very_positive |
 | `rationale` | une phrase de justification |
 
-### 18.2 Agrégation
+### 19.2 Agrégation
 
 Le sentiment d'un sous-jacent est une moyenne pondérée par la récence, avec une demi-vie de 3 jours. Pour un article d'âge $a$ jours et de score $s$ :
 
@@ -1011,9 +1109,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 19. Validation
+## 20. Validation
 
-*Dossier : `tests/` — 154 tests*
+*Dossier : `tests/` — 165 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1032,13 +1130,15 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
 | Risques | CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Caps / floors | caplet = Black-76, parité cap − floor = swap, cap = floor au strike ATM, Black ≈ Bachelier près de la monnaie, rejet de Black avec des taux négatifs, vol plate implicite |
+| Options de change | Garman-Kohlhagen = Black-Scholes avec dividende étranger, parité, grecques par différences finies, aller-retour delta ↔ strike, straddle delta-neutre, Vanna-Volga reprice les piliers, smile plat, strangle de marché repricé, densité positive |
 | CDS | survie d'une courbe par morceaux, jambe de protection en formule fermée, triangle du crédit, bootstrap exact, rejet d'une courbe inversée, CDS au pair de valeur nulle, CS01 ≈ RPV01 × nominal × 1 bp, jump-to-default |
 | Merton | aller-retour de la calibration, dette = sans risque − put (Black-Scholes), monotonie en levier et en vol, courbe de survie, vol implicite d'un spread |
 | API | routes testées sur une base de test synthétique, dont une chaîne d'options générée par Heston |
 
 ---
 
-## 20. Limites et extensions possibles
+## 21. Limites et extensions possibles
 
 - **Volatilité** : Heston et volatilité locale sont calibrés séparément. Un modèle à volatilité locale-stochastique (LSV) combinerait les deux.
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
@@ -1048,12 +1148,17 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 21. Références
+## 22. Références
 
 - Black, F. & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*. Journal of Political Economy.
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.
 - Merton, R. (1974). *On the Pricing of Corporate Debt: The Risk Structure of Interest Rates*. Journal of Finance.
 - ISDA (2009). *ISDA CDS Standard Model* (conventions du « Big Bang » des CDS).
+- Black, F. (1976). *The Pricing of Commodity Contracts*. Journal of Financial Economics.
+- Bachelier, L. (1900). *Théorie de la spéculation*. Annales scientifiques de l'École normale supérieure.
+- Garman, M. & Kohlhagen, S. (1983). *Foreign Currency Option Values*. Journal of International Money and Finance.
+- Castagna, A. & Mercurio, F. (2007). *The Vanna-Volga Method for Implied Volatilities*. Risk.
+- Clark, I. (2011). *Foreign Exchange Option Pricing: A Practitioner's Guide*. Wiley.
 - O'Kane, D. (2008). *Modelling Single-name and Multi-name Credit Derivatives*. Wiley.
 - Cox, J., Ross, S. & Rubinstein, M. (1979). *Option Pricing: A Simplified Approach*. Journal of Financial Economics.
 - Reiner, E. & Rubinstein, M. (1991). *Breaking Down the Barriers*. Risk.

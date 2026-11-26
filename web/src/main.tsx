@@ -34,6 +34,9 @@ const CliquetPage = exoticPage("CliquetPage");
 const Credit = lazy(() => import("./pages/Credit"));
 const CDSPage = lazy(() => import("./pages/Credit").then((m) => ({ default: m.CDSPage })));
 const MertonPage = lazy(() => import("./pages/Credit").then((m) => ({ default: m.MertonPage })));
+const RatesFx = lazy(() => import("./pages/RatesFx"));
+const CapsPage = lazy(() => import("./pages/RatesFx").then((m) => ({ default: m.CapsPage })));
+const FxPage = lazy(() => import("./pages/RatesFx").then((m) => ({ default: m.FxPage })));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
@@ -84,6 +87,11 @@ createRoot(document.getElementById("root")!).render(
                   </Route>
                   <Route path="/structured" element={<Structured />} />
                   <Route path="/rates" element={<Rates />} />
+                  <Route path="/rates-fx" element={<RatesFx />}>
+                    <Route index element={<Navigate to="caps" replace />} />
+                    <Route path="caps" element={<CapsPage />} />
+                    <Route path="fx" element={<FxPage />} />
+                  </Route>
                   <Route path="/credit" element={<Credit />}>
                     <Route index element={<Navigate to="cds" replace />} />
                     <Route path="cds" element={<CDSPage />} />

@@ -656,3 +656,74 @@ export const creditApi = {
   mertonInputs: (ticker: string) => request<MertonInputs>(`/api/credit/merton/${encodeURIComponent(ticker)}/inputs`),
   merton: (req: MertonRequest) => post<MertonResponse>("/api/credit/merton", req),
 };
+
+// ----------------------------------------------------------------------------- caps, floors and FX options
+
+export interface CapRequest {
+  currency: Currency;
+  maturity: number;
+  frequency: 1 | 2 | 4 | 12;
+  strike: number | null;
+  kind: "cap" | "floor";
+  model: "black" | "bachelier";
+  vol: number;
+  notional: number;
+  market_price: number | null;
+}
+
+export interface CapResponse {
+  strike: number;
+  atm_strike: number;
+  annuity: number;
+  price: number;
+  price_pct: number;
+  running_bp: number;
+  greeks: { price: number; dv01: number; gamma_1bp: number; vega: number; theta: number };
+  parity: { other_kind: "cap" | "floor"; other_price: number; swap_value: number };
+  implied_vol: number | null;
+  caplets: { start: number; end: number; accrual: number; forward: number; discount: number; price: number; delta: number; vega: number }[];
+  profile: { strike: number[]; cap: number[]; floor: number[] };
+}
+
+export interface FXMarketResponse {
+  pair: string;
+  spot: number;
+  asof: string;
+  realized_vol: Record<string, number | null>;
+  tenors: { tenor: string; T: number; rd: number; rf: number; forward: number; points: number }[];
+  history: number[];
+}
+
+export interface FXRequest {
+  expiry: number;
+  atm: number;
+  rr25: number;
+  bf25: number;
+  convention: "spot" | "forward" | null;
+  option_type: "call" | "put";
+  strike_mode: "strike" | "delta" | "atm";
+  strike: number | null;
+  delta: number;
+  notional: number;
+  spot: number | null;
+}
+
+export interface FXResponse {
+  market: { spot: number; forward: number; rd: number; rf: number; T: number; convention: "spot" | "forward" };
+  smile: {
+    atm: number; rr25: number; bf25_market: number; bf25_smile: number;
+    pillars: Record<string, { strike: number; vol: number; delta: number }>;
+    market_strangle: { vol: number; call_strike: number; put_strike: number; value: number };
+    curve: { strike: number[]; vol: (number | null)[]; vol_first_order: number[]; call_delta: (number | null)[]; density: number[] };
+  };
+  option: {
+    strike: number; vol: number; atm_vol: number; option_type: "call" | "put"; delta: number; smile_effect_usd: number;
+    greeks: Record<string, number>;
+  };
+}
+
+export const ratesFxApi = {
+  cap: (req: CapRequest) => post<CapResponse>("/api/caps/price", req),
+  fxMarket: () => request<FXMarketResponse>("/api/fx/market"),
+  fx: (req: FXRequest) => post<FXResponse>("/api/fx/price", req),
+};

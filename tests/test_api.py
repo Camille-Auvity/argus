@@ -141,6 +141,20 @@ def test_cds_position_and_spread_update(client):
         client.delete(f"/api/portfolio/positions/{pid}")
 
 
+def test_caps_and_fx_endpoints(client):
+    c = client.post("/api/caps/price", json={"currency": "USD", "maturity": 5}).json()
+    assert c["strike"] == pytest.approx(c["atm_strike"])
+    assert c["price"] == pytest.approx(c["parity"]["other_price"], rel=1e-9)      # ATM: cap = floor
+    assert c["greeks"]["dv01"] > 0 and len(c["caplets"]) == 19
+    bad = client.post("/api/caps/price", json={"currency": "EUR", "model": "black", "strike": -0.01, "vol": 0.3})
+    assert bad.status_code == 422
+    # no EUR/USD quotes in this database
+    assert client.get("/api/fx/market").status_code == 409
+    fx = client.post("/api/fx/price", json={"spot": 1.10, "expiry": 0.5, "strike_mode": "delta", "delta": 0.25}).json()
+    assert fx["option"]["delta"] == pytest.approx(0.25, abs=1e-9)
+    assert fx["smile"]["pillars"]["25D call"]["vol"] - fx["smile"]["pillars"]["25D put"]["vol"] == pytest.approx(0.003)
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")
