@@ -223,17 +223,28 @@ export function HedgingLab() {
   const mismatchOption = useCallback((p: ChartPalette) => {
     if (!data) return {};
     const m = data.mismatch;
+    const step = m.length > 1 ? m[1].sigma_real - m[0].sigma_real : 0.01;
     return {
-      legend: {},
-      grid: { top: 34 },
+      legend: { top: 0 },
+      grid: { top: 70, right: 64, left: 56 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 3) },
-      xAxis: { type: "value", name: "vol réalisée", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax", axisLabel: { formatter: (v: number) => pct(v, 0) } },
-      yAxis: { type: "value", name: "P&L moyen du vendeur" },
+      xAxis: { type: "value", name: "vol réalisée", nameLocation: "middle", nameGap: 26, min: m[0].sigma_real - step / 2,
+        max: m[m.length - 1].sigma_real + step / 2, axisLabel: { showMinLabel: false, showMaxLabel: false, formatter: (v: number) => pct(v, 0) } },
+      yAxis: [{ type: "value", name: "P&L moyen", nameTextStyle: { align: "left" } },
+        { type: "value", name: "écart-type", nameTextStyle: { align: "right" }, splitLine: { show: false }, min: 0 }],
       series: [
-        { type: "line", name: "Couverture à la vol implicite", color: p.series[0], symbolSize: 7, lineStyle: { width: 2 }, data: m.map((x) => [x.sigma_real, x.implied_hedge_mean]) },
-        { type: "line", name: "Couverture à la vol réalisée", color: p.series[2], symbolSize: 7, lineStyle: { width: 2 }, data: m.map((x) => [x.sigma_real, x.realized_hedge_mean]) },
-        { type: "line", name: "BS(σᵢ) − BS(σᵣ)", showSymbol: false, color: p.series[1], lineStyle: { width: 1.5, type: "dashed" }, data: m.map((x) => [x.sigma_real, x.locked]),
-          markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" }, label: { color: p.muted, fontSize: 10, formatter: "vol implicite" },
+        { type: "bar", name: "Écart-type, couverture à σᵢ", yAxisIndex: 1, barWidth: 9, barGap: "20%", color: p.series[0],
+          itemStyle: { opacity: 0.35 }, data: m.map((x) => [x.sigma_real, x.implied_hedge_sd]) },
+        { type: "bar", name: "Écart-type, couverture à σᵣ", yAxisIndex: 1, barWidth: 9, color: p.series[2],
+          itemStyle: { opacity: 0.35 }, data: m.map((x) => [x.sigma_real, x.realized_hedge_sd]) },
+        { type: "line", name: "Moyenne, couverture à σᵢ", color: p.series[0], symbolSize: 9, lineStyle: { width: 3 }, z: 3,
+          data: m.map((x) => [x.sigma_real, x.implied_hedge_mean]) },
+        { type: "line", name: "Moyenne, couverture à σᵣ", color: p.series[2], symbol: "diamond", symbolSize: 7, lineStyle: { width: 1.5, type: "dashed" }, z: 4,
+          data: m.map((x) => [x.sigma_real, x.realized_hedge_mean]) },
+        { type: "line", name: "BS(σᵢ) − BS(σᵣ)", showSymbol: false, color: p.series[1], lineStyle: { width: 1.5, type: "dotted" }, z: 5,
+          data: m.map((x) => [x.sigma_real, x.locked]),
+          markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" },
+            label: { color: p.muted, fontSize: 10, position: "end", formatter: "σᵣ = σᵢ" },
             data: [{ xAxis: req.sigma_implied }] } },
       ],
     };
@@ -346,7 +357,11 @@ export function HedgingLab() {
             </p>
           </Card>
           <Card title="Vol réalisée ≠ vol implicite">
-            {data ? <EChart option={mismatchOption} height={300} ariaLabel="P&L moyen selon la vol réalisée" /> : <Skeleton height={260} />}
+            {data ? <EChart option={mismatchOption} height={340} ariaLabel="P&L moyen et écart-type selon la vol réalisée" /> : <Skeleton height={300} />}
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              Les deux couvertures ont le même P&L moyen, BS(σᵢ) − BS(σᵣ) : les courbes se superposent. Ce qui les distingue, c'est la dispersion (barres) :
+              couvert à la vol réalisée, le résultat est presque verrouillé ; couvert à la vol implicite, il dépend du chemin.
+            </p>
           </Card>
         </div>
         <InfoBox>
