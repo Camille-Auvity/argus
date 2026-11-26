@@ -39,6 +39,38 @@ def _atm_vol_function(ticker: str, history: pd.DataFrame):
         return (lambda T, v=rv: v), "vol réalisée 1 an"
 
 
+def _fair_variance_function(ticker: str):
+    """Fair variance-swap strike K_var(T): replication on the SVI surface when options exist, else None
+    (the engine then falls back on the ATM vol squared)."""
+    try:
+        from functools import lru_cache as _cache
+
+        from api.routers.models import _chain_version, _surface
+        from qplat.pricers.variance import replicate_variance
+
+        surface = _surface(ticker, _chain_version(ticker))
+
+        @_cache(maxsize=64)
+        def k_var(T: float) -> float:
+            T = max(T, 1 / 365)
+            return replicate_variance(lambda k: np.asarray(surface.implied_vol(np.asarray(k, float), T), float),
+                                      T, float(surface.forward(T)), n=1201).variance
+        return lambda T: k_var(round(float(T), 6))
+    except Exception:
+        return None
+
+
+def _range_lookup(closes: dict):
+    """(ticker, start, end) -> closes with start <= date <= end (realised variance of variance swaps)."""
+    def lookup(ticker: str, start: date, end: date):
+        if ticker not in closes:
+            return np.array([])
+        ds, cs = closes[ticker]
+        mask = (ds >= start) & (ds <= end)
+        return cs[mask]
+    return lookup
+
+
 def _close_lookup(closes: dict):
     """(ticker, date) -> last close on or before that date (fixings of Asians and cliquets)."""
     def lookup(ticker: str, d: date):
@@ -53,7 +85,7 @@ def _close_lookup(closes: dict):
 def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[MarketSnapshot, dict]:
     db = services.get_db()
     meta = db.tickers().set_index("ticker")
-    spots, vols, divs, ccys, vol_source, dates, closes = {}, {}, {}, {}, {}, {}, {}
+    spots, vols, divs, ccys, vol_source, dates, closes, fair_var = {}, {}, {}, {}, {}, {}, {}, {}
     for t in tickers:
         h = db.spot_history(t)
         if h.empty:
@@ -63,6 +95,9 @@ def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[Ma
         dates[t] = h.date.iloc[row].date()
         closes[t] = (h.date.dt.date.to_numpy(), h.close.astype(float).to_numpy())
         vols[t], vol_source[t] = _atm_vol_function(t, h)
+        fv = _fair_variance_function(t)
+        if fv is not None:
+            fair_var[t] = fv
         divs[t] = float(meta.loc[t, "dividend_yield"]) if t in meta.index and pd.notna(meta.loc[t, "dividend_yield"]) else 0.0
         ccys[t] = services.ticker_currency(t, db.tickers())
     curves = {c: services.market_curve(c) for c in ("USD", "EUR")}
@@ -71,7 +106,7 @@ def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[Ma
     valuation_date = max(dates.values()) if previous_close and dates else date.today()
     snap = MarketSnapshot(valuation_date=valuation_date, spots=spots, vols=vols, dividends=divs, currencies=ccys,
                           curves=curves, fx_to_base={"EUR": 1.0, "USD": 1.0 / eurusd}, base_currency=BASE,
-                          past_close=_close_lookup(closes))
+                          past_close=_close_lookup(closes), price_range=_range_lookup(closes), fair_variance=fair_var)
     return snap, {"vol_source": vol_source, "eurusd": eurusd}
 
 
@@ -169,7 +204,7 @@ def risk():
 
 class PositionIn(BaseModel):
     kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds",
-                  "capfloor", "fxoption"]
+                  "capfloor", "fxoption", "varswap"]
     quantity: float
     ticker: str | None = None
     params: dict = Field(default_factory=dict)
@@ -192,6 +227,13 @@ def add_position(p: PositionIn):
             p.params["strike"] = forward_swap_rate(curve, s_, e_)
     if p.kind not in ("bond", "cds", "capfloor") and not p.ticker:
         raise HTTPException(422, "ticker requis")
+    if p.kind == "varswap":
+        p.params.setdefault("start_date", date.today().isoformat())
+        if p.params.get("strike_vol") is None:   # fair strike of today for the whole period
+            snap, _ = build_snapshot([p.ticker])
+            T = (date.fromisoformat(p.params["maturity"]) - date.fromisoformat(p.params["start_date"])).days / 365
+            fv = snap.fair_variance.get(p.ticker)
+            p.params["strike_vol"] = float(np.sqrt(fv(T)) if fv else snap.vols[p.ticker](T))
     if p.kind in ("autocall", "asian", "cliquet"):
         p.params.setdefault("start_date", date.today().isoformat())
         if p.kind != "asian" and "initial_level" not in p.params:
@@ -306,6 +348,8 @@ def load_demo():
         dict(kind="fxoption", quantity=5_000_000, book="Change", label="Call EUR/USD 6 mois",
              params={"expiry": _in_months(6), "strike": float(round(spot[FX_TICKER] * 1.03, 4)), "option_type": "call",
                      "atm": 0.07, "rr25": 0.003, "bf25": 0.0025}),
+        dict(kind="varswap", ticker="SPY", quantity=-50_000, book="Volatilité", label="Vente de variance SPY 3 mois",
+             params={"maturity": _in_months(3), "strike_vol": None}),
         dict(kind="future", ticker="^FCHI", quantity=-1, book="Couvertures", label="Vente future CAC 40",
              params={"expiry": _in_months(3), "multiplier": 10}),
     ]

@@ -173,6 +173,20 @@ def test_cap_and_fx_positions(client):
     assert fx.status_code == 409
 
 
+def test_variance_swap_position(client):
+    r = client.post("/api/portfolio/positions", json={"kind": "varswap", "ticker": "AAPL", "quantity": 50_000,
+                                                      "params": {"maturity": "2027-06-30", "strike_vol": None}})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    try:
+        row = next(p for p in client.get("/api/portfolio").json()["positions"] if p["id"] == pid)
+        assert 0.05 < row["params"]["strike_vol"] < 1.0                     # fair strike filled in at inception
+        assert row["unit_price"] == pytest.approx(0.0, abs=1e-9) and row["vega"] > 0 and row["gamma_cash"] > 0
+        assert row["delta"] == 0 and row["error"] is None
+    finally:
+        client.delete(f"/api/portfolio/positions/{pid}")
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

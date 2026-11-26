@@ -30,7 +30,8 @@ from qplat.pricers import (
     FuturesPricer, GeometricAsianPricer, MonteCarloAutocallPricer, MonteCarloExoticPricer,
 )
 
-KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds", "capfloor", "fxoption")
+KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds", "capfloor", "fxoption",
+         "varswap")
 FX_TICKER = "EURUSD=X"   # underlying of FX options: price of 1 EUR in USD
 CDS_TENORS = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
@@ -61,6 +62,10 @@ class MarketSnapshot:
     past_close: Optional[Callable[[str, date], Optional[float]]] = None
     credit_spread_shift: float = 0.0              # parallel shift of every CDS spread curve (stress)
     vol_shift: float = 0.0                        # absolute vol shock, also applied to quoted FX smiles
+    # (ticker, start, end) -> closes between two dates (realised variance of variance swaps)
+    price_range: Optional[Callable[[str, date, date], np.ndarray]] = None
+    # ticker -> T -> fair variance-swap strike K_var(T) replicated on the smile (absent: ATM vol^2)
+    fair_variance: dict = field(default_factory=dict)
 
     def fixing(self, ticker: str, d: date) -> float:
         """Observed level at a past fixing date (falls back to the current spot when no history is available)."""
@@ -124,6 +129,9 @@ def describe(p: Position) -> str:
                else f"{100 * q['vol']:.1f} % log-normale")
         return (f"{q['cf_kind'].capitalize()} {q['currency']} {100 * q['strike']:.3f} % éch. {q['maturity']} "
                 f"({ {1: 'annuel', 2: 'semestriel', 4: 'trimestriel', 12: 'mensuel'}[int(q['frequency'])] }, vol {vol})")
+    if p.kind == "varswap":
+        side = "achat" if p.quantity >= 0 else "vente"
+        return f"Swap de variance {p.ticker} ({side}), strike {100 * q['strike_vol']:.2f} %, éch. {q['maturity']}"
     if p.kind == "fxoption":
         side = "Call EUR / put USD" if q["option_type"] == "call" else "Put EUR / call USD"
         return f"{side} K={q['strike']:.4f} éch. {q['expiry']}"
@@ -257,6 +265,43 @@ def _value_fx_option(p: Position, m: MarketSnapshot, scale: float, fx: float, re
     )
 
 
+def _value_variance_swap(p: Position, m: MarketSnapshot, ccy: str, scale: float, result) -> Valuation:
+    """Variance swap, quantity = vega notional (> 0: long variance). Unit price = value per 1 of vega notional.
+
+    Expected variance = realised part (stored closes since the start date) + implied part (fair strike of the
+    remaining period, replicated on the smile, shifted by the stress vol shock).
+    """
+    from qplat.pricers.variance import realized_variance, value_variance_swap
+
+    q = p.params
+    start, end = date.fromisoformat(q["start_date"]), date.fromisoformat(q["maturity"])
+    T_total = (end - start).days / 365
+    remaining = (end - m.valuation_date).days / 365
+    if remaining <= 0 or T_total <= 0:
+        return result(0.0)
+    elapsed = max((m.valuation_date - start).days / 365, 0.0)
+    fv = m.fair_variance.get(p.ticker)
+    implied = math.sqrt(fv(remaining)) if fv else m.vols[p.ticker](remaining)
+    implied = max(implied + m.vol_shift, 1e-4)
+    realized = 0.0
+    if elapsed > 0 and m.price_range is not None:
+        closes = m.price_range(p.ticker, start, m.valuation_date)
+        if len(closes) > 2:
+            realized = math.sqrt(realized_variance(closes))
+        else:
+            realized = implied
+    df = float(m.curves[ccy].discount(remaining))
+    v = value_variance_swap(1.0, q["strike_vol"], implied, T_total, elapsed, realized, df)
+    # each daily return r adds 1e4 r^2 / T_total variance points: the P&L of a 1% move is N_var / T_total (gamma)
+    gamma_1pct = df * v.variance_notional * 1e4 * 0.01**2 / T_total
+    # one day later with no move: the day's realised variance is zero, the remaining implied part shrinks
+    dt = 1 / 365
+    later = value_variance_swap(1.0, q["strike_vol"], implied, T_total, elapsed + dt,
+                                math.sqrt(realized**2 * elapsed / (elapsed + dt)) if elapsed > 0 else 0.0, df)
+    return result(v.value, vega_base=v.vega * scale, gamma_cash_base=gamma_1pct * scale,     # vega per vol point
+                  theta_base=(later.value - v.value) * scale)
+
+
 def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Valuation:
     """Price one position and its Greeks (desk units), converted to the base currency."""
     q = p.params
@@ -305,6 +350,9 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
 
         if p.kind == "fxoption":
             return _value_fx_option(p, m, scale, fx, result)
+
+        if p.kind == "varswap":
+            return _value_variance_swap(p, m, ccy, scale, result)
 
         spot = m.spots[p.ticker]
         div = m.dividends.get(p.ticker, 0.0)

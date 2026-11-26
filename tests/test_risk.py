@@ -268,3 +268,53 @@ def test_fx_option_position():
     # a vol shock moves the quoted smile
     up = value_position(Position(40, "fxoption", 5e6, "EURUSD=X", q), m.shocked(vol_shift=0.01))
     assert up.market_value_base - v.market_value_base == pytest.approx(v.vega_base, rel=0.05)
+
+
+# ----------------------------------------------------------------------------- variance swaps
+
+def varswap_snapshot(closes_by_date: dict | None = None, fair_vol=0.2):
+    m = snapshot()
+    m.fair_variance = {"AAPL": lambda T: fair_vol**2}
+    if closes_by_date is not None:
+        days = sorted(closes_by_date)
+
+        def price_range(ticker, a, b):
+            return np.array([closes_by_date[d] for d in days if a <= d <= b])
+        m.price_range = price_range
+    return m
+
+
+def test_new_variance_swap_at_fair_strike():
+    q = {"start_date": TODAY.isoformat(), "maturity": iso(365), "strike_vol": 0.2}
+    v = value_position(Position(50, "varswap", 100_000, "AAPL", q), varswap_snapshot())
+    assert v.unit_price == pytest.approx(0.0, abs=1e-12)
+    # at inception and at the money, the vega equals the vega notional (discounted), the delta is zero
+    assert v.vega_base == pytest.approx(100_000 * 0.9 * math.exp(-0.04), rel=1e-9)
+    assert v.delta == 0
+    # gamma: a 1% move adds 1e4 x 0.01^2 / T variance points, times N_var = N_vega / (2 K)
+    assert v.gamma_cash_base == pytest.approx(0.9 * math.exp(-0.04) * 100_000 / 40 * 1.0, rel=1e-9)
+    # a day without move loses the implied variance of that day (theta)
+    assert v.theta_base < 0
+    short = value_position(Position(51, "varswap", -100_000, "AAPL", q), varswap_snapshot())
+    assert short.theta_base == pytest.approx(-v.theta_base)
+
+
+def test_seasoned_variance_swap_uses_realised_variance():
+    start = TODAY - timedelta(days=91)
+    q = {"start_date": start.isoformat(), "maturity": (start + timedelta(days=365)).isoformat(), "strike_vol": 0.2}
+    # daily moves of +-2% for three months: ~31.7% realised vol, well above the 20% strike
+    rng = np.random.default_rng(1)
+    closes, level = {}, 100.0
+    for i in range(92):
+        closes[start + timedelta(days=i)] = level
+        level *= math.exp(0.02 * rng.choice([-1, 1]))
+    m = varswap_snapshot(closes)
+    v = value_position(Position(52, "varswap", 1.0, "AAPL", q), m)
+    rv = 252 * 0.02**2                                       # every log return is +-2%
+    w = 91 / 365
+    exp_var = w * 1e4 * rv + (1 - w) * 400
+    df = math.exp(-0.04 * (365 - 91) / 365)
+    assert v.unit_price == pytest.approx(df * (exp_var - 400) / 40, rel=1e-3)
+    # a vol shock only moves the implied remainder
+    up = value_position(Position(52, "varswap", 1.0, "AAPL", q), m.shocked(vol_shift=0.01))
+    assert up.unit_price - v.unit_price == pytest.approx(df * (1 - w) * (21**2 - 400) / 40, rel=1e-6)

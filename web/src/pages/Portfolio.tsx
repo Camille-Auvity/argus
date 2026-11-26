@@ -12,7 +12,7 @@ import type { ChartPalette } from "../lib/theme";
 
 const KIND_LABEL: Record<PositionKind, string> = {
   equity: "Action", option: "Option", barrier: "Barrière", digital: "Digitale", asian: "Asiatique", cliquet: "Cliquet",
-  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS", capfloor: "Cap / floor", fxoption: "Option de change",
+  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS", capfloor: "Cap / floor", fxoption: "Option de change", varswap: "Swap de variance",
 };
 
 export const PORTFOLIO_PAGES = [
@@ -202,6 +202,7 @@ function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void })
       <td>{num(p.quantity, 0)}{p.params.multiplier ? <span className="muted"> ×{String(p.params.multiplier)}</span> : null}</td>
       <td>{cds || p.kind === "capfloor" ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">% nom.</span></>
         : p.kind === "fxoption" ? <>{num(p.unit_price != null ? p.unit_price * 1e4 : null, 1)} <span className="muted">pips</span></>
+        : p.kind === "varswap" ? <>{num(p.unit_price, 3)} <span className="muted">× vega</span></>
         : <>{num(p.unit_price, 2)} <span className="muted">{p.currency}</span></>}</td>
       <td className="strong">{money(p.market_value_base)}</td>
       <td><Delta value={p.pnl_base} digits={0} /></td>
@@ -284,6 +285,7 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     cf_kind: "cap", cf_currency: "USD", cf_maturity: inMonths(60), cf_frequency: 4, cf_atm: true, cf_strike: 0.04,
     cf_model: "bachelier", cf_vol: 0.01,
     fx_type: "call", fx_expiry: inMonths(6), fx_strike: 1.12, fx_atm: 0.07, fx_rr: 0.003, fx_bf: 0.0025,
+    vs_maturity: inMonths(3), vs_fair: true, vs_strike: 0.2,
   });
   const set = (k: string) => (v: unknown) => setPrm((p) => ({ ...p, [k]: v }));
   const spot = tickers?.find((t) => t.ticker === ticker)?.last;
@@ -307,6 +309,7 @@ function AddPosition({ onDone }: { onDone: () => void }) {
           strike: prm.cf_atm ? null : prm.cf_strike, model: prm.cf_model, vol: prm.cf_vol },
         fxoption: { expiry: prm.fx_expiry, strike: prm.fx_strike, option_type: prm.fx_type, atm: prm.fx_atm,
           rr25: prm.fx_rr, bf25: prm.fx_bf },
+        varswap: { maturity: prm.vs_maturity, strike_vol: prm.vs_fair ? null : prm.vs_strike },
         cds: { reference: prm.reference || "Émetteur", currency: prm.cds_currency, maturity: prm.cds_maturity,
           coupon_bp: prm.coupon_bp, recovery: prm.recovery, spreads_bp: prm.spreads_bp },
       };
@@ -427,6 +430,15 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         <NumberField label="Butterfly 25Δ" value={prm.fx_bf as number} suffix="%" scale={100} digits={2} onChange={set("fx_bf")} />
       </>
     );
+  } else if (kind === "varswap") {
+    fields = (
+      <>
+        <DateField label="Échéance" value={prm.vs_maturity as string} onChange={set("vs_maturity")} />
+        <SelectField label="Strike" value={prm.vs_fair ? "fair" : "fixed"} onChange={(v: string) => set("vs_fair")(v === "fair")}
+          options={[{ value: "fair", label: "Strike juste du jour" }, { value: "fixed", label: "Niveau fixé" }]} />
+        {!prm.vs_fair && <NumberField label="Strike (vol)" value={prm.vs_strike as number} suffix="%" scale={100} min={0.01} digits={2} onChange={set("vs_strike")} />}
+      </>
+    );
   } else if (kind === "cds") {
     const spreads = prm.spreads_bp as number[];
     fields = (
@@ -460,9 +472,9 @@ function AddPosition({ onDone }: { onDone: () => void }) {
       <div style={{ maxWidth: 320 }}>
         <SelectField label="Type d'instrument" value={kind} onChange={(k: PositionKind) => {
         // a CDS quantity is a notional: switch between unit counts and notionals with sensible defaults
-        const notional = (x: PositionKind) => x === "cds" || x === "capfloor" || x === "fxoption";
-        if (notional(k) && !notional(kind)) setQuantity(10_000_000);
-        if (!notional(k) && notional(kind)) setQuantity(1);
+        // notional-quoted kinds get a sensible default size when the type changes
+        const defaults: Partial<Record<PositionKind, number>> = { cds: 10_000_000, capfloor: 10_000_000, fxoption: 10_000_000, varswap: 100_000 };
+        if (defaults[k] !== defaults[kind]) setQuantity(defaults[k] ?? 1);
         setKind(k);
       }} options={(Object.keys(KIND_LABEL) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
       </div>
@@ -473,7 +485,8 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         )}
         <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)"
           : kind === "cds" ? "Nominal (> 0 achat de protection, < 0 vente)"
-          : kind === "capfloor" ? "Nominal (négatif = vente)" : kind === "fxoption" ? "Nominal en EUR (négatif = vente)" : "Quantité (négatif = vente)"}
+          : kind === "capfloor" ? "Nominal (négatif = vente)" : kind === "fxoption" ? "Nominal en EUR (négatif = vente)"
+          : kind === "varswap" ? "Notionnel vega (> 0 achat de variance)" : "Quantité (négatif = vente)"}
           value={quantity} digits={2} onChange={setQuantity} />
         {fields}
         <TextField label="Book" value={book} onChange={setBook} />

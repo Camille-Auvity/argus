@@ -849,7 +849,7 @@ La même comparaison existe pour la digitale (avec en plus le prix « BS + pente
 
 ### 16.1 Positions et valorisation
 
-Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS, caps et floors, options de change EUR/USD. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
+Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS, caps et floors, options de change EUR/USD, swaps de variance. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
 Chaque position est valorisée avec le pricer adapté :
 
@@ -865,6 +865,7 @@ Chaque position est valorisée avec le pricer adapté :
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
 | Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 18.1) ; strike ATM figé à l'ajout ; quantité = nominal |
+| Swap de variance | variance réalisée depuis le départ (historique) + strike juste de la durée restante répliqué sur la surface SVI (section 12.5) ; quantité = notionnel vega |
 | Option de change | Garman-Kohlhagen à la vol du smile de la position (ATM, RR et BF saisis) au strike ; sous-jacent EUR/USD ; quantité = nominal en EUR |
 | CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 17) ; quantité = nominal, positive pour un acheteur de protection |
 
@@ -880,6 +881,13 @@ Pour le theta, un fixing qui tombe pendant le décalage d'un jour est fixé au s
 **Caps déjà lancés.** L'échéancier est construit sur les dates du contrat. Les caplets dont le paiement est passé sont ignorés. Le caplet de la période en cours a déjà été fixé, mais les fixings SOFR / Euribor ne sont pas stockés : il est valorisé à sa valeur intrinsèque, avec un fixing approché par le taux de la courbe jusqu'à sa date de paiement.
 
 **Options de change.** Le sous-jacent EUR/USD est un sous-jacent comme un autre. Il a son delta cash (exposition en euros), entre dans la VaR historique avec ses propres rendements, et subit les chocs de spot des stress tests. Le choc de vol des stress tests translate la vol ATM du smile coté de la position. Le rho additionne les sensibilités aux taux USD et EUR, puisque les chocs de taux translatent les deux courbes. Le vega des caps est exprimé pour 1 % de vol log-normale ou 1 bp de vol normale, selon le modèle.
+
+**Swaps de variance.**
+- **Strike** : par défaut, le strike juste du jour pour toute la période, figé à l'ajout.
+- **Delta** : nul.
+- **Gamma** : chaque rendement quotidien $r$ ajoute $10^4 r^2 / T$ points de variance. Le P&L d'un mouvement de 1 % vaut donc $N_{var}/T$ (actualisé), un terme exactement quadratique qui entre dans la VaR historique comme un gamma.
+- **Vega** : pour un point de vol implicite sur la durée restante. Le choc de vol des stress tests translate la vol implicite restante ; le choc de spot ne réévalue pas le swap (surface figée), son effet de variance réalisée passe par le gamma.
+- **Theta** : la perte d'une journée sans mouvement. La variance implicite de cette journée n'est pas réalisée : l'acheteur de variance paie ce portage.
 
 Les montants sont convertis en **euros**, avec le dernier taux EUR/USD stocké en base. Les positions sont enregistrées dans la table SQLite `positions` (conditions du contrat en JSON, prix d'entrée par unité).
 
@@ -1216,7 +1224,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 21. Validation
 
-*Dossier : `tests/` — 177 tests*
+*Dossier : `tests/` — 180 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1234,7 +1242,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Arbre | un nœud recalculé à la main redonne la valeur du moteur |
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
-| Risques | cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Risques | swap de variance en portefeuille (valeur nulle au strike juste, vega et gamma au départ, variance réalisée d'un swap en cours de vie, choc de vol) ; cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
 | Swaps de variance | variance réalisée (convention sans moyenne), smile plat → σ², réplication du smile de Heston = variance espérée de Heston, convexité du swap de vol (Jensen et approximation), formule du VIX sur une chaîne Black-Scholes, troncature de la bande, interpolation à 30 jours, valeur d'un swap en cours de vie et vega |
 | Caps / floors | caplet = Black-76, parité cap − floor = swap, cap = floor au strike ATM, Black ≈ Bachelier près de la monnaie, rejet de Black avec des taux négatifs, vol plate implicite |
 | Options de change | Garman-Kohlhagen = Black-Scholes avec dividende étranger, parité, grecques par différences finies, aller-retour delta ↔ strike, straddle delta-neutre, Vanna-Volga reprice les piliers, smile plat, strangle de marché repricé, densité positive |

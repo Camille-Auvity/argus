@@ -490,7 +490,7 @@ export const modelsApi = {
 
 // ----------------------------------------------------------------------------- portfolio
 
-export type PositionKind = "equity" | "option" | "barrier" | "digital" | "asian" | "cliquet" | "autocall" | "bond" | "future" | "cds" | "capfloor" | "fxoption";
+export type PositionKind = "equity" | "option" | "barrier" | "digital" | "asian" | "cliquet" | "autocall" | "bond" | "future" | "cds" | "capfloor" | "fxoption" | "varswap";
 
 export interface Exposure {
   key: string;
