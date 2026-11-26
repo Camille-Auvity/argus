@@ -258,7 +258,7 @@ Argus is a single operating shell, a 232px sidebar, a 56px top bar and a scrolli
 
 The density is that of a working tool: 13.5px body, 9px table cell padding, a 14px card grid, tabular numerals everywhere numbers appear. Hierarchy comes from weight and a handful of small uppercase labels, never from big type. The one exception is the signature move each world places on the overview, directly under the page title: the surveillance map, the network map, the face value, the replicated-results table. Each is drawn from live data or from facts stated in the methodology document. None is decoration.
 
-Worlds are selected in the top-bar "Design" select. The choice is persisted in `localStorage["argus-design"]` and can be forced by a `?design=` URL parameter that an inline script in `index.html` reads before first paint. Classique alone keeps the dark/light toggle (`localStorage["qplat-theme"]`). Each other world has one fixed scheme, declared in `DESIGNS` in `web/src/lib/theme.tsx`.
+**Les cent yeux** is the default world for a first visit (`DEFAULT_DESIGN` in `web/src/lib/theme.tsx`, mirrored by the inline script in `index.html`). The top-bar "Design" select is an easter egg: it stays hidden until revealed by three quick clicks on the logo or by typing "argus" outside a text field (the same gesture hides it again; the state lives in `sessionStorage["argus-picker"]`). Worlds are selected in that select. The choice is persisted in `localStorage["argus-design"]` and can be forced by a `?design=` URL parameter that an inline script in `index.html` reads before first paint. Classique alone keeps the dark/light toggle (`localStorage["qplat-theme"]`). Each other world has one fixed scheme, declared in `DESIGNS` in `web/src/lib/theme.tsx`.
 
 **Key Characteristics:**
 - One shell, one component contract (`.card`, `.card-head`, `.card-title`, `table.data`, `.btn`, `.input-wrap`, `.segmented`, `.tabs`, `.badge`, `.chip`). Worlds override tokens first and selectors second.
@@ -388,7 +388,7 @@ The shared contract lives in `app.css` and is never forked per world. Worlds res
 ### Navigation
 - **Sidebar:** brand block, grouped `.nav-link`s (17px lucide icon, 500 label, 8px 10px), and a footer with data freshness.
 - **Active link per world:** Classique uses an accent-soft fill plus a 2px inset accent bar. Eyes uses the rail-active block with white text. Metro uses a faint porcelain fill plus a **station ring**: a 9px porcelain dot ringed 3px in the group's line colour, right-aligned. Billets uses section-hue text on a 10% section-hue tint. Paper uses rubric text at 650 with no fill.
-- **Top bar:** underlying select with market badge, last price and delta, market chips, Actualiser (or a data-freshness chip in the static build), then the **design picker** (`.design-select`: 12.5px select on `--surface-2`), then the theme toggle, which Classique alone shows.
+- **Top bar:** underlying select with market badge, last price and delta, market chips, Actualiser (or a data-freshness chip in the static build), then the **design picker** (`.design-select`: 12.5px select on `--surface-2`, hidden until the easter egg reveals it), then the theme toggle, which Classique alone shows.
 - **Browser surfaces:** every non-Classique world sets `::selection` (`--sel`), `caret-color` and `accent-color` (`--accent`), and the scrollbar colour (`--scroll`).
 
 ### Les cent yeux: Surveillance Map (`Ocelli.tsx`, overview)

@@ -92,6 +92,9 @@ interface ThemeCtx {
   toggle: () => void;
   design: Design;
   setDesign: (d: Design) => void;
+  /** the design picker is an easter egg: hidden until revealed (3 clicks on the logo, or typing "argus") */
+  pickerOpen: boolean;
+  togglePicker: () => void;
 }
 
 const Ctx = createContext<ThemeCtx | null>(null);
@@ -102,9 +105,20 @@ function initialMode(): ThemeMode {
   return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
+/** what a visitor sees before choosing anything */
+export const DEFAULT_DESIGN: Design = "eyes";
+
+function initialPicker(): boolean {
+  try {
+    return sessionStorage.getItem("argus-picker") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function initialDesign(): Design {
   const stamped = document.documentElement.dataset.design;
-  return DESIGNS.some((d) => d.value === stamped) ? (stamped as Design) : "classic";
+  return DESIGNS.some((d) => d.value === stamped) ? (stamped as Design) : DEFAULT_DESIGN;
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -116,6 +130,35 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = mode;
     document.documentElement.dataset.design = design;
   }, [mode, design]);
+
+  const [pickerOpen, setPickerOpen] = useState<boolean>(initialPicker);
+  const togglePicker = useCallback(() => {
+    setPickerOpen((open) => {
+      try {
+        sessionStorage.setItem("argus-picker", open ? "0" : "1");
+      } catch {
+        /* storage unavailable: the picker still toggles for this page */
+      }
+      return !open;
+    });
+  }, []);
+
+  // typing "argus" anywhere outside a text field toggles the picker
+  useEffect(() => {
+    let typed = "";
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+      typed = (typed + e.key.toLowerCase()).slice(-5);
+      if (typed === "argus") {
+        typed = "";
+        togglePicker();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePicker]);
 
   const setDesign = useCallback((d: Design) => {
     setDesignState(d);
@@ -139,8 +182,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ mode, palette: design === "classic" ? PALETTES[mode] : DESIGN_PALETTES[design], toggle, design, setDesign }),
-    [mode, toggle, design, setDesign],
+    () => ({ mode, palette: design === "classic" ? PALETTES[mode] : DESIGN_PALETTES[design], toggle, design, setDesign,
+      pickerOpen, togglePicker }),
+    [mode, toggle, design, setDesign, pickerOpen, togglePicker],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, ArrowLeftRight, AudioWaveform, GraduationCap, Microscope, PieChart, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { STATIC_MODE } from "../engine/bridge";
@@ -63,11 +63,22 @@ export function Layout({ children }: { children: ReactNode }) {
 
 function Sidebar() {
   const { data: status } = useStatus();
+  const { togglePicker } = useTheme();
+  // easter egg: three quick clicks on the logo reveal (or hide) the design picker
+  const clicks = useRef<number[]>([]);
+  const onLogo = () => {
+    const now = Date.now();
+    clicks.current = [...clicks.current.filter((t) => now - t < 900), now];
+    if (clicks.current.length >= 3) {
+      clicks.current = [];
+      togglePicker();
+    }
+  };
   let group = "";
   return (
     <nav className="sidebar" aria-label="Navigation principale">
       <div className="brand">
-        <div className="brand-mark"><LineChart size={17} /></div>
+        <div className="brand-mark" onClick={onLogo}><LineChart size={17} /></div>
         <div className="brand-text">
           <div className="brand-name">ARGUS</div>
           <div className="brand-sub">Quant Pricing Platform</div>
@@ -108,7 +119,7 @@ function TopBar() {
   const { ticker, setTicker, snapshot } = useTicker();
   const { data: tickers } = useTickers();
   const { data: status } = useStatus();
-  const { mode, toggle, design, setDesign } = useTheme();
+  const { mode, toggle, design, setDesign, pickerOpen } = useTheme();
   const qc = useQueryClient();
   const refresh = useMutation({
     mutationFn: () => api.refresh(ticker),
@@ -161,12 +172,14 @@ function TopBar() {
           <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
         </button>
       )}
-      <label className="design-select" title="Univers visuel ; « Classique » est le design d'origine">
-        <span className="label">Design</span>
-        <select value={design} onChange={(e) => setDesign(e.target.value as Design)} aria-label="Design">
-          {DESIGNS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-      </label>
+      {pickerOpen && (
+        <label className="design-select" title="Univers visuel ; « Classique » est le design d'origine">
+          <span className="label">Design</span>
+          <select value={design} onChange={(e) => setDesign(e.target.value as Design)} aria-label="Design">
+            {DESIGNS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </label>
+      )}
       {design === "classic" && (
         <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
           title={mode === "dark" ? "Thème clair" : "Thème sombre"}>

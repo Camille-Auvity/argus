@@ -13,8 +13,8 @@
         // ?design=eyes|metro|billets|paper|classic opens (and remembers) a design: shareable links
         const q = new URLSearchParams(location.search).get("design");
         if (q && /^(classic|eyes|metro|billets|paper)$/.test(q)) localStorage.setItem("argus-design", q);
-        const d = localStorage.getItem("argus-design");
-        if (d) document.documentElement.dataset.design = d;
+        // default design for a first visit: « Les cent yeux » (keep in sync with DEFAULT_DESIGN in src/lib/theme.tsx)
+        document.documentElement.dataset.design = localStorage.getItem("argus-design") || "eyes";
       } catch (e) {}
     </script>
   </head>
