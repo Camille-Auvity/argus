@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, ArrowLeftRight, AudioWaveform, GraduationCap, Microscope, PieChart, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
 } from "lucide-react";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { STATIC_MODE } from "../engine/bridge";
@@ -57,6 +57,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <Sidebar />
       <TopBar />
       <main className="main" data-group={routeGroup(pathname)}>{children}</main>
+      <DesignMenu />
     </div>
   );
 }
@@ -119,7 +120,7 @@ function TopBar() {
   const { ticker, setTicker, snapshot } = useTicker();
   const { data: tickers } = useTickers();
   const { data: status } = useStatus();
-  const { mode, toggle, design, setDesign, pickerOpen } = useTheme();
+  const { mode, toggle, design } = useTheme();
   const qc = useQueryClient();
   const refresh = useMutation({
     mutationFn: () => api.refresh(ticker),
@@ -172,14 +173,6 @@ function TopBar() {
           <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
         </button>
       )}
-      {pickerOpen && (
-        <label className="design-select" title="Univers visuel ; « Classique » est le design d'origine">
-          <span className="label">Design</span>
-          <select value={design} onChange={(e) => setDesign(e.target.value as Design)} aria-label="Design">
-            {DESIGNS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-          </select>
-        </label>
-      )}
       {design === "classic" && (
         <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
           title={mode === "dark" ? "Thème clair" : "Thème sombre"}>
@@ -187,5 +180,56 @@ function TopBar() {
         </button>
       )}
     </header>
+  );
+}
+
+/** Swatches of each design (ground, ink, accent) shown in the secret menu. */
+const SWATCHES: Record<Design, [string, string, string]> = {
+  classic: ["#0d0d0d", "#ffffff", "#3987e5"],
+  eyes: ["#0e3b43", "#e8efec", "#c99a2e"],
+  metro: ["#0f1a3a", "#f4f1e8", "#e5484d"],
+  billets: ["#f1f3f5", "#2f5da8", "#d9812b"],
+  paper: ["#fcfcfa", "#16181d", "#7a1f2b"],
+};
+
+/** The easter-egg design menu: opens next to the logo, closes on pick, Escape or outside click. */
+function DesignMenu() {
+  const { design, setDesign, pickerOpen, closePicker } = useTheme();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    ref.current?.querySelector<HTMLButtonElement>("button[aria-checked='true']")?.focus();
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as HTMLElement).closest(".brand-mark")) closePicker();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pickerOpen, closePicker]);
+
+  if (!pickerOpen) return null;
+
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const items = [...(ref.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Escape") closePicker();
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    }
+  };
+
+  return (
+    <div ref={ref} className="design-menu" role="menu" aria-label="Choisir le design" onKeyDown={onKey}>
+      {DESIGNS.map((d) => (
+        <button key={d.value} type="button" role="menuitemradio" aria-checked={d.value === design}
+          onClick={() => { setDesign(d.value); closePicker(); }}>
+          <span className="swatch" aria-hidden="true">
+            {SWATCHES[d.value].map((c) => <i key={c} style={{ background: c }} />)}
+          </span>
+          {d.label}
+        </button>
+      ))}
+    </div>
   );
 }

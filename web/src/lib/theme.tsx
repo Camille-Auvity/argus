@@ -92,9 +92,11 @@ interface ThemeCtx {
   toggle: () => void;
   design: Design;
   setDesign: (d: Design) => void;
-  /** the design picker is an easter egg: hidden until revealed (3 clicks on the logo, or typing "argus") */
+  /** the design menu is an easter egg: a transient menu opened by 3 clicks on the logo or by typing "argus",
+   *  closed as soon as a design is picked (or on Escape / outside click); nothing stays on screen */
   pickerOpen: boolean;
   togglePicker: () => void;
+  closePicker: () => void;
 }
 
 const Ctx = createContext<ThemeCtx | null>(null);
@@ -107,14 +109,6 @@ function initialMode(): ThemeMode {
 
 /** what a visitor sees before choosing anything */
 export const DEFAULT_DESIGN: Design = "eyes";
-
-function initialPicker(): boolean {
-  try {
-    return sessionStorage.getItem("argus-picker") === "1";
-  } catch {
-    return false;
-  }
-}
 
 function initialDesign(): Design {
   const stamped = document.documentElement.dataset.design;
@@ -131,17 +125,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.design = design;
   }, [mode, design]);
 
-  const [pickerOpen, setPickerOpen] = useState<boolean>(initialPicker);
-  const togglePicker = useCallback(() => {
-    setPickerOpen((open) => {
-      try {
-        sessionStorage.setItem("argus-picker", open ? "0" : "1");
-      } catch {
-        /* storage unavailable: the picker still toggles for this page */
-      }
-      return !open;
-    });
-  }, []);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const togglePicker = useCallback(() => setPickerOpen((open) => !open), []);
+  const closePicker = useCallback(() => setPickerOpen(false), []);
 
   // typing "argus" anywhere outside a text field toggles the picker
   useEffect(() => {
@@ -183,8 +169,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ mode, palette: design === "classic" ? PALETTES[mode] : DESIGN_PALETTES[design], toggle, design, setDesign,
-      pickerOpen, togglePicker }),
-    [mode, toggle, design, setDesign, pickerOpen, togglePicker],
+      pickerOpen, togglePicker, closePicker }),
+    [mode, toggle, design, setDesign, pickerOpen, togglePicker, closePicker],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
