@@ -87,14 +87,15 @@ class Averaging(str, Enum):
 class AsianOption(EquityDerivative):
     """Average-price option on discrete fixings: payoff (phi (A - K))+ paid at the last fixing.
 
-    A is the arithmetic or geometric mean of S at ``fixing_times``. Every fixing is
-    in the future (no averaging period already started).
+    A is the arithmetic or geometric mean of S over every fixing of the contract: the
+    already observed ``past_fixings`` (seasoned option) and the future ``fixing_times``.
     """
 
     strike: float
     fixing_times: tuple[float, ...]
     option_type: OptionType = OptionType.CALL
     averaging: Averaging = Averaging.ARITHMETIC
+    past_fixings: tuple[float, ...] = ()
 
     def __post_init__(self):
         super().__post_init__()
@@ -103,6 +104,13 @@ class AsianOption(EquityDerivative):
         object.__setattr__(self, "fixing_times", _check_times(self.fixing_times))
         object.__setattr__(self, "option_type", OptionType(self.option_type))
         object.__setattr__(self, "averaging", Averaging(self.averaging))
+        object.__setattr__(self, "past_fixings", tuple(float(x) for x in self.past_fixings))
+        if any(x <= 0 for x in self.past_fixings):
+            raise ValueError("past fixings must be > 0")
+
+    @property
+    def n_total(self) -> int:
+        return len(self.past_fixings) + len(self.fixing_times)
 
     @classmethod
     def regular(cls, expiry: float, n_fixings: int, **kwargs) -> "AsianOption":
@@ -118,17 +126,21 @@ class AsianOption(EquityDerivative):
         return self.fixing_times
 
     def average(self, paths: np.ndarray) -> np.ndarray:
+        n = self.n_total
         if self.averaging is Averaging.GEOMETRIC:
-            return np.exp(np.log(paths).mean(axis=1))
-        return paths.mean(axis=1)
+            return np.exp((np.log(paths).sum(axis=1) + float(np.log(self.past_fixings).sum())) / n)
+        return (paths.sum(axis=1) + sum(self.past_fixings)) / n
 
     def path_payoff(self, paths: np.ndarray) -> np.ndarray:
         return np.maximum(self.option_type.phi * (self.average(paths) - self.strike), 0.0)
 
     def time_shifted(self, dt: float):
-        if dt >= self.fixing_times[0]:
-            raise ValueError("time shift goes past the first fixing")
-        return dataclasses.replace(self, fixing_times=tuple(t - dt for t in self.fixing_times))
+        """Fixings passed during dt are fixed at today's spot (theta convention: the spot does not move)."""
+        passed = [t for t in self.fixing_times if t <= dt]
+        if len(passed) == len(self.fixing_times):
+            raise ValueError("time shift goes past the last fixing")
+        return dataclasses.replace(self, fixing_times=tuple(t - dt for t in self.fixing_times if t > dt),
+                                   past_fixings=self.past_fixings + (self.spot,) * len(passed))
 
 
 # ----------------------------------------------------------------------------- cliquet
@@ -143,6 +155,10 @@ class CliquetOption(EquityDerivative):
 
     ``None`` removes a cap or floor. Each period is a forward-starting call spread on the
     return: the price only depends on forward volatilities, not on the spot level.
+
+    Seasoned cliquet: ``accrued`` is the sum of the (locally clipped) returns of the periods
+    already completed and ``initial_level`` the frozen reference level of the running period.
+    ``initial_level=None`` means the reference is the current spot (contract not struck yet).
     """
 
     reset_times: tuple[float, ...]
@@ -151,10 +167,14 @@ class CliquetOption(EquityDerivative):
     global_floor: Optional[float] = None
     global_cap: Optional[float] = None
     notional: float = 100.0
+    initial_level: Optional[float] = None
+    accrued: float = 0.0
 
     def __post_init__(self):
         super().__post_init__()
         object.__setattr__(self, "reset_times", _check_times(self.reset_times))
+        if self.initial_level is not None and self.initial_level <= 0:
+            raise ValueError("initial level must be > 0")
         if self.local_floor is not None and self.local_cap is not None and self.local_floor > self.local_cap:
             raise ValueError("local floor above local cap")
         if self.global_floor is not None and self.global_cap is not None and self.global_floor > self.global_cap:
@@ -173,20 +193,29 @@ class CliquetOption(EquityDerivative):
     def observation_times(self) -> tuple[float, ...]:
         return self.reset_times
 
+    def clip_local(self, r):
+        lo = -np.inf if self.local_floor is None else self.local_floor
+        hi = np.inf if self.local_cap is None else self.local_cap
+        return np.clip(r, lo, hi)
+
     def period_returns(self, paths: np.ndarray) -> np.ndarray:
-        full = np.hstack([np.full((paths.shape[0], 1), self.spot), paths])
+        ref = self.spot if self.initial_level is None else self.initial_level
+        full = np.hstack([np.full((paths.shape[0], 1), ref), paths])
         return full[:, 1:] / full[:, :-1] - 1.0
 
     def path_payoff(self, paths: np.ndarray) -> np.ndarray:
-        r = self.period_returns(paths)
-        lo = -np.inf if self.local_floor is None else self.local_floor
-        hi = np.inf if self.local_cap is None else self.local_cap
-        total = np.clip(r, lo, hi).sum(axis=1)
+        total = self.accrued + self.clip_local(self.period_returns(paths)).sum(axis=1)
         glo = -np.inf if self.global_floor is None else self.global_floor
         ghi = np.inf if self.global_cap is None else self.global_cap
         return self.notional * np.clip(total, glo, ghi)
 
     def time_shifted(self, dt: float):
-        if dt >= self.reset_times[0]:
-            raise ValueError("time shift goes past the first reset")
-        return dataclasses.replace(self, reset_times=tuple(t - dt for t in self.reset_times))
+        """A reset passed during dt completes its period at today's spot (theta convention)."""
+        if dt >= self.reset_times[-1]:
+            raise ValueError("time shift goes past the last reset")
+        out = dataclasses.replace(self, reset_times=tuple(t - dt for t in self.reset_times if t > dt))
+        for _ in (t for t in self.reset_times if t <= dt):
+            ref = self.spot if out.initial_level is None else out.initial_level
+            out = dataclasses.replace(out, accrued=out.accrued + float(self.clip_local(self.spot / ref - 1.0)),
+                                      initial_level=self.spot)
+        return out

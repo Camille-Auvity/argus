@@ -751,7 +751,7 @@ La même comparaison existe pour la digitale (avec en plus le prix « BS + pente
 
 ### 15.1 Positions et valorisation
 
-Types de positions : actions, options européennes ou américaines, barrières, autocalls, obligations, futures sur indices. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
+Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
 Chaque position est valorisée avec le pricer adapté :
 
@@ -760,11 +760,21 @@ Chaque position est valorisée avec le pricer adapté :
 | Option européenne | Black-Scholes |
 | Option américaine | arbre CRR à 200 pas |
 | Barrière | formule fermée (BGK si l'observation est discrète) |
+| Digitale | formule fermée de Black-Scholes |
+| Asiatique | Monte Carlo avec variable de contrôle (arithmétique), formule fermée (géométrique), 20 000 trajectoires |
+| Cliquet | Monte Carlo, 20 000 trajectoires |
 | Autocall | Monte Carlo, 20 000 trajectoires |
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
 
 **Données de marché** : dernier cours, dividende, courbe de la devise. La volatilité est la vol ATM de la surface SVI à la maturité de la position quand le sous-jacent a des options cotées, sinon la vol réalisée sur un an.
+
+**Produits en cours de vie.** Une asiatique ou un cliquet commencé avant la date de valorisation a déjà des fixings observés. Ils sont lus dans l'historique des cours en base : dernier cours de clôture à la date du fixing ou avant. Si l'historique manque, c'est le spot actuel qui est utilisé.
+- **Asiatique** : les fixings passés entrent dans la moyenne. La formule géométrique, l'approximation de Lévy et le Monte Carlo moyennent sur les $n$ fixings du contrat, dont $n_{passés}$ sont déjà connus.
+- **Cliquet** : les périodes terminées sont accumulées (somme des rendements bornés localement). La période en cours a un niveau de référence figé, le cours au dernier reset ; au départ, c'est le niveau initial fixé à l'ajout de la position. Dès qu'il est lancé, le cliquet a donc un delta non nul, alors qu'il en a un nul avant son départ.
+- Une fois tous les fixings connus, la valeur est le payoff, sans plus aucune sensibilité.
+
+Pour le theta, un fixing qui tombe pendant le décalage d'un jour est fixé au spot du jour.
 
 Les montants sont convertis en **euros**, avec le dernier taux EUR/USD stocké en base. Les positions sont enregistrées dans la table SQLite `positions` (conditions du contrat en JSON, prix d'entrée par unité).
 
@@ -890,7 +900,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 18. Validation
 
-*Dossier : `tests/` — 133 tests*
+*Dossier : `tests/` — 138 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -908,7 +918,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Arbre | un nœud recalculé à la main redonne la valeur du moteur |
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
-| Risques | valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Risques | digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
 | API | routes testées sur une base de test synthétique, dont une chaîne d'options générée par Heston |
 
 ---

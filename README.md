@@ -130,7 +130,7 @@ for pricer in (BlackScholesPricer(), BinomialTreePricer(), MonteCarloPricer()):
 - **Heston** : pricer semi-analytique (formule de Lewis), calibré en environ 0,3 s sur la partie liquide du smile (erreur moyenne de l'ordre d'un point de vol sur SPY), et simulation pour les exotiques.
 - **Surface SVI et Dupire** : une tranche SVI par échéance, avec des pénalités de non-arbitrage (papillon et calendrier), une surface implicite interpolée en variance totale, puis la volatilité locale de Gatheral-Dupire et sa simulation.
 - **Exotiques comparés** : la même barrière, le même autocall, la même digitale, asiatique et cliquet pricés sous Black-Scholes, Heston et volatilité locale, pour mesurer le risque de modèle.
-- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, autocalls, obligations, futures) avec :
+- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures ; fixings passés lus dans l'historique) avec :
   - grecques agrégées ;
   - stress tests actions × vol et taux, en revalorisation complète ;
   - VaR et ES historiques (delta-gamma) et VaR paramétrique ;

@@ -11,22 +11,23 @@ from __future__ import annotations
 import dataclasses
 import math
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Callable
+from datetime import date, timedelta
+from typing import Callable, Optional
 
 import numpy as np
 
 from qplat.core.conventions import year_fraction
 from qplat.curves.rate_curve import RateCurve
 from qplat.instruments import (
-    AmericanOption, Autocallable, BarrierOption, EquityFuture, EuropeanOption, FixedRateBond,
+    AmericanOption, AsianOption, Autocallable, BarrierOption, CliquetOption, DigitalOption, EquityFuture, EuropeanOption,
+    FixedRateBond,
 )
 from qplat.pricers import (
-    AnalyticBarrierPricer, BinomialTreePricer, BlackScholesPricer, DiscountingBondPricer, FuturesPricer,
-    MonteCarloAutocallPricer,
+    AnalyticBarrierPricer, AnalyticDigitalPricer, BinomialTreePricer, BlackScholesPricer, DiscountingBondPricer,
+    FuturesPricer, GeometricAsianPricer, MonteCarloAutocallPricer, MonteCarloExoticPricer,
 )
 
-KINDS = ("equity", "option", "barrier", "autocall", "bond", "future")
+KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future")
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,13 @@ class MarketSnapshot:
     curves: dict[str, RateCurve]                  # currency -> curve
     fx_to_base: dict[str, float]                  # currency -> units of base currency per unit
     base_currency: str = "EUR"
+    # (ticker, date) -> close on or before that date: past fixings of Asians and cliquets
+    past_close: Optional[Callable[[str, date], Optional[float]]] = None
+
+    def fixing(self, ticker: str, d: date) -> float:
+        """Observed level at a past fixing date (falls back to the current spot when no history is available)."""
+        level = self.past_close(ticker, d) if self.past_close else None
+        return float(level) if level else self.spots[ticker]
 
     def shocked(self, spot_shift: float = 0.0, vol_shift: float = 0.0, rate_shift: float = 0.0,
                 spot_moves: dict[str, float] | None = None) -> "MarketSnapshot":
@@ -100,6 +108,21 @@ def describe(p: Position) -> str:
         return f"Obligation {q['currency']} {100 * q['coupon_rate']:.3f} % éch. {q['maturity']}"
     if p.kind == "future":
         return f"Future {p.ticker} éch. {q['expiry']} (×{q.get('multiplier', 1):g})"
+    if p.kind == "digital":
+        what = "cash" if q.get("digital_kind", "cash-or-nothing") == "cash-or-nothing" else "asset"
+        return f"Digitale {what} {q['option_type']} {p.ticker} K={q['strike']:g} éch. {q['expiry']}"
+    if p.kind == "asian":
+        avg = "géométrique" if q.get("averaging") == "geometric" else "arithmétique"
+        return f"Asiatique {avg} {q['option_type']} {p.ticker} K={q['strike']:g}, {q['n_fixings']} fixings, éch. {q['expiry']}"
+    if p.kind == "cliquet":
+        bounds = []
+        if q.get("local_floor") is not None:
+            bounds.append(f"floor local {100 * q['local_floor']:g} %")
+        if q.get("local_cap") is not None:
+            bounds.append(f"cap local {100 * q['local_cap']:g} %")
+        if q.get("global_floor") is not None:
+            bounds.append(f"floor global {100 * q['global_floor']:g} %")
+        return f"Cliquet {p.ticker} {q['maturity_years']:g} ans ({', '.join(bounds) or 'sans bornes'})"
     return p.kind
 
 
@@ -109,6 +132,51 @@ def _autocall_times(snapshot: MarketSnapshot, q: dict) -> tuple[float, ...]:
     n = int(round(q["maturity_years"] * q["frequency"]))
     times = [(i + 1) / q["frequency"] - elapsed for i in range(n)]
     return tuple(t for t in times if t > 1 / 365)
+
+
+def asian_schedule(q: dict) -> list[date]:
+    """Fixing dates evenly spread between the start date (excluded) and the expiry (included)."""
+    start, end = date.fromisoformat(q["start_date"]), date.fromisoformat(q["expiry"])
+    n = int(q["n_fixings"])
+    return [start + timedelta(days=round((end - start).days * (i + 1) / n)) for i in range(n)]
+
+
+def cliquet_schedule(q: dict) -> list[date]:
+    start = date.fromisoformat(q["start_date"])
+    n = int(round(q["maturity_years"] * q["frequency"]))
+    return [start + timedelta(days=round(365 * (i + 1) / q["frequency"])) for i in range(n)]
+
+
+def _seasoned_asian(p: Position, m: MarketSnapshot, common: dict) -> AsianOption | float:
+    """Asian with its past fixings read from history; a float (the payoff) once every fixing is known."""
+    q = p.params
+    dates = asian_schedule(q)
+    past = tuple(m.fixing(p.ticker, d) for d in dates if d <= m.valuation_date)
+    future = tuple(_T(m, d.isoformat()) for d in dates if d > m.valuation_date)
+    if not future:
+        geometric = q.get("averaging") == "geometric"
+        avg = float(np.exp(np.mean(np.log(past)))) if geometric else float(np.mean(past))
+        phi = 1 if q["option_type"] == "call" else -1
+        return max(phi * (avg - q["strike"]), 0.0)
+    return AsianOption(**common, strike=q["strike"], option_type=q["option_type"],
+                       averaging=q.get("averaging", "arithmetic"), fixing_times=future, past_fixings=past)
+
+
+def _seasoned_cliquet(p: Position, m: MarketSnapshot, common: dict) -> CliquetOption | float:
+    """Cliquet with completed periods accrued from history and the running period's reference frozen."""
+    q = p.params
+    dates = cliquet_schedule(q)
+    levels = [float(q["initial_level"])] + [m.fixing(p.ticker, d) for d in dates if d <= m.valuation_date]
+    future = tuple(_T(m, d.isoformat()) for d in dates if d > m.valuation_date)
+    # with no reset left, a dummy future date only carries the accrued sum: path_payoff on zero dates
+    inst = CliquetOption(**common, reset_times=future or (1.0,), local_floor=q.get("local_floor"),
+                         local_cap=q.get("local_cap"), global_floor=q.get("global_floor"),
+                         global_cap=q.get("global_cap"), notional=q.get("notional", 100.0), initial_level=levels[-1])
+    accrued = float(sum(inst.clip_local(b / a - 1.0) for a, b in zip(levels, levels[1:])))
+    inst = dataclasses.replace(inst, accrued=accrued)
+    if not future:
+        return float(inst.path_payoff(np.empty((1, 0)))[0])
+    return inst
 
 
 def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Valuation:
@@ -162,7 +230,16 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
             val.delta_cash_base = val.delta * spot * fx
             return val
 
-        if p.kind == "autocall":
+        if p.kind in ("asian", "cliquet"):
+            horizon = date.fromisoformat(q["expiry"]) if p.kind == "asian" else cliquet_schedule(q)[-1]
+            vol = m.vols[p.ticker](max(_T(m, horizon.isoformat()), 1 / 365))
+            common = dict(spot=spot, vol=vol, rate=curve, dividend_yield=div)
+            inst = (_seasoned_asian if p.kind == "asian" else _seasoned_cliquet)(p, m, common)
+            if isinstance(inst, float):  # every fixing observed: payoff known, paid at expiry (no more risk)
+                return result(inst)
+            geometric = p.kind == "asian" and inst.averaging.value == "geometric"
+            pricer = GeometricAsianPricer() if geometric else MonteCarloExoticPricer(n_paths=mc_paths)
+        elif p.kind == "autocall":
             times = _autocall_times(m, q)
             if not times:
                 return result(0.0, )
@@ -189,6 +266,9 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
                 inst = BarrierOption(**common, barrier=q["barrier"], barrier_type=q["barrier_type"],
                                      rebate=q.get("rebate", 0.0), monitoring_per_year=q.get("monitoring_per_year"))
                 pricer = AnalyticBarrierPricer()
+            elif p.kind == "digital":
+                inst = DigitalOption(**common, kind=q.get("digital_kind", "cash-or-nothing"), cash=q.get("cash", 1.0))
+                pricer = AnalyticDigitalPricer()
             else:
                 raise ValueError(f"unknown position kind {p.kind}")
 

@@ -12,6 +12,7 @@ Greeks come from the shared finite-difference engine (common random numbers for 
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import numpy as np
@@ -53,16 +54,20 @@ def _forwards(opt: AsianOption) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _black(phi: int, fwd: float, strike: float, total_var: float, df: float) -> float:
+    if strike <= 0:  # seasoned average already above any strike: a forward (call) or worthless (put)
+        return df * (fwd - strike) if phi > 0 else 0.0
     s = math.sqrt(total_var)
     d1 = (math.log(fwd / strike) + 0.5 * total_var) / s
     return df * phi * (fwd * norm.cdf(phi * d1) - strike * norm.cdf(phi * (d1 - s)))
 
 
 def geometric_asian_price(opt: AsianOption) -> float:
-    """ln G = mean_i ln S(t_i) is Gaussian: m = ln S + mean(g_i - s^2 t_i / 2), v = s^2/n^2 sum_ij min(t_i, t_j)."""
+    """ln G = (sum of ln past fixings + sum_i ln S(t_i)) / n is Gaussian:
+    m = [sum ln P_j + sum_i (ln S + g_i - s^2 t_i / 2)] / n,  v = s^2/n^2 sum_ij min(t_i, t_j)."""
     t, growth = _forwards(opt)
-    n = len(t)
-    m = math.log(opt.spot) + float(np.mean(growth - 0.5 * opt.vol**2 * t))
+    n = opt.n_total
+    past = float(np.log(opt.past_fixings).sum()) if opt.past_fixings else 0.0
+    m = (past + float(np.sum(math.log(opt.spot) + growth - 0.5 * opt.vol**2 * t))) / n
     v = opt.vol**2 * float(np.minimum.outer(t, t).sum()) / n**2
     return _black(opt.option_type.phi, math.exp(m + 0.5 * v), opt.strike, v, float(opt.curve.discount(t[-1])))
 
@@ -84,8 +89,10 @@ class LevyAsianPricer(FiniteDifferencePricer):
     def price(self, opt: AsianOption) -> float:
         t, growth = _forwards(opt)
         f = opt.spot * np.exp(growth)
-        m1 = float(f.mean())
-        m2 = float((np.outer(f, f) * np.exp(opt.vol**2 * np.minimum.outer(t, t))).sum()) / len(t) ** 2
+        n, past = opt.n_total, float(sum(opt.past_fixings))
+        m1 = (past + float(f.sum())) / n
+        cross = float((np.outer(f, f) * np.exp(opt.vol**2 * np.minimum.outer(t, t))).sum())
+        m2 = (past**2 + 2 * past * float(f.sum()) + cross) / n**2
         return _black(opt.option_type.phi, m1, opt.strike, math.log(m2 / m1**2), float(opt.curve.discount(t[-1])))
 
 
@@ -112,6 +119,8 @@ class CliquetSpreadPricer(FiniteDifferencePricer):
     def price(self, opt: CliquetOption) -> float:
         if opt.global_floor is not None or opt.global_cap is not None:
             raise ValueError("closed form only without global floor / cap")
+        if opt.initial_level is not None or opt.accrued:
+            raise ValueError("closed form only for a cliquet not yet started")
         grid = np.concatenate([[0.0], opt.reset_times])
         dfs = opt.curve.discount(grid)
         total = 0.0
@@ -174,9 +183,7 @@ class MonteCarloExoticPricer(FiniteDifferencePricer):
         out = {"plain_price": float(x.mean()), "plain_std_error": float(x.std(ddof=1) / math.sqrt(len(x))),
                "payoffs": payoff, "paths": paths}
         if self.uses_control_variate(inst):
-            geo = AsianOption(spot=inst.spot, vol=inst.vol, rate=inst.rate, dividend_yield=inst.dividend_yield,
-                              strike=inst.strike, fixing_times=inst.fixing_times, option_type=inst.option_type,
-                              averaging=Averaging.GEOMETRIC)
+            geo = dataclasses.replace(inst, averaging=Averaging.GEOMETRIC)
             y = self._pairs(df * geo.path_payoff(paths))
             var_y = y.var(ddof=1)
             b = float(np.cov(x, y, ddof=1)[0, 1] / var_y) if var_y > 0 else 0.0

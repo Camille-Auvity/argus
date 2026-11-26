@@ -1,3 +1,4 @@
+import math
 from datetime import date, timedelta
 
 import numpy as np
@@ -106,3 +107,73 @@ def test_aggregate_by_underlying():
     vals = value_book([Position(1, "equity", 10, "AAPL"), Position(2, "equity", 1, "AAPL"), Position(3, "equity", 1, "MC.PA")], snapshot())
     groups = {g["key"]: g for g in aggregate(vals, lambda v: v.position.ticker)}
     assert groups["AAPL"]["n"] == 2 and groups["AAPL"]["delta_cash"] == pytest.approx(11 * 90)
+
+
+# ----------------------------------------------------------------------------- digital / Asian / cliquet positions
+
+def history_snapshot(closes: dict[date, float], **kw) -> MarketSnapshot:
+    """AAPL history: last close on or before the requested date."""
+    def lookup(ticker, d):
+        known = [c for day, c in sorted(closes.items()) if day <= d]
+        return known[-1] if ticker == "AAPL" and known else None
+    m = snapshot(**kw)
+    m.past_close = lookup
+    return m
+
+
+def test_digital_position_matches_closed_form():
+    from qplat.instruments import DigitalOption
+    from qplat.pricers import AnalyticDigitalPricer
+
+    p = Position(10, "digital", 20, "AAPL", {"strike": 105, "expiry": iso(365), "option_type": "call", "cash": 100})
+    v = value_position(p, snapshot())
+    g = AnalyticDigitalPricer().greeks(DigitalOption(spot=100, strike=105, expiry=1.0, vol=0.25, rate=0.04, cash=100))
+    assert v.unit_price == pytest.approx(g.price)
+    assert v.market_value_base == pytest.approx(20 * g.price * 0.9)
+    assert v.delta == pytest.approx(20 * g.delta)
+
+
+def test_new_asian_position_has_no_past_fixing():
+    from qplat.instruments import AsianOption
+    from qplat.pricers import GeometricAsianPricer
+
+    q = {"strike": 100, "start_date": TODAY.isoformat(), "expiry": iso(365), "n_fixings": 4, "option_type": "call",
+         "averaging": "geometric"}
+    v = value_position(Position(11, "asian", 1, "AAPL", q), snapshot())
+    times = tuple(round(365 * (i + 1) / 4) / 365 for i in range(4))
+    expected = GeometricAsianPricer().price(AsianOption(spot=100, vol=0.25, rate=0.04, strike=100, fixing_times=times,
+                                                        averaging="geometric"))
+    assert v.unit_price == pytest.approx(expected, rel=1e-10)
+
+
+def test_seasoned_asian_uses_past_closes():
+    start = TODAY - timedelta(days=200)
+    q = {"strike": 100, "start_date": start.isoformat(), "expiry": (start + timedelta(days=400)).isoformat(),
+         "n_fixings": 4, "option_type": "call", "averaging": "arithmetic"}
+    hi = value_position(Position(12, "asian", 1, "AAPL", q), history_snapshot({start: 150.0}), mc_paths=20_000)
+    lo = value_position(Position(12, "asian", 1, "AAPL", q), history_snapshot({start: 60.0}), mc_paths=20_000)
+    assert hi.unit_price > lo.unit_price + 10   # two fixings already observed at 150 vs 60
+    # once every fixing is known, the value is the payoff and the risk is gone
+    done = {**q, "start_date": (TODAY - timedelta(days=500)).isoformat(), "expiry": iso(-100)}
+    v = value_position(Position(13, "asian", 1, "AAPL", done), history_snapshot({TODAY - timedelta(days=600): 130.0}))
+    assert v.unit_price == pytest.approx(30.0) and v.delta == 0
+
+
+def test_cliquet_position_accrues_completed_periods():
+    # no global floor: the payoff is linear in the accrued sum, so the gap is exactly 5 points discounted
+    q = {"start_date": (TODAY - timedelta(days=200)).isoformat(), "maturity_years": 2, "frequency": 4,
+         "local_floor": -0.05, "local_cap": 0.05, "global_floor": None, "initial_level": 100.0}
+    up = value_position(Position(14, "cliquet", 1, "AAPL", q),
+                        history_snapshot({TODAY - timedelta(days=200): 110.0}, spot_aapl=110.0))
+    flat = value_position(Position(14, "cliquet", 1, "AAPL", q), history_snapshot({TODAY - timedelta(days=200): 100.0}))
+    # two resets passed: +10% (capped at 5%) then 0% -> +5 points accrued vs 0, same running period
+    assert up.unit_price - flat.unit_price == pytest.approx(5 * math.exp(-0.04 * (730 - 200) / 365), abs=1e-6)
+    # running period started at a frozen level: the cliquet now has a delta
+    assert abs(up.delta) > 1e-4
+
+
+def test_new_cliquet_is_struck_at_inception():
+    q = {"start_date": TODAY.isoformat(), "maturity_years": 1, "frequency": 4, "local_floor": -0.05,
+         "local_cap": 0.05, "global_floor": None, "initial_level": 100.0}
+    v = value_position(Position(15, "cliquet", 1, "AAPL", q), snapshot(), mc_paths=50_000)
+    assert v.error is None and v.unit_price > 0

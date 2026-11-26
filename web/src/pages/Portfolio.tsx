@@ -10,7 +10,8 @@ import { useTickers } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
 
 const KIND_LABEL: Record<PositionKind, string> = {
-  equity: "Action", option: "Option", barrier: "Barrière", autocall: "Autocall", bond: "Obligation", future: "Future",
+  equity: "Action", option: "Option", barrier: "Barrière", digital: "Digitale", asian: "Asiatique", cliquet: "Cliquet",
+  autocall: "Autocall", bond: "Obligation", future: "Future",
 };
 
 export const PORTFOLIO_PAGES = [
@@ -226,6 +227,8 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     barrier_type: "down-and-in", monitoring_per_year: 252, maturity_years: 3, frequency: 4, coupon_rate: 0.02,
     autocall_barrier: 1, coupon_barrier: 0.7, protection_barrier: 0.6, memory: true, currency: "EUR",
     maturity: inMonths(60), bond_coupon: 0.03, bond_frequency: 1,
+    digital_kind: "cash-or-nothing", cash: 100, n_fixings: 12, averaging: "arithmetic", cliquet_years: 2,
+    local_floor: -0.05, local_cap: 0.05, global_floor: 0,
   });
   const set = (k: string) => (v: unknown) => setPrm((p) => ({ ...p, [k]: v }));
   const spot = tickers?.find((t) => t.ticker === ticker)?.last;
@@ -238,6 +241,10 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         option: pick("strike", "expiry", "option_type", "exercise", "multiplier"),
         barrier: { ...pick("strike", "expiry", "option_type", "barrier", "barrier_type", "multiplier"),
           monitoring_per_year: prm.monitoring_per_year === 0 ? null : prm.monitoring_per_year },
+        digital: pick("strike", "expiry", "option_type", "digital_kind", "cash", "multiplier"),
+        asian: pick("strike", "expiry", "option_type", "n_fixings", "averaging", "multiplier"),
+        cliquet: { maturity_years: prm.cliquet_years, frequency: prm.frequency, local_floor: prm.local_floor,
+          local_cap: prm.local_cap, global_floor: prm.global_floor },
         autocall: pick("maturity_years", "frequency", "coupon_rate", "autocall_barrier", "coupon_barrier", "protection_barrier", "memory"),
         bond: { currency: prm.currency, maturity: prm.maturity, coupon_rate: prm.bond_coupon, frequency: prm.bond_frequency },
         future: pick("expiry", "multiplier"),
@@ -272,6 +279,36 @@ function AddPosition({ onDone }: { onDone: () => void }) {
           options={["down-and-out", "down-and-in", "up-and-out", "up-and-in"].map((v) => ({ value: v, label: v }))} />
         <SelectField label="Observation" value={prm.monitoring_per_year as number} onChange={set("monitoring_per_year")}
           options={[{ value: 0, label: "Continue" }, { value: 252, label: "Quotidienne" }, { value: 52, label: "Hebdomadaire" }]} />
+      </>
+    );
+  } else if (kind === "digital") {
+    fields = (
+      <>
+        {optionFields}
+        <Segmented label="Payoff" value={prm.digital_kind as string} onChange={set("digital_kind")}
+          options={[{ value: "cash-or-nothing", label: "Cash" }, { value: "asset-or-nothing", label: "Asset" }]} />
+        {prm.digital_kind === "cash-or-nothing" && <NumberField label="Montant payé" value={prm.cash as number} min={0.01} digits={2} onChange={set("cash")} />}
+      </>
+    );
+  } else if (kind === "asian") {
+    fields = (
+      <>
+        {optionFields}
+        <SelectField label="Fixings (d'aujourd'hui à l'échéance)" value={prm.n_fixings as number} onChange={set("n_fixings")}
+          options={[4, 12, 52].map((v) => ({ value: v, label: String(v) }))} />
+        <Segmented label="Moyenne" value={prm.averaging as string} onChange={set("averaging")}
+          options={[{ value: "arithmetic", label: "Arithmétique" }, { value: "geometric", label: "Géométrique" }]} />
+      </>
+    );
+  } else if (kind === "cliquet") {
+    fields = (
+      <>
+        <NumberField label="Maturité" value={prm.cliquet_years as number} suffix="ans" min={0.25} max={10} digits={2} onChange={set("cliquet_years")} />
+        <SelectField label="Resets" value={prm.frequency as number} onChange={set("frequency")}
+          options={[{ value: 12, label: "Mensuels" }, { value: 4, label: "Trimestriels" }, { value: 1, label: "Annuels" }]} />
+        <NumberField label="Floor local" value={prm.local_floor as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_floor")} />
+        <NumberField label="Cap local" value={prm.local_cap as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_cap")} />
+        <NumberField label="Floor global" value={prm.global_floor as number} suffix="%" scale={100} digits={1} onChange={set("global_floor")} />
       </>
     );
   } else if (kind === "autocall") {
@@ -314,7 +351,7 @@ function AddPosition({ onDone }: { onDone: () => void }) {
           <SelectField label="Sous-jacent" value={ticker} onChange={setTicker}
             options={(tickers ?? []).map((t) => ({ value: t.ticker, label: `${t.ticker} — ${t.name}` }))} />
         )}
-        <NumberField label={kind === "autocall" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)" : "Quantité (négatif = vente)"}
+        <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)" : "Quantité (négatif = vente)"}
           value={quantity} digits={2} onChange={setQuantity} />
         {fields}
         <TextField label="Book" value={book} onChange={setBook} />

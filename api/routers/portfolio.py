@@ -38,10 +38,21 @@ def _atm_vol_function(ticker: str, history: pd.DataFrame):
         return (lambda T, v=rv: v), "vol réalisée 1 an"
 
 
+def _close_lookup(closes: dict):
+    """(ticker, date) -> last close on or before that date (fixings of Asians and cliquets)."""
+    def lookup(ticker: str, d: date):
+        if ticker not in closes:
+            return None
+        ds, cs = closes[ticker]
+        i = int(np.searchsorted(ds, d, side="right")) - 1
+        return float(cs[i]) if i >= 0 else None
+    return lookup
+
+
 def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[MarketSnapshot, dict]:
     db = services.get_db()
     meta = db.tickers().set_index("ticker")
-    spots, vols, divs, ccys, vol_source, dates = {}, {}, {}, {}, {}, {}
+    spots, vols, divs, ccys, vol_source, dates, closes = {}, {}, {}, {}, {}, {}, {}
     for t in tickers:
         h = db.spot_history(t)
         if h.empty:
@@ -49,6 +60,7 @@ def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[Ma
         row = -2 if previous_close and len(h) > 1 else -1
         spots[t] = float(h.close.iloc[row])
         dates[t] = h.date.iloc[row].date()
+        closes[t] = (h.date.dt.date.to_numpy(), h.close.astype(float).to_numpy())
         vols[t], vol_source[t] = _atm_vol_function(t, h)
         divs[t] = float(meta.loc[t, "dividend_yield"]) if t in meta.index and pd.notna(meta.loc[t, "dividend_yield"]) else 0.0
         ccys[t] = services.ticker_currency(t, db.tickers())
@@ -57,7 +69,8 @@ def build_snapshot(tickers: list[str], previous_close: bool = False) -> tuple[Ma
     eurusd = db.latest_spot(FX_TICKERS["EURUSD"]) or 1.0
     valuation_date = max(dates.values()) if previous_close and dates else date.today()
     snap = MarketSnapshot(valuation_date=valuation_date, spots=spots, vols=vols, dividends=divs, currencies=ccys,
-                          curves=curves, fx_to_base={"EUR": 1.0, "USD": 1.0 / eurusd}, base_currency=BASE)
+                          curves=curves, fx_to_base={"EUR": 1.0, "USD": 1.0 / eurusd}, base_currency=BASE,
+                          past_close=_close_lookup(closes))
     return snap, {"vol_source": vol_source, "eurusd": eurusd}
 
 
@@ -152,7 +165,7 @@ def risk():
 
 
 class PositionIn(BaseModel):
-    kind: Literal["equity", "option", "barrier", "autocall", "bond", "future"]
+    kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future"]
     quantity: float
     ticker: str | None = None
     params: dict = Field(default_factory=dict)
@@ -166,9 +179,9 @@ def add_position(p: PositionIn):
     """Add a position. Without an entry price, the current model price is used (P&L starts at 0)."""
     if p.kind != "bond" and not p.ticker:
         raise HTTPException(422, "ticker requis")
-    if p.kind == "autocall":
+    if p.kind in ("autocall", "asian", "cliquet"):
         p.params.setdefault("start_date", date.today().isoformat())
-        if "initial_level" not in p.params:
+        if p.kind != "asian" and "initial_level" not in p.params:
             snap, _ = build_snapshot([p.ticker])
             p.params["initial_level"] = snap.spots[p.ticker]
     entry = p.entry_price
@@ -228,6 +241,14 @@ def load_demo():
         dict(kind="barrier", ticker="^STOXX50E", quantity=-40, book="Structurés", label="Put down-and-in vendu",
              params={"strike": r(spot["^STOXX50E"]), "barrier": r(0.8 * spot["^STOXX50E"]), "barrier_type": "down-and-in",
                      "option_type": "put", "expiry": _in_months(12), "monitoring_per_year": 252}),
+        dict(kind="digital", ticker="SPY", quantity=50, book="Structurés", label="Digitale call (paye 100 $)",
+             params={"strike": r(1.05 * spot["SPY"]), "expiry": _in_months(6), "option_type": "call",
+                     "digital_kind": "cash-or-nothing", "cash": 100}),
+        dict(kind="asian", ticker="AAPL", quantity=-2, book="Actions US", label="Asiatique vendu (moyenne mensuelle)",
+             params={"strike": r(spot["AAPL"]), "expiry": _in_months(12), "n_fixings": 12, "option_type": "call",
+                     "averaging": "arithmetic", "multiplier": 100}),
+        dict(kind="cliquet", ticker="^STOXX50E", quantity=500, book="Structurés", label="Cliquet 2 ans",
+             params={"maturity_years": 2, "frequency": 4, "local_floor": -0.05, "local_cap": 0.05, "global_floor": 0.0}),
         dict(kind="autocall", ticker="^STOXX50E", quantity=1000, book="Structurés", label="Phoenix 5 ans",
              params={"maturity_years": 5, "frequency": 4, "coupon_rate": 0.02, "autocall_barrier": 1.0,
                      "coupon_barrier": 0.7, "protection_barrier": 0.6, "memory": True}),
