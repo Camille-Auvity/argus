@@ -61,8 +61,8 @@ const PALETTES: Record<ThemeMode, ChartPalette> = {
 
 const DESIGN_PALETTES: Record<Exclude<Design, "classic">, ChartPalette> = {
   eyes: {
-    surface: "#ffffff", text: "#0b1f24", textSecondary: "#3a5157", muted: "#5e7378", grid: "#e3ebe8", axis: "#b9c9c4",
-    series: ["#1f4fd1", "#c99a2e", "#1e8a5a", "#5b3fa8", "#b23a48", "#0e7c86", "#8c6a2b", "#5e7378"],
+    surface: "#ffffff", text: "#0b1f24", textSecondary: "#3a5157", muted: "#546a6f", grid: "#e3ebe8", axis: "#b9c9c4",
+    series: ["#1f4fd1", "#c99a2e", "#1e8a5a", "#5b3fa8", "#b23a48", "#0e7c86", "#8c6a2b", "#546a6f"],
     good: "#1e8a5a", critical: "#b23a48", diverging: ["#b23a48", "#e3ebe8", "#1f4fd1"],
     font: "Hanken Grotesk Variable, system-ui, sans-serif",
   },
@@ -73,9 +73,9 @@ const DESIGN_PALETTES: Record<Exclude<Design, "classic">, ChartPalette> = {
     font: "Red Hat Text Variable, system-ui, sans-serif",
   },
   billets: {
-    surface: "#ffffff", text: "#1c2230", textSecondary: "#454b57", muted: "#6a6f78", grid: "#e6e8e4", axis: "#c4c8c1",
+    surface: "#ffffff", text: "#1c2230", textSecondary: "#454b57", muted: "#6a6f78", grid: "#e4e7eb", axis: "#c0c7ce",
     series: ["#2f5da8", "#c8423b", "#d9812b", "#2e8b57", "#7b4b94", "#c9a227", "#8a8d91", "#1c2230"],
-    good: "#2e8b57", critical: "#c8423b", diverging: ["#c8423b", "#e6e8e4", "#2f5da8"],
+    good: "#2e8b57", critical: "#c8423b", diverging: ["#c8423b", "#e4e7eb", "#2f5da8"],
     font: "Public Sans Variable, system-ui, sans-serif",
   },
   paper: {

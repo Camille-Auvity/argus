@@ -6,13 +6,13 @@ import { useTicker } from "../lib/hooks";
  *  dependencies (an option chain feeds the smile, the smile feeds the models, every pricer feeds the book). */
 
 type Station = { id: string; to: string; label: string; x: number; y: number; anchor?: "start" | "middle" | "end";
-  dy?: number; chains?: boolean; hub?: [number, number] };
+  dy?: number; dx?: number; chains?: boolean; hub?: [number, number] };
 
 const S: Record<string, Station> = {
   theory: { id: "theory", to: "/theory", label: "Théorie appliquée", x: 60, y: 60, dy: -16 },
   docs: { id: "docs", to: "/documentation", label: "Documentation", x: 60, y: 220, dy: 24 },
-  methods: { id: "methods", to: "/methods", label: "Méthodes de pricing", x: 180, y: 140, dy: 28, anchor: "start" },
-  options: { id: "options", to: "/options", label: "Options vanille", x: 300, y: 140, dy: -14, anchor: "start" },
+  methods: { id: "methods", to: "/methods", label: "Méthodes de pricing", x: 180, y: 140, dx: 14, dy: 34, anchor: "start" },
+  options: { id: "options", to: "/options", label: "Options vanille", x: 300, y: 140, dx: 14, dy: -14, anchor: "start" },
   vol: { id: "vol", to: "/volatility", label: "Volatilité implicite", x: 420, y: 60, dy: -16, chains: true },
   models: { id: "models", to: "/models", label: "Modèles de volatilité", x: 560, y: 60, dy: -16, chains: true },
   variance: { id: "variance", to: "/variance", label: "Swaps de variance", x: 700, y: 60, dy: -16, chains: true },
@@ -23,7 +23,7 @@ const S: Record<string, Station> = {
   ratesfx: { id: "ratesfx", to: "/rates-fx", label: "Options de taux & change", x: 500, y: 220, dy: -14 },
   credit: { id: "credit", to: "/credit", label: "Crédit : CDS & Merton", x: 640, y: 220, dy: 26 },
   news: { id: "news", to: "/sentiment", label: "News & sentiment", x: 840, y: 240, dy: 24 },
-  overview: { id: "overview", to: "/", label: "Vue d'ensemble", x: 960, y: 240, dy: -16, anchor: "end" },
+  overview: { id: "overview", to: "/", label: "Vue d'ensemble", x: 960, y: 240, dy: -26, anchor: "end" },
   allocation: { id: "allocation", to: "/allocation", label: "Allocation", x: 830, y: 140, dy: -14 },
   research: { id: "research", to: "/research", label: "Volatility-managed", x: 960, y: 140, dy: 26, anchor: "end" },
 };
@@ -86,7 +86,7 @@ export function TransitMap() {
                   <circle cx={st.x} cy={st.y} r={7} className="stop" stroke={STATION_LINE[st.id]} />
                 )}
                 {here && <circle cx={st.hub ? (st.hub[0] + st.hub[1]) / 2 : st.x} cy={st.y} r={16} className="here-ring" />}
-                <text x={st.x} y={st.y + (st.dy ?? 24)} textAnchor={anchor} className="station-label">{st.label}</text>
+                <text x={st.x + (st.dx ?? 0)} y={st.y + (st.dy ?? 24)} textAnchor={anchor} className="station-label">{st.label}</text>
               </g>
             );
           })}

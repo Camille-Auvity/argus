@@ -20,7 +20,6 @@ function Guilloche() {
   const paths = useMemo(() => {
     const out: string[] = [];
     for (let i = 0; i < 22; i++) out.push(rosette(760, 120, 40 + i * 7, 9 + (i % 4), 18, i * 0.35));
-    for (let i = 0; i < 9; i++) out.push(rosette(120, 210, 18 + i * 6, 5, 12, i * 0.5));
     return out;
   }, []);
   return (
@@ -39,8 +38,8 @@ export function FaceValue({ snapshot }: { snapshot?: TickerSnapshot }) {
       <span className="fv-corner tl">{snapshot.ticker}</span>
       <span className="fv-corner br num">{num(snapshot.last, 0)}</span>
       <div className="fv-body">
-        <div className="fv-name">{snapshot.name}</div>
         <div className="fv-value num">{num(snapshot.last)}<span className="fv-ccy">{ccy}</span></div>
+        <div className="fv-name">{snapshot.name}</div>
         <div className="fv-meta">
           <span>Jour <Delta value={snapshot.change_pct} pct /></span>
           <span>Vol réalisée 1M <b className="num">{pct(snapshot.realized_vol_1m, 1)}</b></span>

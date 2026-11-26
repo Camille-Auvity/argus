@@ -42,7 +42,7 @@
   --border-strong: #b9c9c4;
   --text-primary: #0b1f24;
   --text-secondary: #3a5157;
-  --text-muted: #5e7378;
+  --text-muted: #546a6f;
   --grid: #e3ebe8;
   --axis: #b9c9c4;
   --accent: #1f4fd1;
@@ -126,16 +126,16 @@
    Cool paper white, crisp corners, one denomination hue per part of the app. */
 :root[data-design="billets"] {
   color-scheme: light;
-  --page: #f3f4f1;
+  --page: #f1f3f5;
   --surface-1: #ffffff;
-  --surface-2: #f7f8f6;
-  --surface-3: #e6e8e4;
-  --border: #d9dcd6;
-  --border-strong: #c4c8c1;
+  --surface-2: #f6f7f9;
+  --surface-3: #e4e7eb;
+  --border: #d6dbe0;
+  --border-strong: #c0c7ce;
   --text-primary: #1c2230;
   --text-secondary: #454b57;
   --text-muted: #6a6f78;
-  --grid: #e6e8e4;
+  --grid: #e4e7eb;
   --axis: #c4c8c1;
   --accent: #2f5da8;
   --accent-soft: rgba(47, 93, 168, 0.1);
@@ -385,17 +385,24 @@
   min-height: 200px;
   border-color: color-mix(in srgb, var(--line) 35%, #ffffff);
 }
-.face-value .guilloche { position: absolute; inset: 0; width: 100%; height: 100%; }
+.face-value .guilloche {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-mask-image: linear-gradient(to right, transparent 0 38%, #000 72%);
+  mask-image: linear-gradient(to right, transparent 0 38%, #000 72%);
+}
 .face-value .guilloche path { fill: none; stroke: var(--line); stroke-width: 0.6; opacity: 0.32; }
 .fv-body { position: relative; padding: 30px 32px 24px; max-width: 640px; }
-.fv-name { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.fv-name { font-size: 15px; font-weight: 500; color: var(--text-secondary); margin: -4px 0 14px; }
 .fv-value {
   font-size: 76px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: -0.035em;
   color: var(--line);
-  margin: 10px 0 14px;
+  margin: 0 0 10px;
 }
 .fv-ccy { font-size: 34px; font-weight: 700; margin-left: 8px; letter-spacing: 0; }
 .fv-meta { display: flex; flex-wrap: wrap; gap: 8px 26px; font-size: 13px; color: var(--text-muted); }
@@ -404,6 +411,7 @@
 .fv-corner.tl { top: 14px; right: 20px; font-size: 14px; }
 .fv-corner.br { bottom: 10px; right: 18px; font-size: 30px; opacity: 0.85; }
 @media (max-width: 720px) {
+  .face-value .guilloche path { opacity: 0.15; }
   .fv-value { font-size: 48px; }
   .fv-ccy { font-size: 22px; }
   .fv-corner.br { display: none; }
@@ -441,3 +449,44 @@ table.replicated th { text-align: left; }
 /* a table panel: the caption floats above the table's own top rule, no extra panel rules */
 :root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) { border-top: 0; }
 :root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) > .card-head { border-bottom: 0; padding-bottom: 6px; }
+
+/* ---- review fixes */
+.nowrap { white-space: nowrap; }
+
+/* métro on a phone: keep the map at a readable scale and let it scroll sideways */
+@media (max-width: 720px) {
+  .transit-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* a fading right edge says "there is more, scroll sideways" */
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+    mask-image: linear-gradient(to right, #000 82%, transparent);
+  }
+  /* trailing room so the last stations can scroll clear of the fade */
+  .transit-svg { min-width: 760px; max-height: none; box-sizing: content-box; padding-right: 90px; }
+}
+
+/* the replicated-results table stacks on a phone: result, then reference, value and section on their own lines */
+@media (max-width: 720px) {
+  table.replicated thead { display: none; }
+  table.replicated tr { display: block; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  table.replicated tbody tr:last-child { border-bottom: 0; }
+  table.replicated td { display: block; padding: 2px 0 !important; border: 0 !important; }
+  table.replicated td:first-child { font-weight: 600; }
+}
+
+/* the phone top bar: the design picker joins the Actualiser row (button keeps only its icon) */
+@media (max-width: 720px) {
+  :root[data-design]:not([data-design="classic"]) .topbar .btn .label { display: none; }
+  :root[data-design]:not([data-design="classic"]) .design-select select { max-width: 140px; }
+}
+
+/* browser surfaces carry each world: selection, caret, form accents, scrollbars */
+:root[data-design="eyes"] { --sel: rgba(31, 79, 209, 0.18); --scroll: #8fb5ae; }
+:root[data-design="metro"] { --sel: rgba(244, 241, 232, 0.24); --scroll: #34447a; }
+:root[data-design="billets"] { --sel: rgba(47, 93, 168, 0.18); --scroll: #c0c7ce; }
+:root[data-design="paper"] { --sel: rgba(122, 31, 43, 0.16); --scroll: #b9b6ad; }
+:root[data-design]:not([data-design="classic"]) ::selection { background: var(--sel); color: inherit; }
+:root[data-design]:not([data-design="classic"]) { caret-color: var(--accent); accent-color: var(--accent); }
+:root[data-design]:not([data-design="classic"]) .main,
+:root[data-design]:not([data-design="classic"]) .sidebar { scrollbar-color: var(--scroll) transparent; }

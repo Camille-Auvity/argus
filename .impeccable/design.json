@@ -1,0 +1,1590 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-26T22:26:42+00:00",
+  "title": "Design System: Argus",
+  "extensions": {
+    "colorMeta": {
+      "classic-dark-page": {
+        "role": "neutral",
+        "displayName": "Graphite Desk",
+        "canonical": "#0d0d0d",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3a3a3a",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "classic-dark-surface-1": {
+        "role": "neutral",
+        "displayName": "Classic Dark Surface 1",
+        "canonical": "#1a1a19",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222221",
+          "#3a3a3a",
+          "#5e5e5c",
+          "#80807f",
+          "#a4a4a3",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "classic-dark-surface-2": {
+        "role": "neutral",
+        "displayName": "Classic Dark Surface 2",
+        "canonical": "#222220",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222221",
+          "#3b3b39",
+          "#5e5e5c",
+          "#80807e",
+          "#a5a5a3",
+          "#cacac9",
+          "#eeeeed"
+        ]
+      },
+      "classic-dark-surface-3": {
+        "role": "neutral",
+        "displayName": "Classic Dark Surface 3",
+        "canonical": "#2c2c2a",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222221",
+          "#3b3b39",
+          "#5e5e5c",
+          "#80807e",
+          "#a5a5a3",
+          "#cacac9",
+          "#eeeeed"
+        ]
+      },
+      "classic-dark-border": {
+        "role": "neutral",
+        "displayName": "Classic Dark Border",
+        "canonical": "rgba(255, 255, 255, 0.08)"
+      },
+      "classic-dark-border-strong": {
+        "role": "neutral",
+        "displayName": "Classic Dark Border Strong",
+        "canonical": "rgba(255, 255, 255, 0.16)"
+      },
+      "classic-dark-text": {
+        "role": "neutral",
+        "displayName": "Classic Dark Text",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3a3a3a",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "classic-dark-text-secondary": {
+        "role": "neutral",
+        "displayName": "Classic Dark Text Secondary",
+        "canonical": "#c3c2b7",
+        "tonalRamp": [
+          "#0c0b08",
+          "#22221d",
+          "#3b3b34",
+          "#5f5e55",
+          "#828177",
+          "#a6a59d",
+          "#cbcbc4",
+          "#efefea"
+        ]
+      },
+      "classic-dark-text-muted": {
+        "role": "neutral",
+        "displayName": "Classic Dark Text Muted",
+        "canonical": "#898781",
+        "tonalRamp": [
+          "#0c0b09",
+          "#22221f",
+          "#3c3a37",
+          "#5f5d58",
+          "#82807b",
+          "#a6a4a0",
+          "#cccac7",
+          "#efeeec"
+        ]
+      },
+      "classic-dark-accent": {
+        "role": "primary",
+        "displayName": "Desk Blue (dark)",
+        "canonical": "#3987e5",
+        "tonalRamp": [
+          "#000926",
+          "#00204b",
+          "#013974",
+          "#145cad",
+          "#3a81d7",
+          "#6fa7ef",
+          "#a2ceff",
+          "#d1f2ff"
+        ]
+      },
+      "classic-dark-good": {
+        "role": "secondary",
+        "displayName": "Classic Dark Good",
+        "canonical": "#0ca30c",
+        "tonalRamp": [
+          "#001200",
+          "#002d00",
+          "#004b00",
+          "#007500",
+          "#1b9b19",
+          "#64bd5f",
+          "#9cdf96",
+          "#cdfec9"
+        ]
+      },
+      "classic-dark-good-ink": {
+        "role": "secondary",
+        "displayName": "Classic Dark Good Ink",
+        "canonical": "#2fbf2f",
+        "tonalRamp": [
+          "#001300",
+          "#002e00",
+          "#004c00",
+          "#007600",
+          "#059c0e",
+          "#60be5b",
+          "#99e094",
+          "#ccffc7"
+        ]
+      },
+      "classic-dark-critical": {
+        "role": "secondary",
+        "displayName": "Classic Dark Critical",
+        "canonical": "#e66767",
+        "tonalRamp": [
+          "#200001",
+          "#43070c",
+          "#69191e",
+          "#9e3337",
+          "#c95657",
+          "#e68582",
+          "#ffb3af",
+          "#ffdeda"
+        ]
+      },
+      "classic-dark-critical-ink": {
+        "role": "secondary",
+        "displayName": "Classic Dark Critical Ink",
+        "canonical": "#ef7a7a",
+        "tonalRamp": [
+          "#1f0002",
+          "#400b0f",
+          "#651e22",
+          "#99393c",
+          "#c35b5c",
+          "#e18886",
+          "#fdb5b3",
+          "#ffdfdd"
+        ]
+      },
+      "classic-warning": {
+        "role": "secondary",
+        "displayName": "Classic Warning",
+        "canonical": "#fab219",
+        "tonalRamp": [
+          "#1a0500",
+          "#381800",
+          "#5a2f00",
+          "#894e00",
+          "#b07100",
+          "#ce9a3e",
+          "#edc382",
+          "#ffeabb"
+        ]
+      },
+      "classic-light-page": {
+        "role": "neutral",
+        "displayName": "Bone Ledger",
+        "canonical": "#f4f4f1",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222220",
+          "#3b3b39",
+          "#5e5e5b",
+          "#80807e",
+          "#a5a5a3",
+          "#cacac9",
+          "#eeeeed"
+        ]
+      },
+      "classic-light-surface-1": {
+        "role": "neutral",
+        "displayName": "Classic Light Surface 1",
+        "canonical": "#fcfcfb",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222221",
+          "#3a3a3a",
+          "#5e5e5d",
+          "#80807f",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "classic-light-surface-3": {
+        "role": "neutral",
+        "displayName": "Classic Light Surface 3",
+        "canonical": "#e9e8e3",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222220",
+          "#3b3b38",
+          "#5e5e5a",
+          "#81807c",
+          "#a5a5a1",
+          "#cbcac8",
+          "#efeeec"
+        ]
+      },
+      "classic-light-border": {
+        "role": "neutral",
+        "displayName": "Classic Light Border",
+        "canonical": "rgba(11, 11, 11, 0.09)"
+      },
+      "classic-light-text": {
+        "role": "neutral",
+        "displayName": "Classic Light Text",
+        "canonical": "#0b0b0b",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3a3a3a",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "classic-light-text-secondary": {
+        "role": "neutral",
+        "displayName": "Classic Light Text Secondary",
+        "canonical": "#52514e",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222220",
+          "#3b3a38",
+          "#5e5d5b",
+          "#81807d",
+          "#a5a4a2",
+          "#cbcac8",
+          "#efeeed"
+        ]
+      },
+      "classic-light-text-muted": {
+        "role": "neutral",
+        "displayName": "Classic Light Text Muted",
+        "canonical": "#6f6d68",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#22221f",
+          "#3c3a37",
+          "#5f5d59",
+          "#82807b",
+          "#a6a4a0",
+          "#cccac7",
+          "#efeeec"
+        ]
+      },
+      "classic-light-accent": {
+        "role": "primary",
+        "displayName": "Desk Blue (light)",
+        "canonical": "#2a78d6",
+        "tonalRamp": [
+          "#000927",
+          "#00204c",
+          "#023975",
+          "#165cad",
+          "#3b80d8",
+          "#6fa7f0",
+          "#a2ceff",
+          "#d1f1ff"
+        ]
+      },
+      "classic-light-good-ink": {
+        "role": "secondary",
+        "displayName": "Classic Light Good Ink",
+        "canonical": "#006300",
+        "tonalRamp": [
+          "#001100",
+          "#012b01",
+          "#0f470d",
+          "#266f23",
+          "#4a9445",
+          "#7bb676",
+          "#abd9a6",
+          "#d8fad4"
+        ]
+      },
+      "classic-light-critical": {
+        "role": "secondary",
+        "displayName": "Classic Light Critical",
+        "canonical": "#d03b3b",
+        "tonalRamp": [
+          "#230000",
+          "#480004",
+          "#700c12",
+          "#a82427",
+          "#d44b48",
+          "#f07f77",
+          "#ffafa7",
+          "#ffdbd4"
+        ]
+      },
+      "classic-light-critical-ink": {
+        "role": "secondary",
+        "displayName": "Classic Light Critical Ink",
+        "canonical": "#b42b2b",
+        "tonalRamp": [
+          "#220000",
+          "#460205",
+          "#6d1314",
+          "#a32c2a",
+          "#cf514b",
+          "#eb8279",
+          "#ffb1a8",
+          "#ffddd5"
+        ]
+      },
+      "eyes-fog": {
+        "role": "neutral",
+        "displayName": "Cool Fog",
+        "canonical": "#e8efec",
+        "tonalRamp": [
+          "#0a0c0b",
+          "#1f2221",
+          "#383c3a",
+          "#5a5f5d",
+          "#7c827f",
+          "#a1a6a4",
+          "#c8cbca",
+          "#ecefee"
+        ]
+      },
+      "eyes-panel": {
+        "role": "neutral",
+        "displayName": "Eyes Panel",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3a3a3a",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "eyes-panel-tint": {
+        "role": "neutral",
+        "displayName": "Eyes Panel Tint",
+        "canonical": "#f2f6f4",
+        "tonalRamp": [
+          "#0a0b0b",
+          "#202221",
+          "#393b3a",
+          "#5b5e5d",
+          "#7e817f",
+          "#a2a5a4",
+          "#c9cbca",
+          "#edefee"
+        ]
+      },
+      "eyes-border": {
+        "role": "neutral",
+        "displayName": "Eyes Border",
+        "canonical": "#d3deda",
+        "tonalRamp": [
+          "#090c0b",
+          "#1e2321",
+          "#363c3a",
+          "#57605d",
+          "#79837f",
+          "#9fa7a4",
+          "#c6ccca",
+          "#ebf0ee"
+        ]
+      },
+      "eyes-border-strong": {
+        "role": "neutral",
+        "displayName": "Eyes Border Strong",
+        "canonical": "#b9c9c4",
+        "tonalRamp": [
+          "#080c0b",
+          "#1d2321",
+          "#343d3a",
+          "#54615d",
+          "#768480",
+          "#9ca8a4",
+          "#c4cdca",
+          "#e9f0ee"
+        ]
+      },
+      "eyes-ink": {
+        "role": "neutral",
+        "displayName": "Eyes Ink",
+        "canonical": "#0b1f24",
+        "tonalRamp": [
+          "#060c0e",
+          "#192426",
+          "#2f3d41",
+          "#4e6167",
+          "#70848a",
+          "#97a8ad",
+          "#c0cdd1",
+          "#e6f1f3"
+        ]
+      },
+      "eyes-text-secondary": {
+        "role": "neutral",
+        "displayName": "Eyes Text Secondary",
+        "canonical": "#3a5157",
+        "tonalRamp": [
+          "#060d0e",
+          "#182427",
+          "#2e3d42",
+          "#4d6267",
+          "#6e858b",
+          "#96a8ae",
+          "#bfced2",
+          "#e6f1f4"
+        ]
+      },
+      "eyes-text-muted": {
+        "role": "neutral",
+        "displayName": "Eyes Text Muted",
+        "canonical": "#546a6f",
+        "tonalRamp": [
+          "#060c0e",
+          "#1a2426",
+          "#303d40",
+          "#4f6166",
+          "#708489",
+          "#97a8ac",
+          "#c0cdd0",
+          "#e7f1f3"
+        ]
+      },
+      "eyes-rail": {
+        "role": "primary",
+        "displayName": "Peacock Rail",
+        "canonical": "#0e3b43",
+        "tonalRamp": [
+          "#020d10",
+          "#112529",
+          "#243f45",
+          "#3f646c",
+          "#608890",
+          "#8babb2",
+          "#b6d0d5",
+          "#e0f3f7"
+        ]
+      },
+      "eyes-rail-active": {
+        "role": "primary",
+        "displayName": "Eyes Rail Active",
+        "canonical": "#16525c",
+        "tonalRamp": [
+          "#000e11",
+          "#0a262b",
+          "#1c4147",
+          "#35666f",
+          "#568a94",
+          "#83adb5",
+          "#b1d1d8",
+          "#dcf4f8"
+        ]
+      },
+      "eyes-rail-text": {
+        "role": "primary",
+        "displayName": "Eyes Rail Text",
+        "canonical": "#cfe3df",
+        "tonalRamp": [
+          "#070c0b",
+          "#1b2422",
+          "#323d3b",
+          "#52615e",
+          "#738481",
+          "#9aa8a5",
+          "#c2cdcb",
+          "#e8f1ef"
+        ]
+      },
+      "eyes-rail-muted": {
+        "role": "primary",
+        "displayName": "Eyes Rail Muted",
+        "canonical": "#8fb5ae",
+        "tonalRamp": [
+          "#040e0c",
+          "#142523",
+          "#29403c",
+          "#45655f",
+          "#668882",
+          "#90aba6",
+          "#bad0cc",
+          "#e2f3ef"
+        ]
+      },
+      "eyes-cobalt": {
+        "role": "primary",
+        "displayName": "Cobalt",
+        "canonical": "#1f4fd1",
+        "tonalRamp": [
+          "#00042f",
+          "#041958",
+          "#113185",
+          "#2552c4",
+          "#4477f1",
+          "#73a1ff",
+          "#a3c9ff",
+          "#d2efff"
+        ]
+      },
+      "eyes-gold": {
+        "role": "secondary",
+        "displayName": "Ocellus Gold",
+        "canonical": "#c99a2e",
+        "tonalRamp": [
+          "#160800",
+          "#321d00",
+          "#513400",
+          "#7d5600",
+          "#a37807",
+          "#c29f58",
+          "#e2c792",
+          "#ffecc5"
+        ]
+      },
+      "eyes-emerald": {
+        "role": "secondary",
+        "displayName": "Emerald",
+        "canonical": "#1e8a5a",
+        "tonalRamp": [
+          "#001104",
+          "#002b15",
+          "#004729",
+          "#0a6f46",
+          "#399467",
+          "#71b690",
+          "#a4d9ba",
+          "#d3f9e2"
+        ]
+      },
+      "eyes-garnet": {
+        "role": "secondary",
+        "displayName": "Garnet",
+        "canonical": "#b23a48",
+        "tonalRamp": [
+          "#200003",
+          "#420711",
+          "#681a24",
+          "#9d343f",
+          "#c75760",
+          "#e48589",
+          "#ffb3b5",
+          "#ffdede"
+        ]
+      },
+      "eyes-peacock-teal": {
+        "role": "secondary",
+        "displayName": "Peacock Teal",
+        "canonical": "#0e7c86",
+        "tonalRamp": [
+          "#000f13",
+          "#00282d",
+          "#00444a",
+          "#096a73",
+          "#388e98",
+          "#71b1b9",
+          "#a4d5da",
+          "#d3f6fa"
+        ]
+      },
+      "eyes-violet": {
+        "role": "secondary",
+        "displayName": "Eyes Violet",
+        "canonical": "#5b3fa8",
+        "tonalRamp": [
+          "#0d0324",
+          "#231549",
+          "#3d2b70",
+          "#604aa7",
+          "#826dd1",
+          "#a596eb",
+          "#cac0ff",
+          "#eee7ff"
+        ]
+      },
+      "metro-enamel": {
+        "role": "neutral",
+        "displayName": "Midnight Enamel",
+        "canonical": "#0f1a3a",
+        "tonalRamp": [
+          "#060b16",
+          "#1a2133",
+          "#303a52",
+          "#4f5d7e",
+          "#7080a4",
+          "#97a4c4",
+          "#c0cae3",
+          "#e6eeff"
+        ]
+      },
+      "metro-chrome": {
+        "role": "neutral",
+        "displayName": "Night Chrome",
+        "canonical": "#0b1430",
+        "tonalRamp": [
+          "#070b15",
+          "#1b2131",
+          "#313a50",
+          "#515d7b",
+          "#7280a1",
+          "#99a4c0",
+          "#c1cae1",
+          "#e7eeff"
+        ]
+      },
+      "metro-surface-1": {
+        "role": "neutral",
+        "displayName": "Metro Surface 1",
+        "canonical": "#16234a",
+        "tonalRamp": [
+          "#060a18",
+          "#192136",
+          "#2e3956",
+          "#4d5c84",
+          "#6e7faa",
+          "#95a4c9",
+          "#becae8",
+          "#e5eeff"
+        ]
+      },
+      "metro-surface-2": {
+        "role": "neutral",
+        "displayName": "Metro Surface 2",
+        "canonical": "#1c2b57",
+        "tonalRamp": [
+          "#050a19",
+          "#182138",
+          "#2d3959",
+          "#4b5c87",
+          "#6c7fae",
+          "#93a4cc",
+          "#bdcaea",
+          "#e4eeff"
+        ]
+      },
+      "metro-surface-3": {
+        "role": "neutral",
+        "displayName": "Metro Surface 3",
+        "canonical": "#253666",
+        "tonalRamp": [
+          "#050a1a",
+          "#172039",
+          "#2c395b",
+          "#4a5c8a",
+          "#6b7fb1",
+          "#92a4ce",
+          "#bccaec",
+          "#e4eeff"
+        ]
+      },
+      "metro-porcelain": {
+        "role": "neutral",
+        "displayName": "Porcelain",
+        "canonical": "#f4f1e8",
+        "tonalRamp": [
+          "#0c0b09",
+          "#23221e",
+          "#3c3a35",
+          "#605d57",
+          "#838079",
+          "#a7a49e",
+          "#cccac5",
+          "#f0eeeb"
+        ]
+      },
+      "metro-text-secondary": {
+        "role": "neutral",
+        "displayName": "Metro Text Secondary",
+        "canonical": "#c9c6bc",
+        "tonalRamp": [
+          "#0c0b08",
+          "#23221d",
+          "#3c3a35",
+          "#605e56",
+          "#838078",
+          "#a7a59d",
+          "#cccac5",
+          "#f0eeea"
+        ]
+      },
+      "metro-text-muted": {
+        "role": "neutral",
+        "displayName": "Metro Text Muted",
+        "canonical": "#9aa3bd",
+        "tonalRamp": [
+          "#080b12",
+          "#1d212c",
+          "#353a49",
+          "#565d72",
+          "#788097",
+          "#9da4b8",
+          "#c5cada",
+          "#eaeefa"
+        ]
+      },
+      "metro-line-cobalt": {
+        "role": "primary",
+        "displayName": "Metro Line Cobalt",
+        "canonical": "#4d8bf0",
+        "tonalRamp": [
+          "#000827",
+          "#021e4d",
+          "#0f3776",
+          "#255aaf",
+          "#457eda",
+          "#75a5f2",
+          "#a6ccff",
+          "#d4f0ff"
+        ]
+      },
+      "metro-line-scarlet": {
+        "role": "primary",
+        "displayName": "Metro Line Scarlet",
+        "canonical": "#e5484d",
+        "tonalRamp": [
+          "#240000",
+          "#490005",
+          "#710514",
+          "#aa1e2a",
+          "#d6474b",
+          "#f27c79",
+          "#ffada8",
+          "#ffdad5"
+        ]
+      },
+      "metro-line-amber": {
+        "role": "primary",
+        "displayName": "Metro Line Amber",
+        "canonical": "#f2a541",
+        "tonalRamp": [
+          "#1a0500",
+          "#391700",
+          "#5b2d00",
+          "#8b4c00",
+          "#b26f00",
+          "#d09855",
+          "#eec18f",
+          "#ffe8c4"
+        ]
+      },
+      "metro-line-green": {
+        "role": "primary",
+        "displayName": "Metro Line Green",
+        "canonical": "#2ba84a",
+        "tonalRamp": [
+          "#001200",
+          "#002d00",
+          "#004a0b",
+          "#007320",
+          "#279843",
+          "#69ba74",
+          "#9fdda5",
+          "#cffcd3"
+        ]
+      },
+      "metro-line-violet": {
+        "role": "primary",
+        "displayName": "Metro Line Violet",
+        "canonical": "#a78bfa",
+        "tonalRamp": [
+          "#0e0324",
+          "#251547",
+          "#3f2b6f",
+          "#6349a5",
+          "#866ccf",
+          "#a895e8",
+          "#cdc0ff",
+          "#f0e7ff"
+        ]
+      },
+      "metro-line-teal": {
+        "role": "primary",
+        "displayName": "Metro Line Teal",
+        "canonical": "#35c2c1",
+        "tonalRamp": [
+          "#001111",
+          "#002a2b",
+          "#004747",
+          "#006f6f",
+          "#009493",
+          "#5bb6b5",
+          "#97d9d7",
+          "#caf9f8"
+        ]
+      },
+      "billets-ground": {
+        "role": "neutral",
+        "displayName": "Cool Paper",
+        "canonical": "#f1f3f5",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#212222",
+          "#393b3c",
+          "#5c5e5f",
+          "#7f8082",
+          "#a3a5a6",
+          "#c9cacc",
+          "#eeeeef"
+        ]
+      },
+      "billets-paper": {
+        "role": "neutral",
+        "displayName": "Billets Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222222",
+          "#3a3a3a",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "billets-paper-tint": {
+        "role": "neutral",
+        "displayName": "Billets Paper Tint",
+        "canonical": "#f6f7f9",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#212222",
+          "#3a3a3c",
+          "#5d5e5f",
+          "#7f8082",
+          "#a4a4a6",
+          "#cacacb",
+          "#eeeeef"
+        ]
+      },
+      "billets-surface-3": {
+        "role": "neutral",
+        "displayName": "Billets Surface 3",
+        "canonical": "#e4e7eb",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#202223",
+          "#393b3d",
+          "#5b5e61",
+          "#7e8084",
+          "#a3a5a8",
+          "#c9cbcd",
+          "#edeef0"
+        ]
+      },
+      "billets-border": {
+        "role": "neutral",
+        "displayName": "Billets Border",
+        "canonical": "#d6dbe0",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#202224",
+          "#383b3e",
+          "#5a5e62",
+          "#7c8185",
+          "#a1a5a9",
+          "#c8cbce",
+          "#edeff1"
+        ]
+      },
+      "billets-border-strong": {
+        "role": "neutral",
+        "displayName": "Billets Border Strong",
+        "canonical": "#c0c7ce",
+        "tonalRamp": [
+          "#090b0d",
+          "#1f2225",
+          "#373b3f",
+          "#595e64",
+          "#7b8187",
+          "#a0a5aa",
+          "#c7cbcf",
+          "#eceff2"
+        ]
+      },
+      "billets-ink": {
+        "role": "neutral",
+        "displayName": "Banknote Ink",
+        "canonical": "#1c2230",
+        "tonalRamp": [
+          "#090b10",
+          "#1e2229",
+          "#363a45",
+          "#575e6c",
+          "#798090",
+          "#9ea5b2",
+          "#c6cad6",
+          "#ebeef7"
+        ]
+      },
+      "billets-text-secondary": {
+        "role": "neutral",
+        "displayName": "Billets Text Secondary",
+        "canonical": "#454b57",
+        "tonalRamp": [
+          "#090b0f",
+          "#1f2228",
+          "#363b43",
+          "#585e69",
+          "#7a808d",
+          "#9fa5af",
+          "#c6cbd3",
+          "#ebeef5"
+        ]
+      },
+      "billets-text-muted": {
+        "role": "neutral",
+        "displayName": "Billets Text Muted",
+        "canonical": "#6a6f78",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#1f2226",
+          "#373b40",
+          "#595e66",
+          "#7c8089",
+          "#a1a5ac",
+          "#c7cbd0",
+          "#eceef3"
+        ]
+      },
+      "billets-20-blue": {
+        "role": "primary",
+        "displayName": "Billets 20 Blue",
+        "canonical": "#2f5da8",
+        "tonalRamp": [
+          "#010922",
+          "#0a2044",
+          "#1b396a",
+          "#335c9f",
+          "#5380c8",
+          "#80a6e2",
+          "#aeccfc",
+          "#d9f0ff"
+        ]
+      },
+      "billets-10-red": {
+        "role": "secondary",
+        "displayName": "Billets 10 Red",
+        "canonical": "#c8423b",
+        "tonalRamp": [
+          "#220000",
+          "#450304",
+          "#6c1513",
+          "#a32e29",
+          "#ce5249",
+          "#ea8378",
+          "#ffb2a8",
+          "#ffddd5"
+        ]
+      },
+      "billets-50-orange": {
+        "role": "secondary",
+        "displayName": "Billets 50 Orange",
+        "canonical": "#d9812b",
+        "tonalRamp": [
+          "#1c0300",
+          "#3c1400",
+          "#5f2900",
+          "#904700",
+          "#b96a16",
+          "#d6945c",
+          "#f4be94",
+          "#ffe6c7"
+        ]
+      },
+      "billets-100-green": {
+        "role": "secondary",
+        "displayName": "Billets 100 Green",
+        "canonical": "#2e8b57",
+        "tonalRamp": [
+          "#001103",
+          "#002a12",
+          "#044726",
+          "#1b6f42",
+          "#419363",
+          "#76b58c",
+          "#a8d8b7",
+          "#d5f9e0"
+        ]
+      },
+      "billets-500-violet": {
+        "role": "secondary",
+        "displayName": "Billets 500 Violet",
+        "canonical": "#7b4b94",
+        "tonalRamp": [
+          "#12041a",
+          "#2d1639",
+          "#4a2b5a",
+          "#734989",
+          "#986bb0",
+          "#b994ce",
+          "#dbbeec",
+          "#fbe5ff"
+        ]
+      },
+      "billets-5-grey": {
+        "role": "secondary",
+        "displayName": "Billets 5 Grey",
+        "canonical": "#8a8d91",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#202223",
+          "#393b3d",
+          "#5b5e61",
+          "#7e8084",
+          "#a2a5a8",
+          "#c9cbcd",
+          "#edeef0"
+        ]
+      },
+      "billets-200-yellow": {
+        "role": "secondary",
+        "displayName": "Billets 200 Yellow",
+        "canonical": "#c9a227",
+        "tonalRamp": [
+          "#150800",
+          "#301e00",
+          "#4e3600",
+          "#795800",
+          "#9e7b00",
+          "#bea253",
+          "#dfc98e",
+          "#feeec3"
+        ]
+      },
+      "paper-ground": {
+        "role": "neutral",
+        "displayName": "Off-white Sheet",
+        "canonical": "#fcfcfa",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#222221",
+          "#3b3a39",
+          "#5e5e5c",
+          "#80807f",
+          "#a5a5a3",
+          "#cacac9",
+          "#eeeeee"
+        ]
+      },
+      "paper-margin": {
+        "role": "neutral",
+        "displayName": "Margin Grey",
+        "canonical": "#f4f3ef",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#222220",
+          "#3b3a38",
+          "#5e5e5b",
+          "#81807d",
+          "#a5a4a2",
+          "#cbcac8",
+          "#efeeed"
+        ]
+      },
+      "paper-surface-3": {
+        "role": "neutral",
+        "displayName": "Paper Surface 3",
+        "canonical": "#e8e6e0",
+        "tonalRamp": [
+          "#0c0b09",
+          "#22221f",
+          "#3c3a37",
+          "#5f5d59",
+          "#82807b",
+          "#a6a4a0",
+          "#cbcac7",
+          "#efeeec"
+        ]
+      },
+      "paper-hairline": {
+        "role": "neutral",
+        "displayName": "Paper Hairline",
+        "canonical": "#d8d6cf",
+        "tonalRamp": [
+          "#0c0b09",
+          "#22221f",
+          "#3c3a37",
+          "#5f5e58",
+          "#82807a",
+          "#a6a49f",
+          "#cccac6",
+          "#efeeeb"
+        ]
+      },
+      "paper-ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#16181d",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#202225",
+          "#393a3e",
+          "#5b5d63",
+          "#7e8086",
+          "#a2a4aa",
+          "#c9cace",
+          "#edeef1"
+        ]
+      },
+      "paper-text-secondary": {
+        "role": "neutral",
+        "displayName": "Paper Text Secondary",
+        "canonical": "#3f434c",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#202226",
+          "#383a41",
+          "#5a5e66",
+          "#7c808a",
+          "#a1a5ad",
+          "#c8cad1",
+          "#eceef3"
+        ]
+      },
+      "paper-text-muted": {
+        "role": "neutral",
+        "displayName": "Paper Text Muted",
+        "canonical": "#6b6f78",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#202226",
+          "#383a40",
+          "#5a5e65",
+          "#7c8089",
+          "#a1a5ac",
+          "#c8cad0",
+          "#eceef3"
+        ]
+      },
+      "paper-rubric": {
+        "role": "primary",
+        "displayName": "Burgundy Rubric",
+        "canonical": "#7a1f2b",
+        "tonalRamp": [
+          "#1c0204",
+          "#3d1015",
+          "#602429",
+          "#923f45",
+          "#bb6166",
+          "#d98c8f",
+          "#f6b8b9",
+          "#ffe1e1"
+        ]
+      },
+      "paper-navy": {
+        "role": "secondary",
+        "displayName": "Navy",
+        "canonical": "#2b4c7e",
+        "tonalRamp": [
+          "#030b1b",
+          "#11223a",
+          "#253b5c",
+          "#405e8c",
+          "#6081b3",
+          "#8aa6d1",
+          "#b6ccee",
+          "#dff0ff"
+        ]
+      },
+      "paper-good": {
+        "role": "secondary",
+        "displayName": "Paper Good",
+        "canonical": "#2f6b3f",
+        "tonalRamp": [
+          "#001003",
+          "#0b2913",
+          "#1d4427",
+          "#376b44",
+          "#588f64",
+          "#85b28d",
+          "#b2d5b8",
+          "#ddf7e1"
+        ]
+      },
+      "paper-critical": {
+        "role": "secondary",
+        "displayName": "Paper Critical",
+        "canonical": "#9b1c1c",
+        "tonalRamp": [
+          "#210000",
+          "#440606",
+          "#6a1916",
+          "#a0322d",
+          "#ca564d",
+          "#e7857b",
+          "#ffb3aa",
+          "#ffded6"
+        ]
+      },
+      "paper-warning": {
+        "role": "secondary",
+        "displayName": "Paper Warning",
+        "canonical": "#a86b00",
+        "tonalRamp": [
+          "#180600",
+          "#361a00",
+          "#573000",
+          "#855000",
+          "#ab7322",
+          "#ca9a61",
+          "#e9c397",
+          "#ffe9c9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body (Classique)",
+        "purpose": "All running text and table cells; worlds swap only the family via --font."
+      },
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "One per page, top of .main."
+      },
+      "stat-value": {
+        "displayName": "Stat value",
+        "purpose": "KPI tiles."
+      },
+      "card-title": {
+        "displayName": "Card title",
+        "purpose": "Panel name, uppercase tracked; paper replaces with small caps."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers and stat labels, uppercase muted."
+      },
+      "nav-section": {
+        "displayName": "Nav section",
+        "purpose": "Sidebar group labels; metro adds a line swatch, billets a hue band."
+      },
+      "billets-face-value": {
+        "displayName": "Face value",
+        "purpose": "Billets overview signature only."
+      },
+      "paper-chrome": {
+        "displayName": "Paper chrome",
+        "purpose": "Sans for sidebar, top bar and controls in the serif world."
+      }
+    },
+    "shadows": [
+      {
+        "name": "classic-dark-card",
+        "value": "0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.35)",
+        "purpose": "Classique dark --shadow on cards."
+      },
+      {
+        "name": "classic-light-card",
+        "value": "0 1px 2px rgba(11,11,11,0.04), 0 6px 20px rgba(11,11,11,0.05)",
+        "purpose": "Classique light --shadow on cards."
+      },
+      {
+        "name": "eyes-card",
+        "value": "0 1px 2px rgba(11,31,36,0.05), 0 6px 18px rgba(11,31,36,0.05)",
+        "purpose": "Les cent yeux --shadow."
+      },
+      {
+        "name": "metro-card",
+        "value": "0 1px 0 rgba(244,241,232,0.04) inset, 0 8px 24px rgba(5,10,26,0.45)",
+        "purpose": "Plan de métro --shadow."
+      },
+      {
+        "name": "billets-card",
+        "value": "0 1px 2px rgba(28,34,48,0.06)",
+        "purpose": "Série de billets --shadow, a print hairline."
+      },
+      {
+        "name": "paper-card",
+        "value": "none",
+        "purpose": "Working paper has no shadows; structure is rules."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px var(--accent-soft)",
+        "purpose": "Input focus (with border turning --accent)."
+      },
+      {
+        "name": "segment-on",
+        "value": "0 0 0 1px var(--border-strong)",
+        "purpose": "Selected segment of a segmented control."
+      },
+      {
+        "name": "metro-station-ring",
+        "value": "0 0 0 3px var(--line)",
+        "purpose": "Active nav link dot in Plan de métro."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "State moves on signatures: ocellus opacity 0.25s, pupil scale 0.35s, metro stop radius 0.2s."
+      },
+      {
+        "name": "border-fast",
+        "value": "0.12s",
+        "purpose": "Input border colour on focus."
+      },
+      {
+        "name": "label-fade",
+        "value": "0.15s",
+        "purpose": "Metro station label fill on hover/focus."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition: none",
+        "purpose": "Every signature transition is removed under prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "grid-2col",
+        "value": "1280px"
+      },
+      {
+        "name": "hide-market-chips",
+        "value": "1180px"
+      },
+      {
+        "name": "icon-rail",
+        "value": "1080px"
+      },
+      {
+        "name": "hide-picker-label",
+        "value": "900px"
+      },
+      {
+        "name": "phone",
+        "value": "720px"
+      }
+    ],
+    "worlds": [
+      {
+        "id": "classic",
+        "label": "Classique",
+        "scheme": "dark default + light toggle",
+        "source": "web/src/styles/tokens.css, app.css",
+        "signature": "none (original quotes grid)"
+      },
+      {
+        "id": "eyes",
+        "label": "Les cent yeux",
+        "scheme": "light",
+        "source": "web/src/styles/designs.css",
+        "signature": "web/src/components/Ocelli.tsx"
+      },
+      {
+        "id": "metro",
+        "label": "Plan de métro",
+        "scheme": "dark",
+        "source": "web/src/styles/designs.css",
+        "signature": "web/src/components/TransitMap.tsx"
+      },
+      {
+        "id": "billets",
+        "label": "Série de billets",
+        "scheme": "light",
+        "source": "web/src/styles/designs.css",
+        "signature": "web/src/components/FaceValue.tsx"
+      },
+      {
+        "id": "paper",
+        "label": "Working paper",
+        "scheme": "light",
+        "source": "web/src/styles/designs.css",
+        "signature": "web/src/components/ReplicatedResults.tsx + exhibit counters"
+      }
+    ],
+    "sectionHues": {
+      "metro": {
+        "marches": "#2ba84a",
+        "portefeuille": "#2ba84a",
+        "pricing": "#e5484d",
+        "taux": "#f2a541",
+        "recherche": "#a78bfa",
+        "reference": "#a78bfa"
+      },
+      "billets": {
+        "marches": "#2f5da8",
+        "portefeuille": "#c8423b",
+        "pricing": "#d9812b",
+        "taux": "#2e8b57",
+        "recherche": "#7b4b94",
+        "reference": "#8a8d91"
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default shell button; surface fill, strong hairline.",
+      "html": "<button class=\"ds-btn\">Actualiser</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong,rgba(255,255,255,.16));background:var(--surface-2,#222220);color:var(--text-primary,#fff);border-radius:var(--radius-sm,6px);padding:7px 12px;font:500 13.5px 'Inter Variable',system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn:hover{background:var(--surface-3,#2c2c2a)}.ds-btn:focus-visible{outline:2px solid var(--accent,#3987e5);outline-offset:1px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Accent-filled action; in billets the accent is the section hue.",
+      "html": "<button class=\"ds-btn-primary\">Calculer</button>",
+      "css": ".ds-btn-primary{border:1px solid var(--accent,#3987e5);background:var(--accent,#3987e5);color:#fff;border-radius:var(--radius-sm,6px);padding:7px 12px;font:500 13.5px 'Inter Variable',system-ui,sans-serif;cursor:pointer}.ds-btn-primary:hover{filter:brightness(1.08)}.ds-btn-primary:focus-visible{outline:2px solid var(--accent,#3987e5);outline-offset:2px}"
+    },
+    {
+      "name": "Numeric Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Input wrap with tabular figures, suffix and accent focus ring.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-label\">Strike</span><span class=\"ds-input\"><input value=\"110,00\"><span class=\"ds-suffix\">$</span></span></label>",
+      "css": ".ds-field{display:grid;gap:5px;font:13.5px 'Inter Variable',system-ui,sans-serif;color:var(--text-primary,#fff)}.ds-label{font-size:11.5px;font-weight:500;color:var(--text-muted,#898781)}.ds-input{display:flex;align-items:center;background:var(--surface-2,#222220);border:1px solid var(--border,rgba(255,255,255,.08));border-radius:var(--radius-sm,6px);transition:border-color .12s}.ds-input:focus-within{border-color:var(--accent,#3987e5);box-shadow:0 0 0 3px var(--accent-soft,rgba(57,135,229,.14))}.ds-input input{flex:1;min-width:0;background:transparent;border:0;outline:0;padding:7px 10px;color:inherit;font:inherit;font-variant-numeric:tabular-nums}.ds-suffix{padding-right:10px;font-size:12px;color:var(--text-muted,#898781)}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Grouped nav; Classique active state is accent-soft fill plus 2px inset bar.",
+      "html": "<nav class=\"ds-nav\"><div class=\"ds-sec\">Pricing</div><a class=\"ds-link on\">Options vanille</a><a class=\"ds-link\">Volatilité implicite</a></nav>",
+      "css": ".ds-nav{display:grid;gap:4px;width:232px;padding:14px 12px;background:var(--surface-1,#1a1a19);font:13.5px 'Inter Variable',system-ui,sans-serif}.ds-sec{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted,#898781);padding:14px 10px 6px}.ds-link{padding:8px 10px;border-radius:var(--radius-sm,6px);color:var(--text-secondary,#c3c2b7);font-weight:500;cursor:pointer}.ds-link:hover{background:var(--surface-2,#222220);color:var(--text-primary,#fff)}.ds-link.on{background:var(--accent-soft,rgba(57,135,229,.14));color:var(--text-primary,#fff);box-shadow:inset 2px 0 0 var(--accent,#3987e5)}"
+    },
+    {
+      "name": "Card with Data Table",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The shared panel: head with uppercase title, tabular table body.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-head\"><h2>Grecques</h2></header><table class=\"ds-table\"><thead><tr><th>Grecque</th><th>Valeur</th></tr></thead><tbody><tr><td>Delta</td><td>0,532</td></tr><tr><td>Vega</td><td>38,10</td></tr></tbody></table></section>",
+      "css": ".ds-card{background:var(--surface-1,#1a1a19);border:1px solid var(--border,rgba(255,255,255,.08));border-radius:var(--radius,10px);box-shadow:var(--shadow,0 8px 24px rgba(0,0,0,.35));color:var(--text-primary,#fff);font:13.5px/1.45 'Inter Variable',system-ui,sans-serif}.ds-head{padding:12px 16px;border-bottom:1px solid var(--border,rgba(255,255,255,.08))}.ds-head h2{margin:0;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary,#c3c2b7)}.ds-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.ds-table th{font-size:11.5px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted,#898781);text-align:right;padding:9px 14px;border-bottom:1px solid var(--border,rgba(255,255,255,.08))}.ds-table td{text-align:right;padding:9px 14px}.ds-table th:first-child,.ds-table td:first-child{text-align:left}.ds-table tbody tr:hover td{background:var(--surface-2,#222220)}"
+    },
+    {
+      "name": "Badge and Chip",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Pill badge (market tag) and toggle chip with series dot.",
+      "html": "<span class=\"ds-badge\">US</span> <button class=\"ds-chip on\"><i></i>Heston</button> <button class=\"ds-chip\"><i style=\"background:#d95926\"></i>SVI</button>",
+      "css": ".ds-badge{display:inline-flex;font:600 11px 'Inter Variable',system-ui,sans-serif;padding:2px 7px;border-radius:999px;background:var(--accent-soft,rgba(57,135,229,.14));color:var(--accent,#3987e5);letter-spacing:.02em}.ds-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong,rgba(255,255,255,.16));background:transparent;border-radius:999px;padding:3px 10px;font:12px 'Inter Variable',system-ui,sans-serif;color:var(--text-secondary,#c3c2b7);cursor:pointer}.ds-chip.on{background:var(--surface-2,#222220);color:var(--text-primary,#fff)}.ds-chip i{width:8px;height:8px;border-radius:50%;background:#3987e5}.ds-chip:focus-visible{outline:2px solid var(--accent,#3987e5)}"
+    },
+    {
+      "name": "Ocellus (Les cent yeux)",
+      "kind": "custom",
+      "refersTo": "eyes-cobalt",
+      "description": "One underlying as a peacock-feather eye: radius from 1M vol on a sqrt ramp, iris from the day move.",
+      "html": "<button class=\"ds-eye\"><svg viewBox=\"-44 -44 88 88\" width=\"88\" height=\"88\"><circle r=\"30\" fill=\"#c99a2e\"/><circle r=\"24\" fill=\"#0e7c86\"/><circle r=\"18.6\" fill=\"#fff\"/><circle r=\"18.6\" fill=\"#1e8a5a\" opacity=\".7\"/><circle class=\"ds-pupil\" r=\"9\" fill=\"#0b1f24\"/><circle cx=\"-3.6\" cy=\"-4.2\" r=\"2.1\" fill=\"#fff\" opacity=\".85\"/></svg><span class=\"ds-sym\">ASML.AS</span><span class=\"ds-mv\">+4,10 %</span></button>",
+      "css": ".ds-eye{display:grid;justify-items:center;width:92px;padding:2px 0 6px;border:0;border-radius:5px;background:none;cursor:pointer;font:'Hanken Grotesk Variable',system-ui,sans-serif;transition:background-color .2s}.ds-eye:hover{background:#f2f6f4}.ds-eye:focus-visible{outline:2px solid #1f4fd1;outline-offset:1px}.ds-pupil{transform-box:fill-box;transform-origin:center;transition:transform .35s cubic-bezier(.16,1,.3,1)}.ds-eye:hover .ds-pupil{transform:scale(1.35)}.ds-sym{font-weight:650;font-size:12.5px;color:#0b1f24;font-family:'Hanken Grotesk Variable',system-ui,sans-serif}.ds-mv{font-size:11.5px;color:#17704a;font-variant-numeric:tabular-nums;font-family:'Hanken Grotesk Variable',system-ui,sans-serif}"
+    },
+    {
+      "name": "Metro Station Nav (Plan de métro)",
+      "kind": "nav",
+      "refersTo": "metro-shell-chrome",
+      "description": "Nav group as a coloured line; active page as a porcelain station ring.",
+      "html": "<nav class=\"ds-metro\"><div class=\"ds-msec\" style=\"--line:#e5484d\">Pricing</div><a class=\"ds-mlink on\" style=\"--line:#e5484d\">Options vanille</a><a class=\"ds-mlink\">Méthodes de pricing</a></nav>",
+      "css": ".ds-metro{display:grid;gap:4px;width:232px;padding:14px 12px;background:#0b1430;font:13.5px 'Red Hat Text Variable',system-ui,sans-serif}.ds-msec{display:flex;align-items:center;gap:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:#f4f1e8;padding:14px 10px 6px}.ds-msec::before{content:'';width:18px;height:4px;border-radius:2px;background:var(--line,#4d8bf0)}.ds-mlink{position:relative;padding:8px 10px;border-radius:4px;color:#c9c6bc;font-weight:500;cursor:pointer}.ds-mlink:hover{background:#1c2b57;color:#f4f1e8}.ds-mlink.on{background:rgba(244,241,232,.07);color:#fff}.ds-mlink.on::after{content:'';position:absolute;right:10px;top:50%;margin-top:-4.5px;width:9px;height:9px;border-radius:50%;background:#f4f1e8;box-shadow:0 0 0 3px var(--line,#4d8bf0)}"
+    },
+    {
+      "name": "Face Value (Série de billets)",
+      "kind": "custom",
+      "refersTo": "billets-face-value",
+      "description": "The selected underlying printed as a banknote denomination over a guilloché.",
+      "html": "<section class=\"ds-fv\"><span class=\"ds-tl\">SPY</span><div class=\"ds-val\">716,71<span>$</span></div><div class=\"ds-name\">State Street SPDR S&amp;P 500 ETF Trust</div><div class=\"ds-meta\">Vol réalisée 1M <b>31,0 %</b></div><span class=\"ds-br\">717</span></section>",
+      "css": ".ds-fv{position:relative;overflow:hidden;min-height:200px;padding:30px 32px 24px;background:#fff;border:1px solid color-mix(in srgb,#2f5da8 35%,#fff);border-radius:3px;font-family:'Public Sans Variable',system-ui,sans-serif;background-image:repeating-radial-gradient(circle at 80% 50%,transparent 0 6px,rgba(47,93,168,.14) 6px 6.6px)}.ds-val{font-size:76px;line-height:1;font-weight:800;letter-spacing:-.035em;color:#2f5da8;font-variant-numeric:tabular-nums;margin-bottom:10px}.ds-val span{font-size:34px;font-weight:700;margin-left:8px;letter-spacing:0}.ds-name{font-size:15px;font-weight:500;color:#454b57;margin-bottom:14px}.ds-meta{font-size:13px;color:#6a6f78}.ds-meta b{color:#1c2230;font-weight:650}.ds-tl,.ds-br{position:absolute;font-weight:800;color:#2f5da8;letter-spacing:.04em}.ds-tl{top:14px;right:20px;font-size:14px}.ds-br{bottom:10px;right:18px;font-size:30px;opacity:.85}"
+    },
+    {
+      "name": "Numbered Exhibit (Working paper)",
+      "kind": "card",
+      "refersTo": "paper-card",
+      "description": "A box-less panel: ink top rule, rubric 'Tableau n.' caption in small caps, booktabs table.",
+      "html": "<section class=\"ds-ex\"><header><h2><em>Tableau 1.</em> Résultats publiés reproduits</h2></header><table><thead><tr><th>Résultat</th><th>Valeur</th></tr></thead><tbody><tr><td>Moreira-Muir, Tableau I</td><td>α = 4,9 %</td></tr><tr><td>Arbre binomial, 2 périodes</td><td>11,820</td></tr></tbody></table><p>Chaque valeur est vérifiée par la suite de tests.</p></section>",
+      "css": ".ds-ex{background:#fcfcfa;color:#16181d;font:14.5px/1.45 'Source Serif 4 Variable',Georgia,serif}.ds-ex header{padding:12px 0 6px}.ds-ex h2{margin:0;font-size:15px;font-weight:600;font-variant-caps:small-caps}.ds-ex h2 em{font-style:normal;font-variant-caps:normal;font-weight:700;color:#7a1f2b}.ds-ex table{width:100%;border-collapse:collapse;border-top:1.5px solid #16181d;border-bottom:1.5px solid #16181d;font-variant-numeric:tabular-nums}.ds-ex th{text-align:left;font-size:13px;font-weight:500;font-variant-caps:small-caps;border-bottom:.75px solid #16181d;padding:9px 14px 9px 0}.ds-ex td{text-align:left;padding:9px 14px 9px 0}.ds-ex tbody tr:hover td{background:#f4f3ef}.ds-ex p{margin:10px 0 0;font-size:12.5px;font-style:italic;color:#6b6f78}"
+    }
+  ],
+  "narrative": {
+    "northStar": "One Instrument, Five Dials",
+    "overview": "Argus is a single operating shell, a 232px sidebar, a 56px top bar and a scrolling main column of cards, tables and charts. Five visual worlds can dress that shell. **Classique** is the original dark/light trading-desk theme in `tokens.css` + `app.css`. The four alternatives live in `designs.css` and are switched by `<html data-design=\"eyes|metro|billets|paper\">`: **Les cent yeux**, **Plan de métro**, **Série de billets**, **Working paper**. A world may only change type, palette, density and one signature move. Every control, number and page stays where it is, so a practitioner who switches worlds loses nothing and an evaluator sees a different face of the same engine.\n\nThe density is that of a working tool: 13.5px body, 9px table cell padding, a 14px card grid, tabular numerals everywhere numbers appear. Hierarchy comes from weight and a handful of small uppercase labels, never from big type. The one exception is the signature move each world places on the overview, directly under the page title: the surveillance map, the network map, the face value, the replicated-results table. Each is drawn from live data or from facts stated in the methodology document. None is decoration.\n\nWorlds are selected in the top-bar \"Design\" select. The choice is persisted in `localStorage[\"argus-design\"]` and can be forced by a `?design=` URL parameter that an inline script in `index.html` reads before first paint. Classique alone keeps the dark/light toggle (`localStorage[\"qplat-theme\"]`). Each other world has one fixed scheme, declared in `DESIGNS` in `web/src/lib/theme.tsx`.",
+    "keyCharacteristics": [
+      "One shell, one component contract (`.card`, `.card-head`, `.card-title`, `table.data`, `.btn`, `.input-wrap`, `.segmented`, `.tabs`, `.badge`, `.chip`). Worlds override tokens first and selectors second.",
+      "A world is a token block on `:root[data-design=\"…\"]` plus a matching chart palette in `DESIGN_PALETTES`. The CSS and the JS must agree hex for hex.",
+      "Navigation groups carry `data-group` (`marches`, `portefeuille`, `pricing`, `taux`, `recherche`, `reference`) on section labels, nav links and `.main`. Worlds that colour by section key off `--line`.",
+      "Tabular numerals on every figure; up and down colours are always the `--good-ink` and `--critical-ink` pair plus an arrow glyph from the icon set, never colour alone.",
+      "Every motion respects `prefers-reduced-motion`."
+    ],
+    "rules": [
+      {
+        "name": "The Role-Only Rule",
+        "body": "Components read `--accent`, `--good-ink`, `--surface-2` and the other roles, never a world's hex. A world that needs a new role adds a custom property in its own block (`--rail`, `--gold`, `--line`, `--ui-font`, `--sel`, `--scroll`). It does not hard-code the colour into a shared selector.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mirrored Palette Rule",
+        "body": "ECharts cannot read CSS variables, so every world exists twice: the token block in CSS and a `ChartPalette` in `theme.tsx` (`PALETTES` for Classique dark and light, `DESIGN_PALETTES` per world). `surface`, `text`, `grid`, `axis`, `good` and `critical` must equal the CSS tokens, and `font` must equal `--font`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Section Hue Rule",
+        "body": "In worlds that colour by section (metro, billets), the hue comes from `[data-group] { --line: … }` and nothing else. A band with white text on a section hue is deepened with `color-mix(in srgb, var(--line) 72%, #1c2230)` so it holds 4.5:1.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number that can change sits in `.num`, `table.data` or an input, all of which carry `font-variant-numeric: tabular-nums`. No world may switch to a family without tabular figures.",
+        "section": "typography"
+      },
+      {
+        "name": "The Small Type Rule",
+        "body": "Nothing on an operating page exceeds 26px, except a world's overview signature (the billets face value at 76px, 48px on a phone).",
+        "section": "typography"
+      },
+      {
+        "name": "The One Shadow Rule",
+        "body": "A world sets `--shadow` once. Components never compose their own drop shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** express a world as tokens first. Override a shell selector only where the world's one signature move needs it.",
+      "**Do** keep `DESIGN_PALETTES` and the CSS token block in lockstep, hex for hex.",
+      "**Do** colour by section only through `data-group` and `--line`, and deepen any white-text band with `color-mix(in srgb, var(--line) 72%, #1c2230)`.",
+      "**Do** pair every up or down colour with the arrow glyph from `Delta`.",
+      "**Do** keep each signature truthful: encodings on fixed scales (the ocellus √-vol ramp, full iris at 3%), stations that follow real dependencies, results that are in the methodology document.",
+      "**Do** give every hover or transition a `prefers-reduced-motion: reduce` fallback, using `cubic-bezier(0.16, 1, 0.3, 1)` for state moves."
+    ],
+    "donts": [
+      "**Don't** edit `tokens.css` or `app.css` to make a world work. Classique is the untouched original, and a world that needs a shell change scopes it under `:root[data-design=\"…\"]`.",
+      "**Don't** move, hide or reorder controls, nav items or numbers per world. Worlds lend type, palette, density and one signature only.",
+      "**Don't** add a dark/light toggle to a non-Classique world. Each has one fixed scheme.",
+      "**Don't** let paper grow boxes or drop shadows. Its structure is rules, ink and numbering.",
+      "**Don't** show the metro line swatch or the billets band on `.nav-section` used inside `.main`. Those labels are reset to plain muted text.",
+      "**Don't** invent figures for the paper results table or any signature; nothing there may claim outside use."
+    ]
+  }
+}
