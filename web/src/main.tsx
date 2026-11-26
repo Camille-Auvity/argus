@@ -37,6 +37,9 @@ const MertonPage = lazy(() => import("./pages/Credit").then((m) => ({ default: m
 const RatesFx = lazy(() => import("./pages/RatesFx"));
 const CapsPage = lazy(() => import("./pages/RatesFx").then((m) => ({ default: m.CapsPage })));
 const FxPage = lazy(() => import("./pages/RatesFx").then((m) => ({ default: m.FxPage })));
+const Variance = lazy(() => import("./pages/Variance"));
+const ReplicationPage = lazy(() => import("./pages/Variance").then((m) => ({ default: m.ReplicationPage })));
+const PremiumPage = lazy(() => import("./pages/Variance").then((m) => ({ default: m.PremiumPage })));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
@@ -84,6 +87,11 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="digitale" element={<DigitalPage />} />
                     <Route path="asiatique" element={<AsianPage />} />
                     <Route path="cliquet" element={<CliquetPage />} />
+                  </Route>
+                  <Route path="/variance" element={<Variance />}>
+                    <Route index element={<Navigate to="replication" replace />} />
+                    <Route path="replication" element={<ReplicationPage />} />
+                    <Route path="prime" element={<PremiumPage />} />
                   </Route>
                   <Route path="/structured" element={<Structured />} />
                   <Route path="/rates" element={<Rates />} />

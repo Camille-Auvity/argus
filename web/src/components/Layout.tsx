@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, ArrowLeftRight, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
+  Activity, ArrowLeftRight, AudioWaveform, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/volatility", label: "Volatilité implicite", icon: Activity },
   { to: "/models", label: "Modèles de volatilité", icon: Layers },
   { to: "/exotics", label: "Options exotiques", icon: Shapes },
+  { to: "/variance", label: "Swaps de variance", icon: AudioWaveform },
   { to: "/structured", label: "Produits structurés", icon: BarChart3 },
   { section: "Taux, change & crédit" },
   { to: "/rates", label: "Courbes & obligations", icon: Landmark },

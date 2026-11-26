@@ -225,6 +225,7 @@ def fetch_ecb_curve(db: Database, lookback_days: int = 30) -> int:
 
 
 FX_TICKERS = {"EURUSD": "EURUSD=X"}  # stored in spot_prices like any other quote
+VOL_INDEX_TICKERS = {"VIX": "^VIX"}   # CBOE 30-day implied vol of the S&P 500 (variance swap page)
 
 
 def fetch_fx(db: Database) -> int:
@@ -234,11 +235,16 @@ def fetch_fx(db: Database) -> int:
     return n
 
 
+def fetch_vol_indices(db: Database) -> int:
+    return sum(fetch_spot_history(db, t, period="2y") for t in VOL_INDEX_TICKERS.values())
+
+
 def fetch_all_curves(db: Database) -> dict[str, int]:
     """Fetch every currency curve and the FX rates; one failure doesn't block the others but is still raised."""
     out: dict[str, int] = {}
     errors: list[str] = []
-    for name, fn in (("USD", fetch_treasury_curve), ("EUR", fetch_ecb_curve), ("FX", fetch_fx)):
+    for name, fn in (("USD", fetch_treasury_curve), ("EUR", fetch_ecb_curve), ("FX", fetch_fx),
+                     ("VOL", fetch_vol_indices)):
         try:
             out[name] = fn(db)
         except Exception as exc:

@@ -164,6 +164,20 @@ def test_models_api_on_synthetic_chain(tmp_path):
         # the market is Heston: the smile-consistent digital must agree with Heston's own digital
         assert dig["BS + pente du smile"] == pytest.approx(dig["Heston (formule de Lewis)"], abs=1.5)
         assert len(pd_.json()["cliquet"]["rows"]) == 3
+        from api.routers import variance as variance_router
+        variance_router._term.cache_clear()
+        variance_router._swap_cached.cache_clear()
+        term = client.get("/api/variance/SYN/term")
+        assert term.status_code == 200, term.text
+        for row in term.json()["rows"]:
+            # the market is Heston: replicating its smile gives back the Heston expected variance
+            assert row["fair_vol"] == pytest.approx(row["heston_vol"], abs=0.01)
+            assert row["fair_vol"] > row["atm_vol"]          # negative skew: puts add variance
+        sw = client.post("/api/variance/SYN/swap", json={"maturity_days": 120, "n_paths": 4000})
+        assert sw.status_code == 200, sw.text
+        models = {m["model"]: m for m in sw.json()["models"]}
+        assert models["Heston (formule fermée)"]["vol_swap"] < models["Heston (formule fermée)"]["fair_vol"]
+        assert sw.json()["contract"]["value"] == pytest.approx(0.0, abs=1e-6)
     finally:
         services.get_db = original
         for f in (models_router._market, models_router._heston, models_router._surface, models_router._exotics,

@@ -598,7 +598,105 @@ $$
 
 ---
 
-## 12. Smile de volatilité implicite
+## 12. Swaps de variance et de volatilité
+
+*Fichiers : `qplat/pricers/variance.py`, `api/routers/variance.py`*
+
+### 12.1 Le contrat
+
+Un swap de variance paie à l'échéance $N_{var}\,(\sigma_R^2 - K_{var})$, où $\sigma_R^2$ est la variance réalisée des rendements logarithmiques quotidiens, annualisée et sans retrait de la moyenne (convention de marché) :
+
+$$
+\sigma_R^2 = \frac{252}{n} \sum_{i=1}^{n} \ln^2\!\frac{S_i}{S_{i-1}}
+$$
+
+Les vols sont cotées en points (100 σ). Le notionnel variance se déduit du notionnel vega : $N_{var} = N_{vega} / (2 K_{vol})$. Près du strike, un point de vol réalisée au-dessus de $K_{vol}$ rapporte donc environ $N_{vega}$.
+
+Le swap de **volatilité** paie $N_{vega}(\sigma_R - K_{vol})$ : c'est un payoff linéaire en vol, alors que le swap de variance est convexe.
+
+### 12.2 Strike juste par réplication statique
+
+Pour une trajectoire continue, le lemme d'Itô appliqué à $\ln S$ donne
+
+$$
+\int_0^T \sigma_t^2\, dt = 2 \int_0^T \frac{dS_t}{S_t} - 2 \ln\frac{S_T}{S_0}
+$$
+
+La variance réalisée est donc un contrat log, couvert en delta par la position dynamique $2/S_t$. Le contrat log se décompose en une bande d'options hors de la monnaie pondérées en $1/K^2$ (Carr et Madan ; Demeterfi, Derman, Kamal et Zou, 1999). Avec $F$ le forward et $P(0,T)$ le facteur d'actualisation :
+
+$$
+K_{var} = \frac{2}{T\, P(0,T)} \left[ \int_0^F \frac{\text{Put}(K)}{K^2}\, dK + \int_F^\infty \frac{\text{Call}(K)}{K^2}\, dK \right]
+$$
+
+Le strike juste ne dépend que du **smile du jour** : aucun modèle n'intervient, à condition que les trajectoires soient continues.
+
+**Mise en œuvre.** L'intégrale est calculée en log-moneyness $k = \ln(K/F)$, puisque $dK/K^2 = e^{-k}\,dk/F$. Elle porte sur ±10 écarts-types ATM (4 001 points), avec les prix de Black issus de la surface SVI (section 15). La page affiche la contribution de chaque strike : les puts portent l'essentiel de la variance (77 % sur SPY), ce qui place $\sqrt{K_{var}}$ nettement au-dessus de la vol ATM.
+
+**Validation par Heston.** Sous Heston, la variance réalisée espérée a une formule fermée :
+
+$$
+\mathbb{E}\left[ \frac{1}{T}\int_0^T v_t\, dt \right] = \theta + (v_0 - \theta)\, \frac{1 - e^{-\kappa T}}{\kappa T}
+$$
+
+En répliquant le smile produit par Heston, on retrouve cette valeur à $10^{-4}$ près en relatif (test automatique).
+
+### 12.3 Strikes cotés : la formule du VIX
+
+Le CBOE applique la même formule aux strikes cotés :
+
+$$
+\sigma^2 = \frac{2}{T} \sum_i \frac{\Delta K_i}{K_i^2}\, e^{rT}\, Q(K_i) - \frac{1}{T}\left( \frac{F}{K_0} - 1 \right)^2
+$$
+
+- $Q(K_i)$ est le milieu de fourchette de l'option hors de la monnaie (moyenne du call et du put en $K_0$).
+- $K_0$ est le premier strike sous le forward.
+- La bande s'arrête après deux bids nuls consécutifs.
+- Le forward est tiré de la parité call-put : la plateforme prend la médiane des forwards implicites à ±10 % du spot, plus robuste aux cotations aberrantes des strikes lointains que la règle du strike minimisant $|C - P|$.
+
+Le VIX interpole ensuite linéairement en temps les variances totales des deux échéances qui encadrent 30 jours, puis annualise.
+
+**Validation.** Cette formule est appliquée chaque jour aux chaînes SPY stockées, et comparée au VIX officiel (`^VIX`, téléchargé avec les taux). L'écart médian est d'environ 0,4 point. Les écarts restants s'expliquent par :
+- SPY au lieu de l'indice S&P 500 ;
+- l'heure du snapshot, comparée à la clôture du VIX ;
+- des options américaines au lieu d'européennes.
+
+La bande cotée s'arrête où les cotations disparaissent. Elle sous-estime donc un peu la variance par rapport à la surface SVI, qui extrapole les ailes.
+
+### 12.4 Swap de volatilité et convexité
+
+$\sqrt{\cdot}$ est concave, donc par l'inégalité de Jensen $\mathbb{E}[\sigma_R] = \mathbb{E}\left[\sqrt{\sigma_R^2}\right] \le \sqrt{\mathbb{E}[\sigma_R^2]} = \sqrt{K_{var}}$. L'écart, ou **convexité**, dépend de la variance de la variance réalisée : il faut donc un modèle.
+
+La page compare plusieurs approches :
+- **Black-Scholes** (vol constante) : la convexité est presque nulle ; il ne reste que le bruit d'échantillonnage quotidien.
+- **Heston** : on simule la variance intégrée $\frac1T\int v\,dt$ par un schéma d'Euler à troncature complète ; on calcule aussi la variance réalisée de trajectoires quotidiennes.
+- **Volatilité locale** : variance réalisée des trajectoires simulées. Elle doit retrouver la réplication, puisqu'elle reprice toutes les vanilles.
+
+L'approximation au second ordre $\mathbb{E}[\sqrt V] \approx \sqrt{\mathbb{E}V} - \text{Var}(V)/(8\,\mathbb{E}[V]^{3/2})$ est affichée pour comparaison. Elle se dégrade quand la vol de la variance est forte.
+
+### 12.5 Valeur et risques d'un swap en cours de vie
+
+À la date $t$, la variance totale espérée combine la partie réalisée (lue dans l'historique) et la partie implicite restante :
+
+$$
+\mathbb{E}[\sigma_R^2] = \frac{t}{T}\, \sigma^2_{R}(0,t) + \frac{T-t}{T}\, K_{var}(t,T), \qquad V_t = P(t,T)\, N_{var} \left( \mathbb{E}[\sigma_R^2] - K_{vol}^2 \right)
+$$
+
+Le **vega**, pour un point de vol implicite sur la durée restante, vaut $P(t,T)\, N_{var}\, \frac{T-t}{T}\, 2\sigma_{impl}$ ; à la monnaie et au départ, il est égal à $N_{vega}$. Le profil de payoff (variance contre vol) illustre la convexité.
+
+### 12.6 Prime de risque de variance
+
+Le VIX de la date $t$ est comparé à la vol réalisée de SPY sur les 21 séances suivantes, c'est-à-dire ce que paie un swap de variance à un mois conclu en $t$. L'historique couvre 2 ans.
+
+On affiche :
+- la part des jours où l'implicite dépasse le réalisé ;
+- la prime moyenne en points de vol ;
+- le P&L d'une vente mensuelle de swap de variance, de notionnel vega 1 : $(K^2 - \sigma_R^2)/(2K)$.
+
+Le profil est celui d'une assurance vendue : une petite prime gagnée presque tous les mois, et de grosses pertes lors des chocs de volatilité (Carr et Wu, 2009).
+
+---
+
+## 13. Smile de volatilité implicite
 
 *Fichiers : `qplat/analytics/smile.py`, `qplat/data/market.py`*
 
@@ -611,11 +709,11 @@ $$
 
 ---
 
-## 13. Modèle de Heston (volatilité stochastique)
+## 14. Modèle de Heston (volatilité stochastique)
 
 *Fichiers : `qplat/models/heston.py`, `qplat/models/market_models.py`*
 
-### 13.1 Dynamique
+### 14.1 Dynamique
 
 $$
 \frac{dS_t}{S_t} = \big(f(t) - q\big)\,dt + \sqrt{v_t}\, dW^1_t, \qquad dv_t = \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\, dW^2_t, \qquad d\langle W^1, W^2\rangle_t = \rho\, dt
@@ -631,7 +729,7 @@ $$
 
 La **condition de Feller** $2\kappa\theta > \sigma^2$ garantit que la variance ne touche jamais zéro. Elle est souvent violée par les calibrations sur actions.
 
-### 13.2 Fonction caractéristique
+### 14.2 Fonction caractéristique
 
 On note $X_T = \ln(S_T/S_0) - (r - q)T$. Sous la forme « little Heston trap » (Albrecher et al., 2007), qui évite les discontinuités du logarithme complexe :
 
@@ -647,7 +745,7 @@ $$
 \varphi_T(u) = \mathbb{E}\big[e^{iuX_T}\big] = \exp\big(C(u) + D(u)\, v_0\big)
 $$
 
-### 13.3 Prix européen : formule de Lewis
+### 14.3 Prix européen : formule de Lewis
 
 $$
 C(K) = S e^{-qT} - \frac{\sqrt{SK}\, e^{-(r+q)T/2}}{\pi} \int_0^{\infty} \mathrm{Re}\!\left[e^{iux}\, \varphi_T\!\left(u - \tfrac{i}{2}\right)\right] \frac{du}{u^2 + 1/4}, \qquad x = \ln\frac{S}{K} + (r-q)T
@@ -657,7 +755,7 @@ L'intégrale est calculée par quadrature de Gauss-Legendre (400 nœuds) sur $[0
 
 **Vérifications** : avec une vol de vol quasi nulle et $v_0 = \theta$, le prix redonne Black-Scholes à $10^{-5}$ près. Il concorde aussi avec la simulation Monte Carlo de Heston.
 
-### 13.4 Calibration
+### 14.4 Calibration
 
 Points utilisés : la partie liquide du smile, soit les échéances de 14 jours ou plus, la zone $|\ln(K/S)| \le \max(0{,}08\,;\,0{,}35\sqrt{T})$, et au plus 25 options par échéance.
 
@@ -671,7 +769,7 @@ Bornes : $v_0, \theta \in [10^{-4}, 1{,}5]$, $\kappa \in [0{,}05, 15]$, $\sigma 
 
 La qualité affichée (RMSE et erreur maximale) est l'écart **exact** de volatilité implicite après inversion des prix du modèle. Sur des données synthétiques, la calibration retrouve les paramètres à $10^{-3}$ près en relatif.
 
-### 13.5 Simulation (exotiques sous Heston)
+### 14.5 Simulation (exotiques sous Heston)
 
 Schéma d'Euler à troncature complète sur $(\ln S, v)$, avec 252 pas par an et des variables antithétiques. On note $v^+ = \max(v, 0)$ :
 
@@ -685,11 +783,11 @@ $$
 
 ---
 
-## 14. Surface de volatilité SVI et volatilité locale de Dupire
+## 15. Surface de volatilité SVI et volatilité locale de Dupire
 
 *Fichier : `qplat/models/svi.py`*
 
-### 14.1 SVI par échéance
+### 15.1 SVI par échéance
 
 On note $k = \ln(K/F_T)$ la log-moneyness par rapport au forward, et $w(k) = \sigma_{imp}^2(k)\,T$ la variance implicite totale. La paramétrisation SVI « raw » de Gatheral :
 
@@ -708,11 +806,11 @@ $$
 
 - **Calendrier** : $w_{T_{i+1}}(k) \ge w_{T_i}(k)$. Les échéances sont ajustées par maturité croissante, chacune contrainte à rester au-dessus de la précédente.
 
-### 14.2 Interpolation entre échéances
+### 15.2 Interpolation entre échéances
 
 La variance totale est interpolée linéairement en $T$ à $k$ fixé, ce qui préserve l'absence d'arbitrage calendaire. Avant la première échéance et après la dernière, la volatilité implicite est prolongée à plat.
 
-### 14.3 Volatilité locale de Dupire
+### 15.3 Volatilité locale de Dupire
 
 La volatilité locale est l'unique fonction $\sigma_{loc}(S, t)$ telle que $dS/S = (r - q)\,dt + \sigma_{loc}\,dW$ reproduise tous les prix européens. Exprimée en variance totale (Gatheral, *The Volatility Surface*, éq. 1.10) :
 
@@ -722,7 +820,7 @@ $$
 
 $w'$ et $w''$ sont analytiques en SVI, et $\partial w/\partial T$ vient de l'interpolation entre échéances. Là où $g \le 0$ ou $\partial w / \partial T \le 0$ (arbitrage), la volatilité locale n'est pas définie et vaut NaN.
 
-### 14.4 Simulation sous volatilité locale
+### 15.4 Simulation sous volatilité locale
 
 On précalcule $\sigma_{loc}$ sur une grille de 60 maturités × 81 moneyness ($k \in [-1, 1]$), interpolée bilinéairement. Les trous d'arbitrage sont comblés par la volatilité implicite, et les valeurs bornées entre 1 % et 300 %. Schéma d'Euler sur $\ln S$ avec 252 pas par an :
 
@@ -732,7 +830,7 @@ $$
 
 **Vérification** : une surface plate redonne une volatilité locale plate, et le Monte Carlo sous volatilité locale reprice les vanilles du marché à environ 1 % près.
 
-### 14.5 Exotiques : comparaison des modèles
+### 15.5 Exotiques : comparaison des modèles
 
 Le même produit (barrière en observation quotidienne, autocall) est pricé sous trois hypothèses :
 - **Black-Scholes**, avec la vol implicite ATM de la surface à la maturité du produit ;
@@ -745,11 +843,11 @@ La même comparaison existe pour la digitale (avec en plus le prix « BS + pente
 
 ---
 
-## 15. Portefeuille et gestion des risques
+## 16. Portefeuille et gestion des risques
 
 *Fichiers : `qplat/risk/portfolio.py`, `api/routers/portfolio.py`*
 
-### 15.1 Positions et valorisation
+### 16.1 Positions et valorisation
 
 Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS, caps et floors, options de change EUR/USD. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
@@ -766,9 +864,9 @@ Chaque position est valorisée avec le pricer adapté :
 | Autocall | Monte Carlo, 20 000 trajectoires |
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
-| Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 17.1) ; strike ATM figé à l'ajout ; quantité = nominal |
+| Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 18.1) ; strike ATM figé à l'ajout ; quantité = nominal |
 | Option de change | Garman-Kohlhagen à la vol du smile de la position (ATM, RR et BF saisis) au strike ; sous-jacent EUR/USD ; quantité = nominal en EUR |
-| CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 16) ; quantité = nominal, positive pour un acheteur de protection |
+| CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 17) ; quantité = nominal, positive pour un acheteur de protection |
 
 **Données de marché** : dernier cours, dividende, courbe de la devise. La volatilité est la vol ATM de la surface SVI à la maturité de la position quand le sous-jacent a des options cotées, sinon la vol réalisée sur un an.
 
@@ -785,7 +883,7 @@ Pour le theta, un fixing qui tombe pendant le décalage d'un jour est fixé au s
 
 Les montants sont convertis en **euros**, avec le dernier taux EUR/USD stocké en base. Les positions sont enregistrées dans la table SQLite `positions` (conditions du contrat en JSON, prix d'entrée par unité).
 
-### 15.2 Sensibilités agrégées
+### 16.2 Sensibilités agrégées
 
 Pour une position de quantité $Q$ et de multiplicateur $M$, avec $fx$ le taux de change vers l'euro :
 
@@ -803,7 +901,7 @@ $\Gamma_{1\%}$ est le P&L du terme de gamma pour un mouvement de 1 % du sous-jac
 
 Ces mesures sont agrégées, avec en plus le pire défaut isolé et le nominal net de protection. Une position CDS garde sa courbe de spreads dans ses paramètres. On la met à jour depuis la liste des positions. Le prix d'entrée est conservé, si bien que l'effet de l'écartement ou du resserrement des spreads apparaît dans le P&L.
 
-### 15.3 Stress tests
+### 16.3 Stress tests
 
 Chaque scénario est une **revalorisation complète** du book :
 
@@ -813,7 +911,7 @@ Chaque scénario est une **revalorisation complète** du book :
 
 La VaR historique ne porte que sur les sous-jacents actions. Il n'existe pas d'historique public de spreads CDS : le risque de crédit est donc mesuré par les chocs de spreads et le jump-to-default.
 
-### 15.4 Value at Risk et Expected Shortfall (1 jour)
+### 16.4 Value at Risk et Expected Shortfall (1 jour)
 
 **VaR historique.** On rejoue les rendements journaliers réels, sur les dates communes à tous les sous-jacents du book (environ 2 ans). Le P&L de chaque scénario $s$ est approché à l'ordre 2 (delta-gamma) :
 
@@ -833,7 +931,7 @@ $$
 
 La VaR couvre le risque actions. Les risques de taux et de volatilité sont mesurés par les stress tests.
 
-### 15.5 Explication du P&L
+### 16.5 Explication du P&L
 
 On compare la revalorisation complète à la clôture précédente et au dernier cours, en décomposant pour chaque position :
 
@@ -847,11 +945,11 @@ Un résiduel faible valide les sensibilités. Un résiduel important signale des
 
 ---
 
-## 16. Crédit : CDS et modèle de Merton
+## 17. Crédit : CDS et modèle de Merton
 
 *Fichiers : `qplat/credit/cds.py`, `qplat/credit/merton.py`, `api/routers/credit.py`*
 
-### 16.1 Courbe de défaut
+### 17.1 Courbe de défaut
 
 Le défaut est le premier saut d'un processus de Poisson d'intensité $\lambda(t)$, constante par morceaux entre des piliers $T_1 < \dots < T_n$ (et constante au-delà du dernier) :
 
@@ -861,7 +959,7 @@ $$
 
 **Triangle du crédit** : avec une intensité constante, $s \approx \lambda (1 - R)$.
 
-### 16.2 Les deux jambes d'un CDS
+### 17.2 Les deux jambes d'un CDS
 
 Prime $c$ payée trimestriellement (base ACT/360, échéancier construit à rebours depuis la maturité), recouvrement $R$, courbe d'actualisation $P(0,t)$ :
 
@@ -883,13 +981,13 @@ $$
 
 **Upfront.** Depuis le Big Bang de 2009, un CDS se traite avec un coupon standard (100 bp pour l'investment grade, 500 bp pour le high yield). La différence se règle à la signature : $U = \text{Protection} - c \cdot \text{RPV01}$, positif si l'acheteur de protection paie.
 
-### 16.3 Bootstrap
+### 17.3 Bootstrap
 
 On part des spreads au pair cotés pour $T_1 < \dots < T_n$. On résout séquentiellement $\lambda_j$ (Brent) sur le segment $(T_{j-1}, T_j]$ pour que le CDS de maturité $T_j$ reprice son spread, les segments précédents étant déjà fixés. Chaque spread coté est repricé à $10^{-12}$ près. Une courbe trop inversée exigerait une intensité négative : elle est rejetée.
 
-Il n'existe pas de source gratuite de spreads CDS. La plateforme propose donc des courbes types (A, BBB, BB, B, stressée), une saisie libre, et la courbe implicite du modèle de Merton (section 16.6).
+Il n'existe pas de source gratuite de spreads CDS. La plateforme propose donc des courbes types (A, BBB, BB, B, stressée), une saisie libre, et la courbe implicite du modèle de Merton (section 17.6).
 
-### 16.4 Risques d'une position
+### 17.4 Risques d'une position
 
 Valeur pour l'acheteur de protection : $N(\text{Protection} - c \cdot \text{RPV01})$ ; pour le vendeur, l'opposé.
 
@@ -901,7 +999,7 @@ Valeur pour l'acheteur de protection : $N(\text{Protection} - c \cdot \text{RPV0
 | Jump-to-default | $\pm N(1 - R) - V$ : P&L si l'émetteur fait défaut immédiatement |
 | Portage 1 jour | $\mp N c / 360$ |
 
-### 16.5 Modèle de Merton (1974)
+### 17.5 Modèle de Merton (1974)
 
 La valeur des actifs $V$ suit un mouvement brownien géométrique de volatilité $\sigma_V$. La dette est un zéro-coupon de nominal $D$ à l'horizon $T$, et le défaut a lieu si $V_T < D$. L'action est donc un call sur les actifs :
 
@@ -934,7 +1032,7 @@ $$
 - Spread en fonction du cours de l'action, à dette inchangée : c'est le lien actions / crédit, base de l'arbitrage de structure du capital.
 - Variation du spread pour une baisse de 1 % de l'action.
 
-### 16.6 Du structurel au CDS
+### 17.6 Du structurel au CDS
 
 La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On en tire une intensité constante par morceaux, puis les spreads CDS au pair avec un recouvrement de marché (en général 40 %, distinct du recouvrement implicite du modèle). Cette courbe peut être envoyée au pricer CDS.
 
@@ -947,11 +1045,11 @@ La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On
 
 ---
 
-## 17. Options de taux et de change
+## 18. Options de taux et de change
 
 *Fichiers : `qplat/pricers/capfloor.py`, `qplat/fx/options.py`, `qplat/fx/smile.py`, `api/routers/caps_fx.py`*
 
-### 17.1 Caps et floors
+### 18.1 Caps et floors
 
 Un cap de maturité $T$ et de fréquence $f$ est une série de caplets sur les périodes $(t_{i-1}, t_i]$, avec $t_i = i/f$. La première période, déjà fixée aujourd'hui, est exclue. Le taux forward simple est lu sur la courbe :
 
@@ -992,7 +1090,7 @@ Le tableau des caplets donne pour chacun la contribution, le delta pour 1 bp de 
 - Les vols de caps ne sont pas diffusées gratuitement : elles sont saisies.
 - Les forwards sont tirés des courbes d'État (Treasury, BCE), pas des courbes swap SOFR / €STR.
 
-### 17.2 Options de change : Garman-Kohlhagen
+### 18.2 Options de change : Garman-Kohlhagen
 
 Le sous-jacent est le prix d'une unité de devise **étrangère** en devise **domestique** (EUR/USD : étranger EUR, domestique USD). Le taux étranger joue le rôle d'un dividende :
 
@@ -1008,7 +1106,7 @@ $r_d$ et $r_f$ sont les taux zéro-coupon USD et EUR à l'échéance. Les points
 - **Theta**.
 - **Deux rhos** : domestique $\varphi K T e^{-r_d T} N(\varphi d_2)$ et étranger $-\varphi S T e^{-r_f T} N(\varphi d_1)$.
 
-### 17.3 Le smile FX coté en delta
+### 18.3 Le smile FX coté en delta
 
 Pour chaque échéance, le marché des changes cote trois nombres.
 - **ATM** : la vol du straddle delta-neutre, de strike $K_{ATM} = F e^{\sigma_{ATM}^2 T / 2}$ (les deltas du call et du put s'annulent).
@@ -1027,7 +1125,7 @@ Au-delà d'un an, on prend le delta forward, sans le facteur $e^{r_f T}$.
 - les piliers sont $\sigma_{25C/P} = \sigma_{ATM} + BF_s \pm RR/2$, à leurs propres strikes 25 delta ;
 - le smile qu'ils définissent reprice exactement le strangle de marché.
 
-### 17.4 Interpolation Vanna-Volga
+### 18.4 Interpolation Vanna-Volga
 
 Avec les trois piliers $K_1 < K_2 = K_{ATM} < K_3$ (Castagna et Mercurio, 2007), le prix d'un call de strike $K$ est le prix Black-Scholes à la vol ATM, corrigé par le surcoût de marché des trois options piliers :
 
@@ -1045,11 +1143,11 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 
 ---
 
-## 18. Données et orchestration
+## 19. Données et orchestration
 
 *Fichiers : `qplat/data/*.py`, `scripts/refresh.py`*
 
-### 18.1 Sources
+### 19.1 Sources
 
 | Donnée | Source | Fréquence |
 |---|---|---|
@@ -1060,9 +1158,10 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 | Taux USD | FRED (CSV public), repli yfinance | chaque passage |
 | Taux EUR | API de données de la BCE | chaque passage |
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
+| VIX (vol implicite 30 jours du S&P 500, swaps de variance) | yfinance (^VIX) | chaque passage |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
-### 18.2 Volatilité réalisée
+### 19.2 Volatilité réalisée
 
 Volatilité par défaut des pricers et vol 1 mois de la vue d'ensemble :
 
@@ -1072,7 +1171,7 @@ $$
 
 sur les 252 derniers rendements journaliers (1 an) ou les 21 derniers (1 mois).
 
-### 18.3 Rafraîchissement
+### 19.3 Rafraîchissement
 
 Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafraîchit que les sous-jacents dont le marché est ouvert :
 
@@ -1089,11 +1188,11 @@ Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 1
 
 ---
 
-## 19. Sentiment des news par IA
+## 20. Sentiment des news par IA
 
 *Fichier : `qplat/data/sentiment.py` — modèle `claude-opus-5-5`, effort `low`*
 
-### 19.1 Scoring
+### 20.1 Scoring
 
 Les titres non encore notés sont envoyés à Claude par paquets de 25, regroupés par sous-jacent. La consigne demande, pour chaque titre, l'impact probable sur le cours du sous-jacent dans les prochaines séances, vu par un actionnaire. Les titres sont traités comme des données, jamais comme des instructions. La réponse est contrainte par un schéma JSON :
 
@@ -1103,7 +1202,7 @@ Les titres non encore notés sont envoyés à Claude par paquets de 25, regroup�
 | `label` | very_negative, negative, neutral, positive ou very_positive |
 | `rationale` | une phrase de justification |
 
-### 19.2 Agrégation
+### 20.2 Agrégation
 
 Le sentiment d'un sous-jacent est une moyenne pondérée par la récence, avec une demi-vie de 3 jours. Pour un article d'âge $a$ jours et de score $s$ :
 
@@ -1115,9 +1214,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 20. Validation
+## 21. Validation
 
-*Dossier : `tests/` — 169 tests*
+*Dossier : `tests/` — 177 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1136,6 +1235,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
 | Risques | cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Swaps de variance | variance réalisée (convention sans moyenne), smile plat → σ², réplication du smile de Heston = variance espérée de Heston, convexité du swap de vol (Jensen et approximation), formule du VIX sur une chaîne Black-Scholes, troncature de la bande, interpolation à 30 jours, valeur d'un swap en cours de vie et vega |
 | Caps / floors | caplet = Black-76, parité cap − floor = swap, cap = floor au strike ATM, Black ≈ Bachelier près de la monnaie, rejet de Black avec des taux négatifs, vol plate implicite |
 | Options de change | Garman-Kohlhagen = Black-Scholes avec dividende étranger, parité, grecques par différences finies, aller-retour delta ↔ strike, straddle delta-neutre, Vanna-Volga reprice les piliers, smile plat, strangle de marché repricé, densité positive |
 | CDS | survie d'une courbe par morceaux, jambe de protection en formule fermée, triangle du crédit, bootstrap exact, rejet d'une courbe inversée, CDS au pair de valeur nulle, CS01 ≈ RPV01 × nominal × 1 bp, jump-to-default |
@@ -1144,7 +1244,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 21. Limites et extensions possibles
+## 22. Limites et extensions possibles
 
 - **Volatilité** : Heston et volatilité locale sont calibrés séparément. Un modèle à volatilité locale-stochastique (LSV) combinerait les deux.
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
@@ -1154,12 +1254,16 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 22. Références
+## 23. Références
 
 - Black, F. & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*. Journal of Political Economy.
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.
 - Merton, R. (1974). *On the Pricing of Corporate Debt: The Risk Structure of Interest Rates*. Journal of Finance.
 - ISDA (2009). *ISDA CDS Standard Model* (conventions du « Big Bang » des CDS).
+- Demeterfi, K., Derman, E., Kamal, M. & Zou, J. (1999). *More Than You Ever Wanted to Know About Volatility Swaps*. Goldman Sachs Quantitative Strategies.
+- Carr, P. & Madan, D. (1998). *Towards a Theory of Volatility Trading*. Volatility, Risk Publications.
+- Carr, P. & Wu, L. (2009). *Variance Risk Premiums*. Review of Financial Studies.
+- CBOE (2019). *VIX White Paper: Cboe Volatility Index*.
 - Black, F. (1976). *The Pricing of Commodity Contracts*. Journal of Financial Economics.
 - Bachelier, L. (1900). *Théorie de la spéculation*. Annales scientifiques de l'École normale supérieure.
 - Garman, M. & Kohlhagen, S. (1983). *Foreign Currency Option Values*. Journal of International Money and Finance.

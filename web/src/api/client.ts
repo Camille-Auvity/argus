@@ -727,3 +727,69 @@ export const ratesFxApi = {
   fxMarket: () => request<FXMarketResponse>("/api/fx/market"),
   fx: (req: FXRequest) => post<FXResponse>("/api/fx/price", req),
 };
+
+// ----------------------------------------------------------------------------- variance swaps
+
+export interface VarianceTermResponse {
+  asof: string;
+  spot: number;
+  rows: { T: number; days: number; fair_vol: number; fair_variance: number; atm_vol: number; skew_premium: number;
+    put_share: number; heston_vol: number }[];
+}
+
+export interface VarianceSwapRequest {
+  maturity_days: number;
+  vega_notional: number;
+  strike_vol: number | null;
+  elapsed_days: number;
+  n_paths: number;
+}
+
+export interface VarianceModelRow {
+  model: string;
+  fair_vol: number;
+  vol_swap: number | null;
+  convexity: number | null;
+  std_realized_vol: number | null;
+  note: string;
+}
+
+export interface VarianceSwapResponse {
+  asof: string;
+  spot: number;
+  T: number;
+  T_total: number;
+  atm_vol: number;
+  fair_vol: number;
+  fair_variance: number;
+  put_share: number;
+  replication: { k: number[]; density: number[]; F: number };
+  listed: { expiry: string; days: number; listed_vol: number; surface_vol: number; n_strikes: number; strikes: number[];
+    contributions: number[]; forward: number } | null;
+  models: VarianceModelRow[];
+  heston: { v0: number; kappa: number; theta: number; sigma: number; rho: number; convexity_approx_vol: number };
+  realized_vol_distribution: { heston: number[]; edges: number[] };
+  contract: { strike_vol: number; realized_vol_so_far: number; elapsed_days: number; variance_notional: number; value: number;
+    vega: number; expected_variance_pts: number;
+    profile: { realized_vol: number[]; variance_swap: number[]; volatility_swap: number[] } };
+}
+
+export interface VrpResponse {
+  series: { date: string[]; vix: number[]; realized_past: (number | null)[] };
+  aligned: { date: string[]; implied: number[]; realized_next: number[]; premium_pts2: number[] };
+  monthly: { date: string; strike: number; realized: number; pnl: number }[];
+  summary: { n_days: number; mean_implied: number; mean_realized: number; share_implied_above: number;
+    mean_premium_vol_pts: number; monthly_hit_rate: number | null; monthly_mean_pnl: number | null; monthly_worst_pnl: number | null };
+}
+
+export interface VixCheckResponse {
+  rows: { date: string; argus: number; vix: number | null; near_days: number; next_days: number; strikes: number }[];
+  summary: { n: number; mean_abs_gap: number | null; median_abs_gap: number | null };
+}
+
+export const varianceApi = {
+  term: (ticker: string) => request<VarianceTermResponse>(`/api/variance/${encodeURIComponent(ticker)}/term`),
+  swap: (ticker: string, req: VarianceSwapRequest) => post<VarianceSwapResponse>(`/api/variance/${encodeURIComponent(ticker)}/swap`, req),
+  vrp: () => request<VrpResponse>("/api/variance/vrp"),
+  vixCheck: () => request<VixCheckResponse>("/api/variance/vix-check"),
+};
