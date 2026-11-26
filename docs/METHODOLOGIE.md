@@ -10,7 +10,7 @@ La plateforme est organisée en quatre couches, chacune ignorant le fonctionneme
 
 | Couche | Dossier | Rôle |
 |---|---|---|
-| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/credit`, `qplat/fx`, `qplat/allocation`, `qplat/research`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
+| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/credit`, `qplat/fx`, `qplat/allocation`, `qplat/research`, `qplat/theory`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
 | Données | `qplat/data` | Téléchargement des marchés, bilans, taux et news ; stockage SQLite ; scoring du sentiment par Claude. |
 | Interface | `api/` (FastAPI), `web/` (React) | L'API expose le moteur et la base ; l'interface web l'appelle. |
 | Orchestration | `scripts/refresh.py`, crontab | Rafraîchissement automatique pendant les heures de marché. |
@@ -864,10 +864,10 @@ Chaque position est valorisée avec le pricer adapté :
 | Autocall | Monte Carlo, 20 000 trajectoires |
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
-| Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 20.1) ; strike ATM figé à l'ajout ; quantité = nominal |
+| Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 21.1) ; strike ATM figé à l'ajout ; quantité = nominal |
 | Swap de variance | variance réalisée depuis le départ (historique) + strike juste de la durée restante répliqué sur la surface SVI (section 12.5) ; quantité = notionnel vega |
 | Option de change | Garman-Kohlhagen à la vol du smile de la position (ATM, RR et BF saisis) au strike ; sous-jacent EUR/USD ; quantité = nominal en EUR |
-| CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 19) ; quantité = nominal, positive pour un acheteur de protection |
+| CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 20) ; quantité = nominal, positive pour un acheteur de protection |
 
 **Données de marché** : dernier cours, dividende, courbe de la devise. La volatilité est la vol ATM de la surface SVI à la maturité de la position quand le sous-jacent a des options cotées, sinon la vol réalisée sur un an.
 
@@ -1113,11 +1113,68 @@ Le rapport moyenne / variance, qui fixe l'exposition optimale $w^* = \mu / (\gam
 
 ---
 
-## 19. Crédit : CDS et modèle de Merton
+## 19. Théorie appliquée : réplication et couverture dynamique
+
+*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
+
+### 19.1 Réplication dans l'arbre binomial
+
+À chaque période, l'action passe de $S$ à $uS$ ou $dS$, et le compte en banque est multiplié par le taux brut $R$. À chaque nœud, l'option est répliquée par $\Delta$ actions et $B$ en banque :
+
+$$
+\Delta = \frac{V_u - V_d}{S_u - S_d}, \qquad B = \frac{V_u - \Delta S_u}{R}, \qquad V = \Delta S + B = \frac{\pi V_u + (1-\pi) V_d}{R}, \qquad \pi = \frac{R - d}{u - d}
+$$
+
+La probabilité risque-neutre $\pi$ existe et vaut entre 0 et 1 si et seulement si $d < R < u$. Sinon, l'arbre est refusé, car il existe un arbitrage. Sous $\pi$, $\mathbb E_Q[S_1/S_0] = R$ : l'action rapporte le taux sans risque.
+
+**Vérifications** sur l'exemple du cours ($S_0 = 100$, $u = 1{,}2$, $d = 0{,}8$, $R = 1{,}05$, put $K = 110$, tous testés) :
+- **Une période** : $P_0 = 10{,}714$, $\Delta = -0{,}75$, $B = 85{,}714$.
+- **Deux périodes** : $P_0 = 11{,}820$ ; aux nœuds intermédiaires, $(\Delta, B) = (-0{,}2917 ; 40)$ et $(-1 ; 104{,}762)$.
+- **Probabilités des chemins** : $Q(S_2 = 96) = 2 \times 0{,}625 \times 0{,}375 = 0{,}46875$, et la valorisation directe $\sum Q \times \text{payoff} / R^N$ redonne le prix de l'induction.
+- **Autofinancement** : le portefeuille posé au nœud parent vaut, à chaque nœud enfant, exactement l'option. La page l'affiche pour chaque nœud.
+- **Convergence** : avec $u = e^{\sigma\sqrt{\Delta t}}$ et $d = 1/u$, l'arbre converge vers Black-Scholes.
+
+**Market maker.** Le teneur de marché vend à l'ask, garde la marge (ask − prix) et rebalance le long d'un chemin choisi. Chaque achat ou vente d'actions est financé par le compte en banque, et la couverture paie exactement le client à l'échéance, quel que soit le chemin.
+
+### 19.2 Couverture dynamique en delta
+
+On vend une option au prix de Black-Scholes avec la vol implicite $\sigma_i$, puis on la couvre $N$ fois. Le sous-jacent suit un mouvement brownien géométrique sous la probabilité réelle : drift $\mu$ et vol réalisée $\sigma_r$, en simulation exacte. Le cash rapporte $r$ et les actions détenues touchent le dividende.
+
+- **Indépendance du drift.** Avec $\sigma_r = \sigma_i$, le P&L moyen est nul quel que soit $\mu$, à l'erreur de discrétisation près. Le prix est le coût de la réplication ; Girsanov change le drift, pas la volatilité.
+- **Erreur de couverture.** Elle décroît en $1/\sqrt N$, car la variation quadratique $(dS)^2 = \sigma^2 S^2 dt$ devient déterministe. Approximation de Derman et Kamal :
+
+$$
+\text{sd}(\text{P\&L}) \approx \sqrt{\pi/4}\; \mathcal V\, \sigma / \sqrt N
+$$
+
+où $\mathcal V$ est le vega. L'écart avec la simulation est inférieur à 10 % (test automatique).
+
+- **Gamma contre theta.** Sur un pas, la position vendue et couverte gagne
+
+$$
+\tfrac12\, \Gamma S^2 \left( \sigma_i^2\, dt - \left(\tfrac{dS}{S}\right)^2 \right)
+$$
+
+Si $\sigma_r \ne \sigma_i$ :
+- couverte avec le delta à la vol implicite, la position a un P&L qui dépend du chemin, de moyenne $\approx \tfrac12 \int \Gamma S^2 (\sigma_i^2 - \sigma_r^2)\, dt$ ;
+- couverte avec le delta à la vol réalisée, elle verrouille $BS(\sigma_i) - BS(\sigma_r)$, avec moins de dispersion (Carr, 2005 ; Ahmad et Wilmott, 2005).
+
+### 19.3 Sur données réelles
+
+Chaque mois, on vend un call SPY à la monnaie à 21 jours. Son prix est fixé au VIX du jour (vol implicite à 30 jours du S&P 500). On le couvre ensuite chaque jour avec les vrais cours de clôture, au taux USD et avec le dividende de SPY. Le P&L mensuel :
+- est corrélé à 0,99 avec la prévision gamma-theta ;
+- gagne la plupart des mois, parce que la vol réalisée est en général sous le VIX ;
+- perd lors des mois agités.
+
+C'est la prime de risque de variance de la section 12.6, pondérée par le gamma.
+
+---
+
+## 20. Crédit : CDS et modèle de Merton
 
 *Fichiers : `qplat/credit/cds.py`, `qplat/credit/merton.py`, `api/routers/credit.py`*
 
-### 19.1 Courbe de défaut
+### 20.1 Courbe de défaut
 
 Le défaut est le premier saut d'un processus de Poisson d'intensité $\lambda(t)$, constante par morceaux entre des piliers $T_1 < \dots < T_n$ (et constante au-delà du dernier) :
 
@@ -1127,7 +1184,7 @@ $$
 
 **Triangle du crédit** : avec une intensité constante, $s \approx \lambda (1 - R)$.
 
-### 19.2 Les deux jambes d'un CDS
+### 20.2 Les deux jambes d'un CDS
 
 Prime $c$ payée trimestriellement (base ACT/360, échéancier construit à rebours depuis la maturité), recouvrement $R$, courbe d'actualisation $P(0,t)$ :
 
@@ -1149,13 +1206,13 @@ $$
 
 **Upfront.** Depuis le Big Bang de 2009, un CDS se traite avec un coupon standard (100 bp pour l'investment grade, 500 bp pour le high yield). La différence se règle à la signature : $U = \text{Protection} - c \cdot \text{RPV01}$, positif si l'acheteur de protection paie.
 
-### 19.3 Bootstrap
+### 20.3 Bootstrap
 
 On part des spreads au pair cotés pour $T_1 < \dots < T_n$. On résout séquentiellement $\lambda_j$ (Brent) sur le segment $(T_{j-1}, T_j]$ pour que le CDS de maturité $T_j$ reprice son spread, les segments précédents étant déjà fixés. Chaque spread coté est repricé à $10^{-12}$ près. Une courbe trop inversée exigerait une intensité négative : elle est rejetée.
 
-Il n'existe pas de source gratuite de spreads CDS. La plateforme propose donc des courbes types (A, BBB, BB, B, stressée), une saisie libre, et la courbe implicite du modèle de Merton (section 19.6).
+Il n'existe pas de source gratuite de spreads CDS. La plateforme propose donc des courbes types (A, BBB, BB, B, stressée), une saisie libre, et la courbe implicite du modèle de Merton (section 20.6).
 
-### 19.4 Risques d'une position
+### 20.4 Risques d'une position
 
 Valeur pour l'acheteur de protection : $N(\text{Protection} - c \cdot \text{RPV01})$ ; pour le vendeur, l'opposé.
 
@@ -1167,7 +1224,7 @@ Valeur pour l'acheteur de protection : $N(\text{Protection} - c \cdot \text{RPV0
 | Jump-to-default | $\pm N(1 - R) - V$ : P&L si l'émetteur fait défaut immédiatement |
 | Portage 1 jour | $\mp N c / 360$ |
 
-### 19.5 Modèle de Merton (1974)
+### 20.5 Modèle de Merton (1974)
 
 La valeur des actifs $V$ suit un mouvement brownien géométrique de volatilité $\sigma_V$. La dette est un zéro-coupon de nominal $D$ à l'horizon $T$, et le défaut a lieu si $V_T < D$. L'action est donc un call sur les actifs :
 
@@ -1200,7 +1257,7 @@ $$
 - Spread en fonction du cours de l'action, à dette inchangée : c'est le lien actions / crédit, base de l'arbitrage de structure du capital.
 - Variation du spread pour une baisse de 1 % de l'action.
 
-### 19.6 Du structurel au CDS
+### 20.6 Du structurel au CDS
 
 La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On en tire une intensité constante par morceaux, puis les spreads CDS au pair avec un recouvrement de marché (en général 40 %, distinct du recouvrement implicite du modèle). Cette courbe peut être envoyée au pricer CDS.
 
@@ -1213,11 +1270,11 @@ La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On
 
 ---
 
-## 20. Options de taux et de change
+## 21. Options de taux et de change
 
 *Fichiers : `qplat/pricers/capfloor.py`, `qplat/fx/options.py`, `qplat/fx/smile.py`, `api/routers/caps_fx.py`*
 
-### 20.1 Caps et floors
+### 21.1 Caps et floors
 
 Un cap de maturité $T$ et de fréquence $f$ est une série de caplets sur les périodes $(t_{i-1}, t_i]$, avec $t_i = i/f$. La première période, déjà fixée aujourd'hui, est exclue. Le taux forward simple est lu sur la courbe :
 
@@ -1258,7 +1315,7 @@ Le tableau des caplets donne pour chacun la contribution, le delta pour 1 bp de 
 - Les vols de caps ne sont pas diffusées gratuitement : elles sont saisies.
 - Les forwards sont tirés des courbes d'État (Treasury, BCE), pas des courbes swap SOFR / €STR.
 
-### 20.2 Options de change : Garman-Kohlhagen
+### 21.2 Options de change : Garman-Kohlhagen
 
 Le sous-jacent est le prix d'une unité de devise **étrangère** en devise **domestique** (EUR/USD : étranger EUR, domestique USD). Le taux étranger joue le rôle d'un dividende :
 
@@ -1274,7 +1331,7 @@ $r_d$ et $r_f$ sont les taux zéro-coupon USD et EUR à l'échéance. Les points
 - **Theta**.
 - **Deux rhos** : domestique $\varphi K T e^{-r_d T} N(\varphi d_2)$ et étranger $-\varphi S T e^{-r_f T} N(\varphi d_1)$.
 
-### 20.3 Le smile FX coté en delta
+### 21.3 Le smile FX coté en delta
 
 Pour chaque échéance, le marché des changes cote trois nombres.
 - **ATM** : la vol du straddle delta-neutre, de strike $K_{ATM} = F e^{\sigma_{ATM}^2 T / 2}$ (les deltas du call et du put s'annulent).
@@ -1293,7 +1350,7 @@ Au-delà d'un an, on prend le delta forward, sans le facteur $e^{r_f T}$.
 - les piliers sont $\sigma_{25C/P} = \sigma_{ATM} + BF_s \pm RR/2$, à leurs propres strikes 25 delta ;
 - le smile qu'ils définissent reprice exactement le strangle de marché.
 
-### 20.4 Interpolation Vanna-Volga
+### 21.4 Interpolation Vanna-Volga
 
 Avec les trois piliers $K_1 < K_2 = K_{ATM} < K_3$ (Castagna et Mercurio, 2007), le prix d'un call de strike $K$ est le prix Black-Scholes à la vol ATM, corrigé par le surcoût de marché des trois options piliers :
 
@@ -1311,11 +1368,11 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 
 ---
 
-## 21. Données et orchestration
+## 22. Données et orchestration
 
 *Fichiers : `qplat/data/*.py`, `scripts/refresh.py`*
 
-### 21.1 Sources
+### 22.1 Sources
 
 | Donnée | Source | Fréquence |
 |---|---|---|
@@ -1330,7 +1387,7 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 | Facteurs Fama-French quotidiens depuis 1926 (marché, SMB, HML, RMW, CMA, momentum, taux sans risque) | bibliothèque de Kenneth French | une fois par semaine |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
-### 21.2 Volatilité réalisée
+### 22.2 Volatilité réalisée
 
 Volatilité par défaut des pricers et vol 1 mois de la vue d'ensemble :
 
@@ -1340,7 +1397,7 @@ $$
 
 sur les 252 derniers rendements journaliers (1 an) ou les 21 derniers (1 mois).
 
-### 21.3 Rafraîchissement
+### 22.3 Rafraîchissement
 
 Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafraîchit que les sous-jacents dont le marché est ouvert :
 
@@ -1357,11 +1414,11 @@ Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 1
 
 ---
 
-## 22. Sentiment des news par IA
+## 23. Sentiment des news par IA
 
 *Fichier : `qplat/data/sentiment.py` — modèle `claude-opus-5-5`, effort `low`*
 
-### 22.1 Scoring
+### 23.1 Scoring
 
 Les titres non encore notés sont envoyés à Claude par paquets de 25, regroupés par sous-jacent. La consigne demande, pour chaque titre, l'impact probable sur le cours du sous-jacent dans les prochaines séances, vu par un actionnaire. Les titres sont traités comme des données, jamais comme des instructions. La réponse est contrainte par un schéma JSON :
 
@@ -1371,7 +1428,7 @@ Les titres non encore notés sont envoyés à Claude par paquets de 25, regroup�
 | `label` | very_negative, negative, neutral, positive ou very_positive |
 | `rationale` | une phrase de justification |
 
-### 22.2 Agrégation
+### 23.2 Agrégation
 
 Le sentiment d'un sous-jacent est une moyenne pondérée par la récence, avec une demi-vie de 3 jours. Pour un article d'âge $a$ jours et de score $s$ :
 
@@ -1383,9 +1440,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 23. Validation
+## 24. Validation
 
-*Dossier : `tests/` — 199 tests*
+*Dossier : `tests/` — 210 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1404,6 +1461,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
 | Risques | swap de variance en portefeuille (valeur nulle au strike juste, vega et gamma au départ, variance réalisée d'un swap en cours de vie, choc de vol) ; cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Théorie appliquée | exemple du cours (put 10,714 puis 11,820, Δ et B de chaque nœud, Q(S₂ = 96) = 0,46875), autofinancement à chaque nœud, absence d'arbitrage d < R < u, market maker couvert sur tous les chemins, convergence de l'arbre vers Black-Scholes, erreur de couverture en 1/√N (Derman-Kamal), indépendance du drift, P&L à vol réalisée ≠ implicite, backtest synthétique |
 | Recherche (Moreira-Muir) | rendement mensuel composé et variance réalisée, MCO Newey-West, même volatilité par construction, variance constante → stratégie = facteur, alpha positif sous régimes de volatilité et nul sans, version temps réel sans look-ahead, plafond de levier et coûts |
 | Allocation | minimum variance et moyenne-variance sans contrainte égaux aux formules fermées, frontière contrainte au-dessus de la frontière de Markowitz, tangence de Sharpe maximal (y compris la formule Σ⁻¹(μ − r)), long-only et plafonds respectés, LASSO inactif en long-only et actif avec shorts, coûts qui réduisent puis gèlent la rotation, Ledoit-Wolf défini positif et moins rétréci avec plus de données, conversion en euros, backtest sans look-ahead |
 | Swaps de variance | variance réalisée (convention sans moyenne), smile plat → σ², réplication du smile de Heston = variance espérée de Heston, convexité du swap de vol (Jensen et approximation), formule du VIX sur une chaîne Black-Scholes, troncature de la bande, interpolation à 30 jours, valeur d'un swap en cours de vie et vega |
@@ -1415,7 +1473,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 24. Limites et extensions possibles
+## 25. Limites et extensions possibles
 
 - **Volatilité** : Heston et volatilité locale sont calibrés séparément. Un modèle à volatilité locale-stochastique (LSV) combinerait les deux.
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
@@ -1425,12 +1483,15 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 25. Références
+## 26. Références
 
 - Black, F. & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*. Journal of Political Economy.
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.
 - Merton, R. (1974). *On the Pricing of Corporate Debt: The Risk Structure of Interest Rates*. Journal of Finance.
 - ISDA (2009). *ISDA CDS Standard Model* (conventions du « Big Bang » des CDS).
+- Derman, E. & Kamal, M. (1999). *When You Cannot Hedge Continuously: The Corrections of Black-Scholes*. Risk.
+- Carr, P. (2005). *FAQ's in Option Pricing Theory*. Journal of Derivatives.
+- Ahmad, R. & Wilmott, P. (2005). *Which Free Lunch Would You Like Today, Sir? Delta Hedging, Volatility Arbitrage and Optimal Portfolios*. Wilmott Magazine.
 - Moreira, A. & Muir, T. (2017). *Volatility-Managed Portfolios*. Journal of Finance.
 - Cederburg, S., O'Doherty, M., Wang, F. & Yan, X. (2020). *On the Performance of Volatility-Managed Portfolios*. Journal of Financial Economics.
 - Fama, E. & French, K. (1993, 2015). *Common Risk Factors in the Returns on Stocks and Bonds* ; *A Five-Factor Asset Pricing Model*. Journal of Financial Economics.

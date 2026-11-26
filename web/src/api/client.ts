@@ -919,3 +919,53 @@ export const researchApi = {
   },
   volManaged: (req: VolManagedRequest) => post<VolManagedDetail>("/api/research/vol-managed", req),
 };
+
+// ----------------------------------------------------------------------------- applied theory labs
+
+export interface TreeRequest {
+  S0: number; u: number; d: number; R: number; K: number; option_type: "call" | "put"; steps: number; american: boolean;
+  ask: number; path: string | null;
+}
+
+export interface TreeNodeOut {
+  step: number; ups: number; spot: number; value: number; payoff: number; delta: number | null; bond: number | null;
+  pi: number | null; exercised: boolean; parent_portfolio_value: number | null; path_count: number; probability: number;
+}
+
+export interface TreeResponse {
+  pi: number; price: number; direct_value: number | null; steps: number; nodes: TreeNodeOut[];
+  market_maker: {
+    path: string; ask: number; price: number; spread_kept: number; terminal_spot: number; liability: number; hedge_value: number; net: number;
+    steps: { step: number; move: string | null; spot: number; delta_before: number; delta_after: number; shares_traded: number;
+      trade_cash: number; cash_before: number; cash_after: number; option_value: number; hedge_value: number }[];
+  };
+}
+
+export interface HedgeRequest {
+  S0: number; K: number; T: number; r: number; q: number; sigma_implied: number; sigma_real: number; mu: number;
+  n_rebalance: number; n_paths: number; option_type: "call" | "put"; hedge_vol: "implied" | "realized";
+}
+
+export interface HedgeResponse {
+  premium: number; vega: number; gamma_theta_mean: number; locked: number; derman_kamal: number;
+  pnl: { mean: number; sd: number; p05: number; p95: number; histogram: { edges: number[]; counts: number[] } };
+  path: { spot: number[]; delta: number[]; pnl: number[]; gamma_theta: number[] };
+  convergence: { n: number; sd: number; mean: number; derman_kamal: number }[];
+  drift: { mu: number; mean: number }[];
+  mismatch: { sigma_real: number; implied_hedge_mean: number; implied_hedge_sd: number; realized_hedge_mean: number;
+    realized_hedge_sd: number; locked: number }[];
+}
+
+export interface HedgeBacktestResponse {
+  rate: number; dividend_yield: number;
+  rows: { date: string; spot: number; implied: number; realized: number; premium_pct: number; pnl_pct: number; gamma_theta_pct: number }[];
+  summary: { n: number; mean_pnl_pct: number; hit_rate: number; worst_pct: number; best_pct: number; corr_gamma_theta: number | null;
+    mean_implied: number; mean_realized: number };
+}
+
+export const theoryApi = {
+  tree: (req: TreeRequest) => post<TreeResponse>("/api/theory/tree", req),
+  hedge: (req: HedgeRequest) => post<HedgeResponse>("/api/theory/hedge", req),
+  hedgeBacktest: (horizon: number, option_type: "call" | "put") =>
+    request<HedgeBacktestResponse>(`/api/theory/hedge-backtest?horizon=${horizon}&option_type=${option_type}`),
+};

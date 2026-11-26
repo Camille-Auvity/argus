@@ -219,6 +219,15 @@ def test_research_endpoints(client):
     assert max(d["series"]["weight"]) <= 2 + 1e-9 and len(d["buckets"]) == 5
 
 
+def test_theory_endpoints(client):
+    t = client.post("/api/theory/tree", json={"path": "du"}).json()
+    assert t["price"] == pytest.approx(11.820, abs=1e-3) and t["market_maker"]["net"] == pytest.approx(0.0, abs=1e-9)
+    assert len(t["nodes"]) == 6
+    h = client.post("/api/theory/hedge", json={"n_paths": 2000, "n_rebalance": 26}).json()
+    assert len(h["convergence"]) == 6 and h["pnl"]["sd"] > 0 and len(h["path"]["spot"]) == 27
+    assert client.get("/api/theory/hedge-backtest").status_code == 409      # no SPY / VIX history here
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")
