@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { api, type AutocallRequest, type BarrierRequest } from "../api/client";
 import { EChart } from "../components/EChart";
-import { defaultMarket, GreeksTable, MarketForm } from "../components/pricing";
+import { defaultMarket, GreekCharts, GreeksTable, MarketForm } from "../components/pricing";
 import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { ccySymbol, num, pct } from "../lib/format";
 import { useDebounced, useTicker } from "../lib/hooks";
@@ -105,6 +105,13 @@ function BarrierDesk() {
         <Card title="Prix en fonction du spot">
           {data ? <EChart option={option} height={440} ariaLabel="Prix de la barrière selon le spot" /> : <Skeleton height={300} />}
         </Card>
+        {data && <GreekCharts profile={data.profile} keys={["delta", "gamma", "vega"]}
+          markers={[{ x: req.spot, name: "spot" }, { x: req.strike, name: "K" }, { x: req.barrier, name: "barrière", strong: true }]} />}
+        <InfoBox>
+          À la barrière, la valeur d'une <i>out</i> tombe au rebate : le delta y varie brutalement et le gamma explose (pic
+          positif pour un down-and-out call, très négatif pour un up-and-out call, dont la valeur s'effondre juste avant la touche).
+          Le vega peut changer de signe, car plus de volatilité augmente aussi la probabilité d'être désactivé.
+        </InfoBox>
       </div>
     </div>
   );

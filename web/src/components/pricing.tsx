@@ -1,7 +1,10 @@
-import type { Currency, MarketParams, MethodResult } from "../api/client";
+import { useCallback } from "react";
+import type { Currency, MarketParams, MethodResult, Profile } from "../api/client";
 import { num } from "../lib/format";
 import { useTicker } from "../lib/hooks";
-import { NumberField, Segmented } from "./ui";
+import type { ChartPalette } from "../lib/theme";
+import { EChart } from "./EChart";
+import { Card, NumberField, Segmented } from "./ui";
 
 /** Market inputs shared by every pricing screen (defaults come from the selected underlying). */
 export function defaultMarket(snapshot: ReturnType<typeof useTicker>["snapshot"]): MarketParams {
@@ -79,6 +82,46 @@ export function GreeksTable({ results, busy }: { results: MethodResult[]; busy?:
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export const GREEK_LABELS: Record<string, string> = {
+  price: "Prix", delta: "Delta", gamma: "Gamma", vega: "Vega (1 %)", theta: "Theta (1 jour)", rho: "Rho (1 %)",
+};
+
+export interface Marker {
+  x: number;
+  name: string;
+  strong?: boolean;
+}
+
+/** One small chart per Greek, as a function of spot, with vertical markers (spot, strike, barrier...). */
+export function GreekCharts({ profile, keys, markers, height = 280 }: {
+  profile: Profile; keys: string[]; markers: Marker[]; height?: number;
+}) {
+  const option = useCallback((key: string) => (p: ChartPalette) => ({
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 5) },
+    grid: { top: 16 },
+    xAxis: { type: "value", scale: true },
+    yAxis: { type: "value" },
+    series: [{
+      type: "line", name: GREEK_LABELS[key] ?? key, showSymbol: false, lineStyle: { width: 2 }, color: p.series[0],
+      data: profile.spots.map((s, i) => [s, profile.series[key][i]]),
+      markLine: {
+        symbol: "none", silent: true, label: { color: p.muted, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+        data: markers.map((m) => ({ xAxis: m.x, name: m.name, lineStyle: m.strong
+          ? { color: p.critical, type: "solid", width: 1.5 } : { color: p.muted, type: "dashed", width: 1 } })),
+      },
+    }],
+  }), [profile, markers]);
+  return (
+    <div className="grid cols-2">
+      {keys.map((k) => (
+        <Card key={k} title={`${GREEK_LABELS[k] ?? k} selon le spot`}>
+          <EChart option={option(k)} height={height} ariaLabel={`${GREEK_LABELS[k] ?? k} selon le spot`} />
+        </Card>
+      ))}
     </div>
   );
 }

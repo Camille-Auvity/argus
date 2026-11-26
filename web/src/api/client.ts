@@ -97,6 +97,60 @@ export interface BarrierResponse {
   profile: Profile;
 }
 
+export interface DigitalRequest extends MarketParams {
+  strike: number;
+  expiry: number;
+  option_type: "call" | "put";
+  kind: "cash-or-nothing" | "asset-or-nothing";
+  cash: number;
+  mc_paths: number;
+}
+
+export interface DigitalResponse {
+  results: MethodResult[];
+  vanilla_price: number;
+  call_spread: { width: number; price: number }[];
+  profile: Profile;
+}
+
+export interface AsianRequest extends MarketParams {
+  strike: number;
+  expiry: number;
+  n_fixings: number;
+  option_type: "call" | "put";
+  averaging: "arithmetic" | "geometric";
+  mc_paths: number;
+}
+
+export interface AsianResponse {
+  results: MethodResult[];
+  vanilla_price: number;
+  variance_reduction: number | null;
+  cv_beta: number | null;
+  convergence: { n_paths: number; plain: number; plain_se: number; cv: number; cv_se: number }[];
+  profile: Profile;
+}
+
+export interface CliquetRequest extends MarketParams {
+  maturity: number;
+  frequency: 1 | 2 | 4 | 12;
+  local_floor: number | null;
+  local_cap: number | null;
+  global_floor: number | null;
+  global_cap: number | null;
+  mc_paths: number;
+}
+
+export interface CliquetResponse {
+  results: MethodResult[];
+  reset_times: number[];
+  floor_probability: number;
+  cap_hit_rate: number | null;
+  floor_hit_rate: number | null;
+  histogram: { edges: number[]; counts: number[] };
+  vol_profile: Profile;
+}
+
 export interface AutocallRequest extends MarketParams {
   maturity: number;
   frequency: 1 | 2 | 4 | 12;
@@ -248,6 +302,9 @@ export const api = {
   vanillaProfile: (req: VanillaRequest) => post<Profile>("/api/price/vanilla/profile", req),
   barrier: (req: BarrierRequest) => post<BarrierResponse>("/api/price/barrier", req),
   autocall: (req: AutocallRequest) => post<AutocallResponse>("/api/price/autocall", req),
+  digital: (req: DigitalRequest) => post<DigitalResponse>("/api/price/digital", req),
+  asian: (req: AsianRequest) => post<AsianResponse>("/api/price/asian", req),
+  cliquet: (req: CliquetRequest) => post<CliquetResponse>("/api/price/cliquet", req),
   fairCoupon: (req: AutocallRequest) => post<{ coupon_rate: number | null }>("/api/price/autocall/fair-coupon", req),
   curve: (ccy: Currency) => request<CurveResponse>(`/api/curves/${ccy}`),
   curveHistory: (ccy: Currency) => request<CurveHistory>(`/api/curves/${ccy}/history`),
@@ -402,10 +459,33 @@ export interface ExoticsResponse {
   };
 }
 
+export interface PathDependentRequest {
+  digital: { expiry: number; strike_pct: number; option_type: "call" | "put" };
+  asian: { expiry: number; strike_pct: number; n_fixings: number; option_type: "call" | "put" };
+  cliquet: { maturity: number; frequency: 1 | 2 | 4 | 12; local_floor: number | null; local_cap: number | null;
+    global_floor: number | null; global_cap: number | null };
+  n_paths: number;
+}
+
+export interface ModelRow {
+  model: string;
+  price: number;
+  std_error: number | null;
+  elapsed_ms: number | null;
+}
+
+export interface PathDependentResponse {
+  digital: { atm_vol: number; strike_vol: number; rows: ModelRow[] };
+  asian: { atm_vol: number; rows: ModelRow[] };
+  cliquet: { atm_vol: number; rows: ModelRow[] };
+}
+
 export const modelsApi = {
   heston: (ticker: string) => request<HestonResponse>(`/api/models/${encodeURIComponent(ticker)}/heston`),
   surface: (ticker: string) => request<SurfaceResponse>(`/api/models/${encodeURIComponent(ticker)}/surface`),
   exotics: (ticker: string, req: ExoticsRequest) => post<ExoticsResponse>(`/api/models/${encodeURIComponent(ticker)}/exotics`, req),
+  pathDependent: (ticker: string, req: PathDependentRequest) =>
+    post<PathDependentResponse>(`/api/models/${encodeURIComponent(ticker)}/path-dependent`, req),
 };
 
 // ----------------------------------------------------------------------------- portfolio

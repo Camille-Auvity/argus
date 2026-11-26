@@ -93,6 +93,23 @@ def test_barrier_and_autocall(client):
     assert sum(a["redemption_probabilities"]) == pytest.approx(1.0)
 
 
+FLAT = {"spot": 100, "vol": 0.25, "dividend_yield": 0.01, "rate": {"mode": "flat", "flat_rate": 0.03}}
+
+
+def test_digital_asian_cliquet(client):
+    d = client.post("/api/price/digital", json={**FLAT, "strike": 100, "expiry": 1, "mc_paths": 20000}).json()
+    assert [r["method"] for r in d["results"]] == ["Closed form (BS)", "Monte Carlo"]
+    assert d["call_spread"][-1]["price"] == pytest.approx(d["results"][0]["greeks"]["price"], rel=1e-3)
+    assert set(d["profile"]["series"]) == {"price", "delta", "gamma", "vega"}
+    a = client.post("/api/price/asian", json={**FLAT, "strike": 100, "expiry": 1, "mc_paths": 20000}).json()
+    assert [r["method"] for r in a["results"]] == ["Lévy approximation", "Monte Carlo", "MC + control variate"]
+    assert a["variance_reduction"] > 50 and a["convergence"][-1]["n_paths"] == 20000
+    c = client.post("/api/price/cliquet", json={**FLAT, "mc_paths": 20000}).json()
+    mc = c["results"][0]["greeks"]
+    assert mc["delta"] == pytest.approx(0.0, abs=1e-9) and mc["vega"] < 0
+    assert sum(c["histogram"]["counts"]) == 20000 and len(c["vol_profile"]["spots"]) == 12
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

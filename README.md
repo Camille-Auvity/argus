@@ -1,6 +1,6 @@
 # qplat — Plateforme quant de pricing
 
-Plateforme locale en Python, couvrant les marchés US et européens. Elle price des options vanille et américaines, des obligations, des futures, des options à barrière et des autocalls. Elle affiche prix, grecques, smile de volatilité et courbe de taux dans une application web (FastAPI + React), et y ajoute un sentiment de marché calculé par Claude à partir des news.
+Plateforme locale en Python, couvrant les marchés US et européens. Elle price des options vanille et américaines, des obligations, des futures, des options à barrière, des digitales, des asiatiques, des cliquets et des autocalls. Elle affiche prix, grecques, smile de volatilité et courbe de taux dans une application web (FastAPI + React), et y ajoute un sentiment de marché calculé par Claude à partir des news.
 
 ## Démarrage
 
@@ -66,7 +66,7 @@ Le site est alors généré dans `web/dist/`, prévu pour être servi sous `/arg
 
 ## Documentation
 
-La documentation technique complète, avec toutes les formules, est dans [docs/METHODOLOGIE.md](docs/METHODOLOGIE.md). Elle couvre les conventions, les courbes et le bootstrap, les obligations et futures, Black-Scholes et ses grecques, l'arbre CRR, Monte Carlo et Longstaff-Schwartz, les barrières (Reiner-Rubinstein, BGK), les autocalls, le smile, les données et le sentiment. Le même fichier s'affiche dans la plateforme (menu « Documentation »), avec les formules mises en forme.
+La documentation technique complète, avec toutes les formules, est dans [docs/METHODOLOGIE.md](docs/METHODOLOGIE.md). Elle couvre les conventions, les courbes et le bootstrap, les obligations et futures, Black-Scholes et ses grecques, l'arbre CRR, Monte Carlo et Longstaff-Schwartz, les barrières (Reiner-Rubinstein, BGK), les autocalls, les digitales, asiatiques et cliquets, le smile, les données et le sentiment. Le même fichier s'affiche dans la plateforme (menu « Documentation »), avec les formules mises en forme.
 
 ## Architecture : 4 couches découplées
 
@@ -118,6 +118,9 @@ for pricer in (BlackScholesPricer(), BinomialTreePricer(), MonteCarloPricer()):
 | Obligations | prix plein/pied de coupon, couru, YTM, durations, convexité, DV01 |
 | Futures | future action (cost of carry), future obligataire mono-livrable avec facteur de conversion |
 | Barrière | Reiner-Rubinstein fermé (+ correction Broadie-Glasserman-Kou en observation discrète), Monte Carlo (pont brownien en continu) |
+| Digitale | cash- et asset-or-nothing fermés, Monte Carlo, réplication par call spread, correction de smile |
+| Asiatique | géométrique fermée exacte, approximation de Lévy (arithmétique), Monte Carlo avec la géométrique en variable de contrôle |
+| Cliquet | floor/cap locaux et globaux : somme de call spreads forward en formule fermée, Monte Carlo avec floor global |
 | Autocall Phoenix/Athena | Monte Carlo : coupon mémoire, probas de rappel, proba de perte, durée de vie espérée, coupon au pair |
 
 **Courbe de taux.** Les instruments acceptent `rate=0.04` ou `rate=<RateCurve>`. Black-Scholes utilise le taux zéro à l'échéance. L'arbre et les Monte Carlo utilisent les forwards de la courbe pas à pas. Rho correspond à un shift parallèle de la courbe.
@@ -126,7 +129,7 @@ for pricer in (BlackScholesPricer(), BinomialTreePricer(), MonteCarloPricer()):
 
 - **Heston** : pricer semi-analytique (formule de Lewis), calibré en environ 0,3 s sur la partie liquide du smile (erreur moyenne de l'ordre d'un point de vol sur SPY), et simulation pour les exotiques.
 - **Surface SVI et Dupire** : une tranche SVI par échéance, avec des pénalités de non-arbitrage (papillon et calendrier), une surface implicite interpolée en variance totale, puis la volatilité locale de Gatheral-Dupire et sa simulation.
-- **Exotiques comparés** : la même barrière et le même autocall pricés sous Black-Scholes, Heston et volatilité locale, pour mesurer le risque de modèle.
+- **Exotiques comparés** : la même barrière, le même autocall, la même digitale, asiatique et cliquet pricés sous Black-Scholes, Heston et volatilité locale, pour mesurer le risque de modèle.
 - **Portefeuille** : book multi-actifs en euros (actions, options, barrières, autocalls, obligations, futures) avec :
   - grecques agrégées ;
   - stress tests actions × vol et taux, en revalorisation complète ;
@@ -159,6 +162,7 @@ Elle ouvre la boîte noire de chaque méthode. Les chiffres viennent des mêmes 
 - Convergence de l'arbre et du Monte Carlo vers Black-Scholes, y compris avec une courbe non plate.
 - Put américain Longstaff-Schwartz (2001) : S=36, K=40 → 4,48 par l'arbre et par LSM.
 - Barrières : les 24 valeurs de la table de Haug retrouvées à 1e-4, parité in/out, MC contre formule fermée.
+- Digitales, asiatiques, cliquets : valeurs de Haug, parités, limite de Kemna-Vorst, variable de contrôle, formule fermée du cliquet contre Monte Carlo, delta nul du cliquet.
 - Bootstrap : chaque quote est repricée à 1e-10, une obligation au pair price à 100.
 - Autocall : cas dégénérés (zéro-coupon, forward prépayé, rappel certain), signes des grecques.
 - Données : aller-retour SQLite, idempotence des news, pipeline de sentiment avec un client Claude simulé.

@@ -83,6 +83,60 @@ class BarrierResponse(BaseModel):
     profile: ProfileResponse
 
 
+class DigitalRequest(MarketParams):
+    strike: float = Field(gt=0)
+    expiry: float = Field(gt=0, le=30)
+    option_type: Literal["call", "put"] = "call"
+    kind: Literal["cash-or-nothing", "asset-or-nothing"] = "cash-or-nothing"
+    cash: float = Field(1.0, gt=0)
+    mc_paths: int = Field(100_000, ge=1_000, le=500_000)
+
+
+class DigitalResponse(BaseModel):
+    results: list[MethodResult]
+    vanilla_price: float
+    call_spread: list[dict]   # [{width, price}]: digital = limit of a tight call spread
+    profile: ProfileResponse  # price / delta / gamma / vega vs spot (closed form)
+
+
+class AsianRequest(MarketParams):
+    strike: float = Field(gt=0)
+    expiry: float = Field(gt=0, le=10)
+    n_fixings: int = Field(12, ge=1, le=260)
+    option_type: Literal["call", "put"] = "call"
+    averaging: Literal["arithmetic", "geometric"] = "arithmetic"
+    mc_paths: int = Field(50_000, ge=1_000, le=500_000)
+
+
+class AsianResponse(BaseModel):
+    results: list[MethodResult]
+    vanilla_price: float
+    variance_reduction: Optional[float] = None
+    cv_beta: Optional[float] = None
+    convergence: list[dict]   # [{n_paths, plain, plain_se, cv, cv_se}]
+    profile: ProfileResponse
+
+
+class CliquetRequest(MarketParams):
+    maturity: float = Field(2.0, gt=0, le=10)
+    frequency: Literal[1, 2, 4, 12] = 4
+    local_floor: Optional[float] = Field(-0.05, ge=-1)
+    local_cap: Optional[float] = Field(0.05, ge=-1)
+    global_floor: Optional[float] = Field(0.0)
+    global_cap: Optional[float] = None
+    mc_paths: int = Field(50_000, ge=1_000, le=500_000)
+
+
+class CliquetResponse(BaseModel):
+    results: list[MethodResult]
+    reset_times: list[float]
+    floor_probability: float          # P(global floor binds)
+    cap_hit_rate: Optional[float]     # share of periods capped
+    floor_hit_rate: Optional[float]   # share of periods floored
+    histogram: dict                   # {edges, counts} of the payoff
+    vol_profile: ProfileResponse      # price vs flat vol (x = vol)
+
+
 class AutocallRequest(MarketParams):
     maturity: float = Field(5.0, gt=0, le=15)
     frequency: Literal[1, 2, 4, 12] = 4

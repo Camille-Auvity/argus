@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from api import services
 from qplat import config
 from qplat.analytics import compute_smile
-from qplat.models.market_models import compare_exotics, fit_heston, fit_surface, surface_payload
+from qplat.models.market_models import compare_exotics, compare_path_dependent, fit_heston, fit_surface, surface_payload
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -127,3 +127,51 @@ def exotics(ticker: str, req: ExoticsRequest):
     """The same barrier and autocall priced under flat BS vol, Heston and Dupire local vol."""
     asof = _chain_version(ticker)
     return _exotics(ticker, asof, req.model_dump_json())
+
+
+class DigitalSpec(BaseModel):
+    expiry: float = Field(0.5, gt=0.05, le=3)
+    strike_pct: float = Field(1.0, gt=0)
+    option_type: Literal["call", "put"] = "call"
+
+
+class AsianSpec(BaseModel):
+    expiry: float = Field(1.0, gt=0.05, le=3)
+    strike_pct: float = Field(1.0, gt=0)
+    n_fixings: int = Field(12, ge=1, le=260)
+    option_type: Literal["call", "put"] = "call"
+
+
+class CliquetSpec(BaseModel):
+    maturity: float = Field(2.0, gt=0.25, le=5)
+    frequency: Literal[1, 2, 4, 12] = 4
+    local_floor: Optional[float] = Field(-0.05, ge=-1)
+    local_cap: Optional[float] = Field(0.05, ge=-1)
+    global_floor: Optional[float] = 0.0
+    global_cap: Optional[float] = None
+
+
+class PathDependentRequest(BaseModel):
+    digital: DigitalSpec = DigitalSpec()
+    asian: AsianSpec = AsianSpec()
+    cliquet: CliquetSpec = CliquetSpec()
+    n_paths: int = Field(40_000, ge=5_000, le=200_000)
+
+
+@lru_cache(maxsize=32)
+def _path_dependent(ticker: str, asof: str, payload: str):
+    req = PathDependentRequest.model_validate_json(payload)
+    _, spot, q, curve = _market(ticker, asof)
+    d, a = req.digital, req.asian
+    return compare_path_dependent(
+        spot, q, curve, _heston(ticker, asof).result.params, _surface(ticker, asof),
+        {"expiry": d.expiry, "strike": d.strike_pct * spot, "option_type": d.option_type},
+        {"expiry": a.expiry, "strike": a.strike_pct * spot, "n_fixings": a.n_fixings, "option_type": a.option_type},
+        req.cliquet.model_dump(), n_paths=req.n_paths)
+
+
+@router.post("/{ticker}/path-dependent")
+def path_dependent(ticker: str, req: PathDependentRequest):
+    """Digital, Asian and cliquet priced under flat BS vol, Heston and Dupire local vol."""
+    asof = _chain_version(ticker)
+    return _path_dependent(ticker, asof, req.model_dump_json())

@@ -144,7 +144,8 @@ def test_models_api_on_synthetic_chain(tmp_path):
     db.upsert_options(rows)
     original = services.get_db
     services.get_db = lambda: db
-    for f in (models_router._market, models_router._heston, models_router._surface, models_router._exotics):
+    for f in (models_router._market, models_router._heston, models_router._surface, models_router._exotics,
+                  models_router._path_dependent):
         f.cache_clear()
     try:
         client = TestClient(app)
@@ -157,7 +158,14 @@ def test_models_api_on_synthetic_chain(tmp_path):
         e = client.post("/api/models/SYN/exotics", json={"n_paths": 5000})
         assert e.status_code == 200, e.text
         assert len(e.json()["autocall"]["rows"]) == 3
+        pd_ = client.post("/api/models/SYN/path-dependent", json={"n_paths": 5000})
+        assert pd_.status_code == 200, pd_.text
+        dig = {r["model"]: r["price"] for r in pd_.json()["digital"]["rows"]}
+        # the market is Heston: the smile-consistent digital must agree with Heston's own digital
+        assert dig["BS + pente du smile"] == pytest.approx(dig["Heston (formule de Lewis)"], abs=1.5)
+        assert len(pd_.json()["cliquet"]["rows"]) == 3
     finally:
         services.get_db = original
-        for f in (models_router._market, models_router._heston, models_router._surface, models_router._exotics):
+        for f in (models_router._market, models_router._heston, models_router._surface, models_router._exotics,
+                  models_router._path_dependent):
             f.cache_clear()

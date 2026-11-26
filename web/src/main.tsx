@@ -25,14 +25,21 @@ const Rates = lazy(() => import("./pages/Rates"));
 const Sentiment = lazy(() => import("./pages/Sentiment"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const Models = lazy(() => import("./pages/Models"));
+const Exotics = lazy(() => import("./pages/Exotics"));
+const exoticPage = (name: "DigitalPage" | "AsianPage" | "CliquetPage") =>
+  lazy(() => import("./pages/Exotics").then((m) => ({ default: m[name] })));
+const DigitalPage = exoticPage("DigitalPage");
+const AsianPage = exoticPage("AsianPage");
+const CliquetPage = exoticPage("CliquetPage");
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
-const modelPage = (name: "HestonPage" | "SurfacePage" | "ExoticsPage") =>
+const modelPage = (name: "HestonPage" | "SurfacePage" | "ExoticsPage" | "PathDependentPage") =>
   lazy(() => import("./pages/Models").then((m) => ({ default: m[name] })));
 const HestonPage = modelPage("HestonPage");
 const SurfacePage = modelPage("SurfacePage");
 const ExoticsPage = modelPage("ExoticsPage");
+const PathDependentPage = modelPage("PathDependentPage");
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
@@ -64,6 +71,13 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="heston" element={<HestonPage />} />
                     <Route path="surface" element={<SurfacePage />} />
                     <Route path="exotiques" element={<ExoticsPage />} />
+                    <Route path="path-dependent" element={<PathDependentPage />} />
+                  </Route>
+                  <Route path="/exotics" element={<Exotics />}>
+                    <Route index element={<Navigate to="digitale" replace />} />
+                    <Route path="digitale" element={<DigitalPage />} />
+                    <Route path="asiatique" element={<AsianPage />} />
+                    <Route path="cliquet" element={<CliquetPage />} />
                   </Route>
                   <Route path="/structured" element={<Structured />} />
                   <Route path="/rates" element={<Rates />} />

@@ -500,7 +500,105 @@ Une **Athena** correspond au cas $B_c = B_{ac}$.
 
 ---
 
-## 11. Smile de volatilité implicite
+## 11. Options digitales, asiatiques et cliquets
+
+*Fichiers : `qplat/instruments/exotics.py`, `qplat/pricers/exotics.py`*
+
+Les trois produits exposent la même interface Monte Carlo : des dates d'observation et un payoff calculé sur les spots simulés à ces dates. Un seul moteur (`MonteCarloExoticPricer`) les price donc sous Black-Scholes, Heston ou volatilité locale. Comme partout, les grecques sont obtenues par différences finies (section 9), avec des nombres aléatoires communs pour le Monte Carlo.
+
+### 11.1 Digitales
+
+Une digitale **cash-or-nothing** paie un montant $Q$ si l'option finit dans la monnaie ; une **asset-or-nothing** paie $S_T$. Avec $d_{1,2}$ de Black-Scholes :
+
+$$
+\text{CoN}_{call} = Q\, e^{-rT} N(d_2), \qquad \text{CoN}_{put} = Q\, e^{-rT} N(-d_2)
+$$
+
+$$
+\text{AoN}_{call} = S e^{-qT} N(d_1), \qquad \text{AoN}_{put} = S e^{-qT} N(-d_1)
+$$
+
+**Relations vérifiées par les tests** : $\text{CoN}_{call} + \text{CoN}_{put} = Q e^{-rT}$, et une vanille se décompose en $C = \text{AoN}_{call} - K \cdot \text{CoN}_{call}/Q$.
+
+**Réplication par call spread.** Une digitale cash est la dérivée du prix du call par rapport au strike :
+
+$$
+\text{CoN}_{call} = -Q\, \frac{\partial C}{\partial K} = \lim_{w \to 0} \frac{Q}{w} \left[ C(K - w/2) - C(K + w/2) \right]
+$$
+
+L'interface affiche la convergence du call spread vers la digitale quand sa largeur $w$ diminue.
+
+**Grecques.** Le delta $Q e^{-rT} n(d_2) / (S\sigma\sqrt T)$ devient un pic autour de $K$ près de l'échéance, et le gamma change de signe en $K$. Le vega, $-Q e^{-rT} n(d_2)\, d_1 / \sigma$, est négatif quand le call est dans la monnaie : plus de volatilité éloigne la probabilité de finir au-dessus du strike de 1.
+
+**Correction de smile.** Avec un smile $\sigma(K)$, le prix du call est $C(K) = C_{BS}(K, \sigma(K))$. En dérivant :
+
+$$
+\text{CoN}_{call} = Q \left[ D_{BS}(\sigma(K)) - \mathcal{V}_{BS}(K)\, \frac{\partial \sigma}{\partial K} \right]
+$$
+
+Avec un skew négatif ($\partial\sigma/\partial K < 0$), le call digital est plus cher que le prix Black-Scholes. Le calcul est fait par différence centrée de $C(K)$ sur la surface SVI. Sous Heston, la digitale est la même différence appliquée aux prix de la formule de Lewis.
+
+### 11.2 Options asiatiques
+
+Payoff $(\varphi(A - K))^+$ payé au dernier fixing, où $A$ est la moyenne arithmétique ou géométrique de $S$ sur $n$ fixings équirépartis $t_1 < \dots < t_n$.
+
+**Moyenne géométrique : formule fermée exacte.** Avec $g_i = \int_0^{t_i} (f(s) - q)\,ds = -\ln P(0, t_i) - q t_i$, $\ln G = \frac1n \sum_i \ln S_{t_i}$ est gaussien :
+
+$$
+m = \ln S + \frac1n \sum_i \left( g_i - \tfrac12 \sigma^2 t_i \right), \qquad v = \frac{\sigma^2}{n^2} \sum_{i,j} \min(t_i, t_j)
+$$
+
+$$
+V_{geo} = P(0, t_n) \cdot \varphi \left[ e^{m + v/2} N(\varphi d_1) - K N(\varphi d_2) \right], \qquad d_1 = \frac{m - \ln K + v}{\sqrt v}, \quad d_2 = d_1 - \sqrt v
+$$
+
+Avec un seul fixing, on retrouve Black-Scholes. Quand $n \to \infty$, on retrouve la formule continue de Kemna-Vorst (vol $\sigma/\sqrt3$).
+
+**Moyenne arithmétique : approximation de Lévy (1992).** La somme de log-normales n'est pas log-normale. On l'approche par une log-normale de mêmes deux premiers moments. Avec $F_i = S e^{g_i}$ :
+
+$$
+M_1 = \frac1n \sum_i F_i, \qquad M_2 = \frac{1}{n^2} \sum_{i,j} F_i F_j\, e^{\sigma^2 \min(t_i, t_j)}
+$$
+
+$$
+V_{Lévy} = P(0, t_n) \cdot \text{Black}\left(M_1, K, \ \Sigma^2 = \ln(M_2 / M_1^2)\right)
+$$
+
+L'approximation surévalue légèrement le prix quand la volatilité est forte (queue droite trop épaisse).
+
+**Monte Carlo avec variable de contrôle.** L'asiatique géométrique $Y$, calculé sur les mêmes trajectoires que l'arithmétique $X$, a un prix exact $\mathbb{E}[Y]$ et lui est très corrélé :
+
+$$
+\hat V = \overline{X} - \beta \left( \overline{Y} - \mathbb{E}[Y] \right), \qquad \beta = \frac{\text{Cov}(X, Y)}{\text{Var}(Y)}
+$$
+
+La variance est divisée par $1/(1 - \rho_{XY}^2)$, typiquement plusieurs centaines pour un call ATM : à précision égale, il faut des centaines de fois moins de trajectoires. Les paires antithétiques sont moyennées avant l'estimation de $\beta$.
+
+**Grecques.** Le delta d'un call asiatique est plus faible que celui de la vanille, et le vega aussi : la moyenne a une volatilité effective réduite (environ $\sigma/\sqrt3$ en continu).
+
+### 11.3 Cliquets
+
+Dates de reset $t_0 = 0 < t_1 < \dots < t_n$, rendements de période $R_i = S_{t_i} / S_{t_{i-1}} - 1$, floor et cap locaux $f, c$, floor et cap globaux $F, C$ (chacun optionnel) :
+
+$$
+\text{payoff} = N \cdot \min\left( \max\left( \sum_{i=1}^n \min(\max(R_i, f), c),\ F \right),\ C \right) \quad \text{payé en } t_n
+$$
+
+**Sans bornes globales : formule fermée.** Sous Black-Scholes, $1 + R_i$ est log-normal de moyenne $\Phi_i = \frac{P(0,t_{i-1})}{P(0,t_i)} e^{-q(t_i - t_{i-1})}$ et de variance $\sigma^2 (t_i - t_{i-1})$, indépendamment du niveau de $S$. Chaque période est un call spread à départ différé :
+
+$$
+\mathbb{E}[\min(\max(R_i, f), c)] = f + C_{Bl}(\Phi_i, 1 + f) - C_{Bl}(\Phi_i, 1 + c)
+$$
+
+($C_{Bl}$ : call de Black non actualisé), d'où $V = N\, P(0, t_n) \sum_i \mathbb{E}[\cdot]$. Le floor global est une option sur la somme : il faut le Monte Carlo.
+
+**Grecques.** Le payoff ne dépend que de rendements : **delta et gamma sont nuls** sous Black-Scholes, et le moteur les retrouve exactement (zéro numérique). Le vega est souvent **négatif** : avec des caps locaux, plus de volatilité fait perdre plus de performance sur les périodes cappées qu'elle n'en fait gagner. Le graphique du prix en fonction de la volatilité montre ce profil, parfois non monotone (le floor global, lui, est long vol).
+
+**Risque de modèle.** Le prix ne dépend que des **volatilités forward** et du smile forward. La volatilité locale, calibrée sur les vanilles d'aujourd'hui, produit un skew forward qui s'aplatit. Heston conserve un skew forward proche du skew actuel. Les deux modèles reproduisent les mêmes vanilles mais donnent des prix de cliquet différents : c'est l'exemple classique du risque de modèle (onglet *Modèles de volatilité → Digitale, asiatique, cliquet*).
+
+---
+
+## 12. Smile de volatilité implicite
 
 *Fichiers : `qplat/analytics/smile.py`, `qplat/data/market.py`*
 
@@ -513,11 +611,11 @@ Une **Athena** correspond au cas $B_c = B_{ac}$.
 
 ---
 
-## 12. Modèle de Heston (volatilité stochastique)
+## 13. Modèle de Heston (volatilité stochastique)
 
 *Fichiers : `qplat/models/heston.py`, `qplat/models/market_models.py`*
 
-### 12.1 Dynamique
+### 13.1 Dynamique
 
 $$
 \frac{dS_t}{S_t} = \big(f(t) - q\big)\,dt + \sqrt{v_t}\, dW^1_t, \qquad dv_t = \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\, dW^2_t, \qquad d\langle W^1, W^2\rangle_t = \rho\, dt
@@ -533,7 +631,7 @@ $$
 
 La **condition de Feller** $2\kappa\theta > \sigma^2$ garantit que la variance ne touche jamais zéro. Elle est souvent violée par les calibrations sur actions.
 
-### 12.2 Fonction caractéristique
+### 13.2 Fonction caractéristique
 
 On note $X_T = \ln(S_T/S_0) - (r - q)T$. Sous la forme « little Heston trap » (Albrecher et al., 2007), qui évite les discontinuités du logarithme complexe :
 
@@ -549,7 +647,7 @@ $$
 \varphi_T(u) = \mathbb{E}\big[e^{iuX_T}\big] = \exp\big(C(u) + D(u)\, v_0\big)
 $$
 
-### 12.3 Prix européen : formule de Lewis
+### 13.3 Prix européen : formule de Lewis
 
 $$
 C(K) = S e^{-qT} - \frac{\sqrt{SK}\, e^{-(r+q)T/2}}{\pi} \int_0^{\infty} \mathrm{Re}\!\left[e^{iux}\, \varphi_T\!\left(u - \tfrac{i}{2}\right)\right] \frac{du}{u^2 + 1/4}, \qquad x = \ln\frac{S}{K} + (r-q)T
@@ -559,7 +657,7 @@ L'intégrale est calculée par quadrature de Gauss-Legendre (400 nœuds) sur $[0
 
 **Vérifications** : avec une vol de vol quasi nulle et $v_0 = \theta$, le prix redonne Black-Scholes à $10^{-5}$ près. Il concorde aussi avec la simulation Monte Carlo de Heston.
 
-### 12.4 Calibration
+### 13.4 Calibration
 
 Points utilisés : la partie liquide du smile, soit les échéances de 14 jours ou plus, la zone $|\ln(K/S)| \le \max(0{,}08\,;\,0{,}35\sqrt{T})$, et au plus 25 options par échéance.
 
@@ -573,7 +671,7 @@ Bornes : $v_0, \theta \in [10^{-4}, 1{,}5]$, $\kappa \in [0{,}05, 15]$, $\sigma 
 
 La qualité affichée (RMSE et erreur maximale) est l'écart **exact** de volatilité implicite après inversion des prix du modèle. Sur des données synthétiques, la calibration retrouve les paramètres à $10^{-3}$ près en relatif.
 
-### 12.5 Simulation (exotiques sous Heston)
+### 13.5 Simulation (exotiques sous Heston)
 
 Schéma d'Euler à troncature complète sur $(\ln S, v)$, avec 252 pas par an et des variables antithétiques. On note $v^+ = \max(v, 0)$ :
 
@@ -587,11 +685,11 @@ $$
 
 ---
 
-## 13. Surface de volatilité SVI et volatilité locale de Dupire
+## 14. Surface de volatilité SVI et volatilité locale de Dupire
 
 *Fichier : `qplat/models/svi.py`*
 
-### 13.1 SVI par échéance
+### 14.1 SVI par échéance
 
 On note $k = \ln(K/F_T)$ la log-moneyness par rapport au forward, et $w(k) = \sigma_{imp}^2(k)\,T$ la variance implicite totale. La paramétrisation SVI « raw » de Gatheral :
 
@@ -610,11 +708,11 @@ $$
 
 - **Calendrier** : $w_{T_{i+1}}(k) \ge w_{T_i}(k)$. Les échéances sont ajustées par maturité croissante, chacune contrainte à rester au-dessus de la précédente.
 
-### 13.2 Interpolation entre échéances
+### 14.2 Interpolation entre échéances
 
 La variance totale est interpolée linéairement en $T$ à $k$ fixé, ce qui préserve l'absence d'arbitrage calendaire. Avant la première échéance et après la dernière, la volatilité implicite est prolongée à plat.
 
-### 13.3 Volatilité locale de Dupire
+### 14.3 Volatilité locale de Dupire
 
 La volatilité locale est l'unique fonction $\sigma_{loc}(S, t)$ telle que $dS/S = (r - q)\,dt + \sigma_{loc}\,dW$ reproduise tous les prix européens. Exprimée en variance totale (Gatheral, *The Volatility Surface*, éq. 1.10) :
 
@@ -624,7 +722,7 @@ $$
 
 $w'$ et $w''$ sont analytiques en SVI, et $\partial w/\partial T$ vient de l'interpolation entre échéances. Là où $g \le 0$ ou $\partial w / \partial T \le 0$ (arbitrage), la volatilité locale n'est pas définie et vaut NaN.
 
-### 13.4 Simulation sous volatilité locale
+### 14.4 Simulation sous volatilité locale
 
 On précalcule $\sigma_{loc}$ sur une grille de 60 maturités × 81 moneyness ($k \in [-1, 1]$), interpolée bilinéairement. Les trous d'arbitrage sont comblés par la volatilité implicite, et les valeurs bornées entre 1 % et 300 %. Schéma d'Euler sur $\ln S$ avec 252 pas par an :
 
@@ -634,7 +732,7 @@ $$
 
 **Vérification** : une surface plate redonne une volatilité locale plate, et le Monte Carlo sous volatilité locale reprice les vanilles du marché à environ 1 % près.
 
-### 13.5 Exotiques : comparaison des modèles
+### 14.5 Exotiques : comparaison des modèles
 
 Le même produit (barrière en observation quotidienne, autocall) est pricé sous trois hypothèses :
 - **Black-Scholes**, avec la vol implicite ATM de la surface à la maturité du produit ;
@@ -643,13 +741,15 @@ Le même produit (barrière en observation quotidienne, autocall) est pricé sou
 
 Les trois modèles s'accordent sur les vanilles ATM. L'écart de prix entre eux mesure donc le **risque de modèle** dû au smile et à la dynamique de la volatilité. Un autocall avec protection basse est en général surévalué par une vol plate, qui ignore le skew baissier.
 
+La même comparaison existe pour la digitale (avec en plus le prix « BS + pente du smile » et la formule de Lewis sous Heston), l'asiatique et le cliquet (section 11).
+
 ---
 
-## 14. Portefeuille et gestion des risques
+## 15. Portefeuille et gestion des risques
 
 *Fichiers : `qplat/risk/portfolio.py`, `api/routers/portfolio.py`*
 
-### 14.1 Positions et valorisation
+### 15.1 Positions et valorisation
 
 Types de positions : actions, options européennes ou américaines, barrières, autocalls, obligations, futures sur indices. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
@@ -668,7 +768,7 @@ Chaque position est valorisée avec le pricer adapté :
 
 Les montants sont convertis en **euros**, avec le dernier taux EUR/USD stocké en base. Les positions sont enregistrées dans la table SQLite `positions` (conditions du contrat en JSON, prix d'entrée par unité).
 
-### 14.2 Sensibilités agrégées
+### 15.2 Sensibilités agrégées
 
 Pour une position de quantité $Q$ et de multiplicateur $M$, avec $fx$ le taux de change vers l'euro :
 
@@ -678,14 +778,14 @@ $$
 
 $\Gamma_{1\%}$ est le P&L du terme de gamma pour un mouvement de 1 % du sous-jacent. Le vega est donné pour 1 point de vol, le theta par jour, le rho pour 1 % de taux, et la DV01 pour les obligations. Les agrégats sont présentés par sous-jacent, par book et par type d'instrument.
 
-### 14.3 Stress tests
+### 15.3 Stress tests
 
 Chaque scénario est une **revalorisation complète** du book :
 
 - **Grille actions × volatilité** : chocs relatifs sur tous les sous-jacents de −20 % à +20 %, croisés avec des chocs absolus de vol de −5 à +10 points.
 - **Chocs de taux** : translations parallèles de ±50 et ±100 points de base, appliquées à toutes les courbes.
 
-### 14.4 Value at Risk et Expected Shortfall (1 jour)
+### 15.4 Value at Risk et Expected Shortfall (1 jour)
 
 **VaR historique.** On rejoue les rendements journaliers réels, sur les dates communes à tous les sous-jacents du book (environ 2 ans). Le P&L de chaque scénario $s$ est approché à l'ordre 2 (delta-gamma) :
 
@@ -705,7 +805,7 @@ $$
 
 La VaR couvre le risque actions. Les risques de taux et de volatilité sont mesurés par les stress tests.
 
-### 14.5 Explication du P&L
+### 15.5 Explication du P&L
 
 On compare la revalorisation complète à la clôture précédente et au dernier cours, en décomposant pour chaque position :
 
@@ -719,11 +819,11 @@ Un résiduel faible valide les sensibilités. Un résiduel important signale des
 
 ---
 
-## 15. Données et orchestration
+## 16. Données et orchestration
 
 *Fichiers : `qplat/data/*.py`, `scripts/refresh.py`*
 
-### 15.1 Sources
+### 16.1 Sources
 
 | Donnée | Source | Fréquence |
 |---|---|---|
@@ -735,7 +835,7 @@ Un résiduel faible valide les sensibilités. Un résiduel important signale des
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
-### 15.2 Volatilité réalisée
+### 16.2 Volatilité réalisée
 
 Volatilité par défaut des pricers et vol 1 mois de la vue d'ensemble :
 
@@ -745,7 +845,7 @@ $$
 
 sur les 252 derniers rendements journaliers (1 an) ou les 21 derniers (1 mois).
 
-### 15.3 Rafraîchissement
+### 16.3 Rafraîchissement
 
 Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafraîchit que les sous-jacents dont le marché est ouvert :
 
@@ -762,11 +862,11 @@ Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 1
 
 ---
 
-## 16. Sentiment des news par IA
+## 17. Sentiment des news par IA
 
 *Fichier : `qplat/data/sentiment.py` — modèle `claude-opus-5-5`, effort `low`*
 
-### 16.1 Scoring
+### 17.1 Scoring
 
 Les titres non encore notés sont envoyés à Claude par paquets de 25, regroupés par sous-jacent. La consigne demande, pour chaque titre, l'impact probable sur le cours du sous-jacent dans les prochaines séances, vu par un actionnaire. Les titres sont traités comme des données, jamais comme des instructions. La réponse est contrainte par un schéma JSON :
 
@@ -776,7 +876,7 @@ Les titres non encore notés sont envoyés à Claude par paquets de 25, regroup�
 | `label` | very_negative, negative, neutral, positive ou very_positive |
 | `rationale` | une phrase de justification |
 
-### 16.2 Agrégation
+### 17.2 Agrégation
 
 Le sentiment d'un sous-jacent est une moyenne pondérée par la récence, avec une demi-vie de 3 jours. Pour un article d'âge $a$ jours et de score $s$ :
 
@@ -788,9 +888,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 17. Validation
+## 18. Validation
 
-*Dossier : `tests/` — 111 tests*
+*Dossier : `tests/` — 133 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -800,6 +900,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Convergence | arbre et Monte Carlo vers Black-Scholes, y compris avec une courbe non plate |
 | Longstaff-Schwartz (2001) | put américain S = 36, K = 40, r = 6 %, σ = 20 %, T = 1 : environ 4,48 par l'arbre et par LSM |
 | Haug, table 4-13 | les 24 valeurs de barrières retrouvées à $10^{-4}$ près |
+| Digitales | valeurs de Haug (cash et asset-or-nothing), parités, limite du call spread, delta et vega en formule fermée, Monte Carlo |
+| Asiatiques | un fixing = européenne ; limite de Kemna-Vorst ; géométrique fermée vs Monte Carlo ; variable de contrôle (réduction > 50) ; Lévy à 1 % du Monte Carlo |
+| Cliquets | formule fermée vs Monte Carlo ; somme des rendements forward ; delta nul ; floor global ; payoff recalculé à la main |
 | Bootstrap | chaque quote repricée à $10^{-10}$ près |
 | Autocall | cas dégénérés (zéro-coupon, forward prépayé, rappel certain) |
 | Arbre | un nœud recalculé à la main redonne la valeur du moteur |
@@ -810,7 +913,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 18. Limites et extensions possibles
+## 19. Limites et extensions possibles
 
 - **Volatilité** : Heston et volatilité locale sont calibrés séparément. Un modèle à volatilité locale-stochastique (LSV) combinerait les deux.
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
@@ -820,7 +923,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 19. Références
+## 20. Références
 
 - Black, F. & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*. Journal of Political Economy.
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.

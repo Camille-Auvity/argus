@@ -2,7 +2,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { ApiError, modelsApi, type ExoticsRequest, type HestonResponse, type SurfaceResponse } from "../api/client";
+import {
+  ApiError, modelsApi, type ExoticsRequest, type HestonResponse, type ModelRow, type PathDependentRequest, type SurfaceResponse,
+} from "../api/client";
 import { EChart } from "../components/EChart";
 import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { num, pct } from "../lib/format";
@@ -12,7 +14,8 @@ import { useTheme, type ChartPalette, type ThemeMode } from "../lib/theme";
 export const MODEL_PAGES = [
   { path: "heston", label: "Heston (volatilité stochastique)" },
   { path: "surface", label: "Surface SVI & volatilité locale" },
-  { path: "exotiques", label: "Exotiques : BS vs Heston vs locale" },
+  { path: "exotiques", label: "Barrière & autocall : BS vs Heston vs locale" },
+  { path: "path-dependent", label: "Digitale, asiatique, cliquet" },
 ] as const;
 
 export default function Models() {
@@ -51,6 +54,20 @@ const RAMP: Record<ThemeMode, string[]> = {
   light: ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"],
   dark: ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
 };
+
+/** Dot plot of one product's price per model: prices are close, so a free scale with dots shows the gaps honestly. */
+const modelDotPlot = (rows: ModelRow[], digits = 3) => (p: ChartPalette) => ({
+  grid: { left: 8, right: 70, top: 8, bottom: 8, containLabel: true },
+  tooltip: { trigger: "item", formatter: (it: { name: string; value: number; dataIndex: number }) =>
+    `${it.name}<br/>Prix <b>${num(it.value, digits)}</b>${rows[it.dataIndex].std_error ? ` ± ${num(1.96 * rows[it.dataIndex].std_error!, digits)}` : ""}` },
+  xAxis: { type: "value", scale: true },
+  yAxis: { type: "category", data: rows.map((r) => r.model), axisLine: { show: false }, inverse: true, splitLine: { show: true } },
+  series: [{
+    type: "scatter", symbolSize: 14,
+    data: rows.map((r, i) => ({ value: r.price, itemStyle: { color: p.series[i % p.series.length], borderColor: p.surface, borderWidth: 2 } })),
+    label: { show: true, position: "right", distance: 10, color: p.textSecondary, formatter: (it: { value: number }) => num(it.value, digits) },
+  }],
+});
 
 // ----------------------------------------------------------------------------- Heston
 
@@ -279,20 +296,7 @@ export function ExoticsPage() {
   const setA = (p: Partial<ExoticsRequest["autocall"]>) => setReq((r) => ({ ...r, autocall: { ...r.autocall, ...p } }));
   const data = run.data;
 
-  const barOption = useCallback((rows: { model: string; price: number; std_error: number | null }[]) => (p: ChartPalette) => ({
-    grid: { left: 8, right: 60, top: 8, bottom: 8, containLabel: true },
-    tooltip: { trigger: "item", formatter: (it: { name: string; value: number; dataIndex: number }) =>
-      `${it.name}<br/>Prix <b>${num(it.value, 3)}</b>${rows[it.dataIndex].std_error ? ` ± ${num(1.96 * rows[it.dataIndex].std_error!, 3)}` : ""}` },
-    xAxis: { type: "value", scale: true },
-    yAxis: { type: "category", data: rows.map((r) => r.model), axisLine: { show: false }, inverse: true,
-      splitLine: { show: true } },
-    // dot plot: prices are close, so a free scale with dots (not truncated bars) shows the gaps honestly
-    series: [{
-      type: "scatter", symbolSize: 14,
-      data: rows.map((r, i) => ({ value: r.price, itemStyle: { color: p.series[i % p.series.length], borderColor: p.surface, borderWidth: 2 } })),
-      label: { show: true, position: "right", distance: 10, color: p.textSecondary, formatter: (it: { value: number }) => num(it.value, 3) },
-    }],
-  }), []);
+  const barOption = modelDotPlot;
 
   const redemptionOption = useCallback((p: ChartPalette) => {
     if (!data) return {};
@@ -379,6 +383,128 @@ export function ExoticsPage() {
           <Card title="Probabilité de remboursement à chaque date">
             <EChart option={redemptionOption} height={380} ariaLabel="Probabilités de remboursement de l'autocall par modèle" />
           </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------- digital / Asian / cliquet
+
+function ModelTable({ rows, digits = 3 }: { rows: ModelRow[]; digits?: number }) {
+  const ref = rows[0]?.price;
+  return (
+    <div className="table-wrap">
+      <table className="data">
+        <thead><tr><th>Modèle</th><th>Prix</th><th>Écart vs BS ATM</th><th>IC 95 %</th><th>Temps</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.model}>
+              <td className="strong">{r.model}</td>
+              <td className="strong">{num(r.price, digits)}</td>
+              <td>{ref ? pct(r.price / ref - 1, 1) : "—"}</td>
+              <td className="muted">{r.std_error != null ? `± ${num(1.96 * r.std_error, digits)}` : "exact"}</td>
+              <td className="muted">{r.elapsed_ms != null ? `${num(r.elapsed_ms, 0)} ms` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function PathDependentPage() {
+  const { ticker } = useTicker();
+  const [req, setReq] = useState<PathDependentRequest>({
+    digital: { expiry: 0.5, strike_pct: 1, option_type: "call" },
+    asian: { expiry: 1, strike_pct: 1, n_fixings: 12, option_type: "call" },
+    cliquet: { maturity: 2, frequency: 4, local_floor: -0.05, local_cap: 0.05, global_floor: 0, global_cap: null },
+    n_paths: 40_000,
+  });
+  const run = useMutation({ mutationFn: () => modelsApi.pathDependent(ticker, req) });
+  const setD = (p: Partial<PathDependentRequest["digital"]>) => setReq((r) => ({ ...r, digital: { ...r.digital, ...p } }));
+  const setA = (p: Partial<PathDependentRequest["asian"]>) => setReq((r) => ({ ...r, asian: { ...r.asian, ...p } }));
+  const setC = (p: Partial<PathDependentRequest["cliquet"]>) => setReq((r) => ({ ...r, cliquet: { ...r.cliquet, ...p } }));
+  const data = run.data;
+
+  return (
+    <div className="grid">
+      <Explainer>
+        Trois produits qui ne regardent pas le smile de la même façon. La <b>digitale</b> dépend de la <b>pente</b> du smile au
+        strike : une vol plate l'ignore complètement. L'<b>asiatique</b> dépend surtout du niveau de vol sur la durée de
+        moyennage. Le <b>cliquet</b> dépend du smile <b>forward</b> : la vol locale l'aplatit avec le temps, tandis que Heston le
+        conserve. C'est le cas d'école où les deux modèles, calibrés sur les mêmes vanilles, divergent le plus.
+      </Explainer>
+      <Card title="Produits comparés" actions={
+        <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Simulation… (≈ 5 s)" : "Lancer la comparaison"}</button>
+      }>
+        <div className="grid cols-3">
+          <div className="form">
+            <div className="form-group-title">Digitale cash-or-nothing (paye 100)</div>
+            <Segmented value={req.digital.option_type} onChange={(option_type) => setD({ option_type })}
+              options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }]} />
+            <div className="form-row">
+              <NumberField label="Maturité" value={req.digital.expiry} suffix="ans" min={0.05} max={3} digits={2} onChange={(expiry) => setD({ expiry })} />
+              <NumberField label="Strike" value={req.digital.strike_pct} suffix="% spot" scale={100} min={0.01} digits={1} onChange={(strike_pct) => setD({ strike_pct })} />
+            </div>
+          </div>
+          <div className="form">
+            <div className="form-group-title">Asiatique arithmétique</div>
+            <Segmented value={req.asian.option_type} onChange={(option_type) => setA({ option_type })}
+              options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }]} />
+            <div className="form-row">
+              <NumberField label="Maturité" value={req.asian.expiry} suffix="ans" min={0.05} max={3} digits={2} onChange={(expiry) => setA({ expiry })} />
+              <NumberField label="Strike" value={req.asian.strike_pct} suffix="% spot" scale={100} min={0.01} digits={1} onChange={(strike_pct) => setA({ strike_pct })} />
+            </div>
+            <SelectField label="Fixings" value={req.asian.n_fixings} onChange={(n_fixings) => setA({ n_fixings })}
+              options={[4, 12, 52].map((v) => ({ value: v, label: String(v) }))} />
+          </div>
+          <div className="form">
+            <div className="form-group-title">Cliquet (% du nominal)</div>
+            <div className="form-row">
+              <NumberField label="Maturité" value={req.cliquet.maturity} suffix="ans" min={0.25} max={5} digits={2} onChange={(maturity) => setC({ maturity })} />
+              <SelectField label="Resets" value={req.cliquet.frequency} onChange={(frequency) => setC({ frequency })}
+                options={[{ value: 12, label: "Mensuels" }, { value: 4, label: "Trimestriels" }, { value: 2, label: "Semestriels" }, { value: 1, label: "Annuels" }]} />
+            </div>
+            <div className="form-row">
+              <NumberField label="Floor local" value={req.cliquet.local_floor ?? -1} suffix="%" scale={100} min={-1} digits={1} onChange={(local_floor) => setC({ local_floor })} />
+              <NumberField label="Cap local" value={req.cliquet.local_cap ?? 1} suffix="%" scale={100} min={-1} digits={1} onChange={(local_cap) => setC({ local_cap })} />
+            </div>
+            <NumberField label="Floor global" value={req.cliquet.global_floor ?? 0} suffix="%" scale={100} digits={1} onChange={(global_floor) => setC({ global_floor })} />
+          </div>
+        </div>
+      </Card>
+      <NotAvailable error={run.error} />
+      {!data && !run.isPending && <div className="empty card">Réglez les produits puis lancez la comparaison.</div>}
+      {run.isPending && <Skeleton height={300} />}
+      {data && (
+        <>
+          <Card title={`Digitale — vol ATM ${pct(data.digital.atm_vol, 1)}, vol au strike ${pct(data.digital.strike_vol, 1)}`}>
+            <Explainer>
+              Une digitale vaut −∂C/∂K. Avec un smile σ(K) : D = D<sub>BS</sub>(σ(K)) − Vega<sub>BS</sub> · ∂σ/∂K. Avec un
+              skew négatif, ∂σ/∂K &lt; 0 et le call digital est nettement plus cher que ne le dit Black-Scholes. La vol locale
+              (qui reprice exactement les vanilles) doit retrouver le prix « BS + pente du smile » : c'est un test de cohérence
+              de la surface.
+            </Explainer>
+            <EChart option={modelDotPlot(data.digital.rows)} height={280} ariaLabel="Prix de la digitale selon le modèle" />
+          </Card>
+          <Card title="Digitale — détail" flush><ModelTable rows={data.digital.rows} /></Card>
+          <div className="grid cols-2">
+            <Card title={`Asiatique — vol ATM ${pct(data.asian.atm_vol, 1)}`}>
+              <EChart option={modelDotPlot(data.asian.rows)} height={240} ariaLabel="Prix de l'asiatique selon le modèle" />
+            </Card>
+            <Card title={`Cliquet — vol ATM ${pct(data.cliquet.atm_vol, 1)}`}>
+              <EChart option={modelDotPlot(data.cliquet.rows)} height={240} ariaLabel="Prix du cliquet selon le modèle" />
+            </Card>
+          </div>
+          <div className="grid cols-2">
+            <Card title="Asiatique — détail" flush><ModelTable rows={data.asian.rows} /></Card>
+            <Card title="Cliquet — détail" flush><ModelTable rows={data.cliquet.rows} /></Card>
+          </div>
+          <InfoBox>
+            Heston n'est aussi crédible que sa calibration : si l'onglet Heston affiche des paramètres en butée (ρ proche de −1,
+            κ très grand), l'écart sur le cliquet mesure surtout la limite du modèle sur ce marché.
+          </InfoBox>
         </>
       )}
     </div>

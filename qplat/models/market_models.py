@@ -3,6 +3,7 @@ SVI surface / local vol, and exotic prices compared across models."""
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -10,10 +11,15 @@ import numpy as np
 import pandas as pd
 
 from qplat.curves.rate_curve import RateCurve
-from qplat.instruments import Autocallable, BarrierOption
-from qplat.models.heston import CalibrationResult, HestonParams, HestonPathModel, calibrate_heston, heston_implied_vols
+from qplat.instruments import AsianOption, Autocallable, BarrierOption, CliquetOption, DigitalOption
+from qplat.models.heston import (
+    CalibrationResult, HestonParams, HestonPathModel, calibrate_heston, heston_call_prices, heston_implied_vols,
+)
 from qplat.models.svi import LocalVolPathModel, VolSurface, build_surface
-from qplat.pricers import AnalyticBarrierPricer, MonteCarloAutocallPricer, MonteCarloBarrierPricer
+from qplat.pricers import (
+    AnalyticBarrierPricer, AnalyticDigitalPricer, MonteCarloAutocallPricer, MonteCarloBarrierPricer, MonteCarloExoticPricer,
+    bs_price,
+)
 
 
 def calibration_points(smile: pd.DataFrame, min_days: float = 14.0, width: float = 0.35,
@@ -142,6 +148,82 @@ def compare_exotics(spot: float, q: float, curve: RateCurve, heston: HestonParam
     return {"barrier": {"atm_vol": atm_vol, "rows": barrier_rows},
             "autocall": {"atm_vol": float(surface.implied_vol(0.0, autocall["maturity"])),
                          "observation_times": list(a.observation_times), "rows": autocall_rows}}
+
+
+def smile_digital(spot: float, strike: float, T: float, r: float, q: float, vol_of_strike, phi: int,
+                  cash: float = 1.0, rel_step: float = 1e-3) -> float:
+    """Cash digital consistent with the smile: -dC/dK with C(K) = BS(K, sigma(K)).
+
+    Equivalent to D_BS(sigma(K)) - Vega_BS(K) * dsigma/dK: a negative skew makes the call digital dearer.
+    """
+    h = strike * rel_step
+    c = [bs_price(spot, k, T, r, q, float(vol_of_strike(k)), 1) for k in (strike - h, strike + h)]
+    call = -(c[1] - c[0]) / (2 * h)
+    return cash * (call if phi > 0 else math.exp(-r * T) - call)
+
+
+def compare_path_dependent(spot: float, q: float, curve: RateCurve, heston: HestonParams, surface: VolSurface,
+                           digital: dict, asian: dict, cliquet: dict, n_paths: int = 40_000) -> dict:
+    """Digital, Asian and cliquet under flat Black-Scholes vol, Heston and Dupire local vol.
+
+    Digital: the smile slope matters (closed forms are available for every model but local vol).
+    Asian: mostly the ATM level of the term structure. Cliquet: forward-starting smile, where
+    local vol (flattening forward skew) and stochastic vol (persistent forward skew) disagree most.
+    """
+    hm = HestonPathModel(heston, steps_per_year=252)
+    lm = LocalVolPathModel(surface, steps_per_year=252)
+
+    def timed(fn):
+        t0 = time.perf_counter()
+        price, se = fn()
+        return {"price": float(price), "std_error": None if se is None else float(se),
+                "elapsed_ms": (time.perf_counter() - t0) * 1000}
+
+    def mc_rows(inst):
+        return [
+            {"model": "Black-Scholes (vol ATM)", **timed(lambda: MonteCarloExoticPricer(n_paths=n_paths).price_with_error(inst))},
+            {"model": "Heston", **timed(lambda: MonteCarloExoticPricer(n_paths=n_paths, model=hm).price_with_error(inst))},
+            {"model": "Volatilité locale", **timed(lambda: MonteCarloExoticPricer(n_paths=n_paths, model=lm).price_with_error(inst))},
+        ]
+
+    # digital (cash 100: prices read as % of the payout)
+    T, K = digital["expiry"], digital["strike"]
+    r = float(curve.zero_rate(T))
+    phi = 1 if digital["option_type"] == "call" else -1
+    atm, vol_k = float(surface.implied_vol(0.0, T)), float(surface.implied_vol_strike(K, T))
+    dig = DigitalOption(spot=spot, vol=atm, rate=curve, dividend_yield=q, strike=K, expiry=T,
+                        option_type=digital["option_type"], cash=100.0)
+    bs = AnalyticDigitalPricer()
+
+    def heston_digital():
+        h = K * 1e-3
+        c = heston_call_prices(spot, [K - h, K + h], T, r, q, heston)
+        call = -(c[1] - c[0]) / (2 * h)
+        return 100.0 * (call if phi > 0 else math.exp(-r * T) - call), None
+
+    digital_rows = [
+        {"model": "Black-Scholes (vol ATM)", **timed(lambda: (bs.price(dig), None))},
+        {"model": "Black-Scholes (vol du strike)", **timed(lambda: (bs.price(dig.with_vol(vol_k)), None))},
+        {"model": "BS + pente du smile", **timed(lambda: (smile_digital(
+            spot, K, T, r, q, lambda k: surface.implied_vol_strike(k, T), phi, 100.0), None))},
+        {"model": "Heston (formule de Lewis)", **timed(heston_digital)},
+        {"model": "Volatilité locale", **timed(lambda: MonteCarloExoticPricer(n_paths=n_paths, model=lm).price_with_error(dig))},
+    ]
+
+    # Asian
+    TA = asian["expiry"]
+    a = AsianOption.regular(TA, asian["n_fixings"], spot=spot, vol=float(surface.implied_vol(0.0, TA)), rate=curve,
+                            dividend_yield=q, strike=asian["strike"], option_type=asian["option_type"])
+    # cliquet
+    TC = cliquet["maturity"]
+    c = CliquetOption.regular(TC, cliquet["frequency"], spot=spot, vol=float(surface.implied_vol(0.0, TC)), rate=curve,
+                              dividend_yield=q, local_floor=cliquet.get("local_floor"), local_cap=cliquet.get("local_cap"),
+                              global_floor=cliquet.get("global_floor"), global_cap=cliquet.get("global_cap"))
+    return {
+        "digital": {"atm_vol": atm, "strike_vol": vol_k, "rows": digital_rows},
+        "asian": {"atm_vol": a.vol, "rows": mc_rows(a)},
+        "cliquet": {"atm_vol": c.vol, "rows": mc_rows(c)},
+    }
 
 
 def fit_surface(smile: pd.DataFrame, spot: float, q: float, curve: RateCurve) -> VolSurface:
