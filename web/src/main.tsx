@@ -40,6 +40,12 @@ const FxPage = lazy(() => import("./pages/RatesFx").then((m) => ({ default: m.Fx
 const Variance = lazy(() => import("./pages/Variance"));
 const ReplicationPage = lazy(() => import("./pages/Variance").then((m) => ({ default: m.ReplicationPage })));
 const PremiumPage = lazy(() => import("./pages/Variance").then((m) => ({ default: m.PremiumPage })));
+const Allocation = lazy(() => import("./pages/Allocation"));
+const allocationPage = (name: "OptimisationPage" | "LassoPage" | "BacktestPage") =>
+  lazy(() => import("./pages/Allocation").then((m) => ({ default: m[name] })));
+const OptimisationPage = allocationPage("OptimisationPage");
+const LassoPage = allocationPage("LassoPage");
+const BacktestPage = allocationPage("BacktestPage");
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
@@ -109,6 +115,12 @@ createRoot(document.getElementById("root")!).render(
                     <Route index element={<Navigate to="positions" replace />} />
                     <Route path="positions" element={<PositionsPage />} />
                     <Route path="risques" element={<RiskPage />} />
+                  </Route>
+                  <Route path="/allocation" element={<Allocation />}>
+                    <Route index element={<Navigate to="optimisation" replace />} />
+                    <Route path="optimisation" element={<OptimisationPage />} />
+                    <Route path="lasso" element={<LassoPage />} />
+                    <Route path="backtest" element={<BacktestPage />} />
                   </Route>
                   <Route path="/sentiment" element={<Sentiment />} />
                   <Route path="/documentation" element={<Documentation />} />

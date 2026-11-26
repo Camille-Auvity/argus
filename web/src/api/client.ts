@@ -793,3 +793,82 @@ export const varianceApi = {
   vrp: () => request<VrpResponse>("/api/variance/vrp"),
   vixCheck: () => request<VixCheckResponse>("/api/variance/vix-check"),
 };
+
+// ----------------------------------------------------------------------------- allocation
+
+export interface AllocationUniverse {
+  base_currency: string;
+  risk_free: number;
+  assets: { ticker: string; name: string; currency: string; days: number }[];
+}
+
+export interface OptimizeRequest {
+  tickers: string[];
+  lookback_days: number;
+  mean_method: "sample" | "shrunk" | "zero";
+  cov_method: "sample" | "ledoit-wolf";
+  objective: "mean-variance" | "min-variance" | "max-sharpe";
+  gamma: number;
+  long_only: boolean;
+  short_max: number;
+  w_max: number;
+  l1: number;
+  l2: number;
+  cost: number;
+  holding_days: number;
+}
+
+export interface AllocPortfolio {
+  weights: Record<string, number>;
+  risk_contributions: Record<string, number>;
+  expected_return: number;
+  volatility: number;
+  sharpe: number;
+  effective_n: number;
+  gross_exposure: number;
+  n_active: number;
+  turnover: number;
+  success: boolean;
+}
+
+export interface OptimizeResponse {
+  base_currency: string;
+  risk_free: number;
+  n_obs: number;
+  start: string;
+  end: string;
+  estimates: { tickers: string[]; mu: number[]; vol: number[]; corr: number[][]; cov_shrinkage: number; mean_shrinkage: number; sample_mu: number[] };
+  optimal: AllocPortfolio;
+  min_variance: AllocPortfolio;
+  tangency: AllocPortfolio;
+  equal_weight: AllocPortfolio;
+  frontier: Record<"long_only" | "with_shorts" | "unconstrained", { ret: number; vol: number }[]>;
+  lasso_path: { lambda: number; n_active: number; gross_exposure: number; in_sample_vol: number; out_of_sample_vol: number; weights: Record<string, number> }[];
+}
+
+export interface BacktestRequest {
+  tickers: string[];
+  window: number;
+  rebalance_days: number;
+  cost: number;
+  gamma: number;
+  short_max: number;
+  w_max: number;
+  l1: number;
+}
+
+export interface BacktestResponse {
+  base_currency: string;
+  risk_free: number;
+  tickers: string[];
+  dates: string[];
+  strategies: { name: string; description: string; turnover: number; total_cost: number; wealth: number[]; n_rebalances: number;
+    last_weights: Record<string, number>;
+    stats: { annual_return: number; volatility: number; sharpe: number; max_drawdown: number; final_wealth: number } }[];
+}
+
+export const allocationApi = {
+  universe: () => request<AllocationUniverse>("/api/allocation/universe"),
+  optimize: (req: OptimizeRequest) => post<OptimizeResponse>("/api/allocation/optimize", req),
+  backtest: (req: BacktestRequest) => post<BacktestResponse>("/api/allocation/backtest", req),
+};

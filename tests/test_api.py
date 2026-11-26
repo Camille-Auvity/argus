@@ -187,6 +187,23 @@ def test_variance_swap_position(client):
         client.delete(f"/api/portfolio/positions/{pid}")
 
 
+def test_allocation_endpoints(client):
+    db = services.get_db()
+    dates = pd.bdate_range("2025-01-01", periods=300)
+    rng = np.random.default_rng(3)
+    for t, vol in (("MSFT", 0.015), ("EURUSD=X", 0.004)):
+        closes = 100 * np.exp(np.cumsum(rng.normal(0, vol, len(dates))))
+        db.upsert_spots([{"ticker": t, "date": d.strftime("%Y-%m-%d"), "close": float(c)} for d, c in zip(dates, closes)])
+    o = client.post("/api/allocation/optimize", json={"tickers": ["AAPL", "MSFT"], "lookback_days": 250})
+    assert o.status_code == 200, o.text
+    w = o.json()["optimal"]["weights"]
+    assert sum(w.values()) == pytest.approx(1.0) and min(w.values()) >= -1e-9
+    assert len(o.json()["frontier"]["long_only"]) > 2
+    b = client.post("/api/allocation/backtest", json={"tickers": ["AAPL", "MSFT"], "window": 60})
+    assert b.status_code == 200, b.text
+    assert {s["name"] for s in b.json()["strategies"]} >= {"1/N", "Min variance long-only"}
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

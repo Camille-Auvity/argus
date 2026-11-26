@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, ArrowLeftRight, AudioWaveform, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
+  Activity, ArrowLeftRight, AudioWaveform, PieChart, BarChart3, BookOpen, Shapes, ShieldAlert, Briefcase, Clock, FlaskConical, Landmark, Layers, LayoutDashboard, LineChart, Moon, Newspaper, RefreshCw, Sigma, Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -17,6 +17,7 @@ const NAV = [
   { to: "/sentiment", label: "News & sentiment", icon: Newspaper },
   { section: "Portefeuille" },
   { to: "/portfolio", label: "Portefeuille & risques", icon: Briefcase },
+  { to: "/allocation", label: "Allocation de portefeuille", icon: PieChart },
   { section: "Pricing" },
   { to: "/options", label: "Options vanille", icon: Sigma },
   { to: "/methods", label: "Méthodes de pricing", icon: FlaskConical },
