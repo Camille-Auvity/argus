@@ -872,3 +872,50 @@ export const allocationApi = {
   optimize: (req: OptimizeRequest) => post<OptimizeResponse>("/api/allocation/optimize", req),
   backtest: (req: BacktestRequest) => post<BacktestResponse>("/api/allocation/backtest", req),
 };
+
+// ----------------------------------------------------------------------------- research
+
+export type FactorKey = "mkt_rf" | "smb" | "hml" | "mom" | "rmw" | "cma";
+
+export interface VolManagedStats {
+  months: number; start: string; end: string; c: number; alpha: number; alpha_t: number; beta: number; r2: number;
+  appraisal: number; sharpe_original: number; sharpe_managed: number; mean_original: number; mean_managed: number;
+  vol_original: number; vol_managed: number; mdd_original: number; mdd_managed: number; weight_median: number;
+  weight_p90: number; weight_max: number; weight_min: number; turnover: number; alpha_ff3: { alpha: number; t: number } | null;
+}
+
+export interface VolManagedSummary {
+  data_end: string;
+  rows: ({ factor: FactorKey; label: string } & Pick<VolManagedStats, "start" | "end" | "months" | "alpha" | "alpha_t" | "beta" | "r2" |
+    "appraisal" | "sharpe_original" | "sharpe_managed" | "weight_max" | "alpha_ff3">)[];
+}
+
+export interface VolManagedRequest {
+  factor: FactorKey;
+  mode: "full" | "realtime";
+  leverage_cap: number | null;
+  cost_bp: number;
+  start: string | null;
+  end: string | null;
+}
+
+export interface VolManagedDetail {
+  factor: FactorKey;
+  label: string;
+  stats: VolManagedStats;
+  series: { dates: string[]; log_wealth_original: number[]; log_wealth_managed: number[]; weight: number[]; lagged_vol: number[] };
+  buckets: { bucket: number; mean: number; vol: number; mean_over_var: number; lagged_vol: number; months: number }[];
+  subperiods: { period: string; alpha: number; alpha_t: number; sharpe_original: number; sharpe_managed: number }[];
+  episodes: { episode: string; start: string; end: string; original: number; managed: number }[];
+}
+
+export const researchApi = {
+  volManagedSummary: (p: Omit<VolManagedRequest, "factor">) => {
+    const q = new URLSearchParams({ mode: p.mode, cost_bp: String(p.cost_bp) });
+    if (p.leverage_cap != null) q.set("leverage_cap", String(p.leverage_cap));
+    if (p.start) q.set("start", p.start);
+    if (p.end) q.set("end", p.end);
+    return request<VolManagedSummary>(`/api/research/vol-managed/summary?${q}`);
+  },
+  volManaged: (req: VolManagedRequest) => post<VolManagedDetail>("/api/research/vol-managed", req),
+};

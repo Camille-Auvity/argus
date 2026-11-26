@@ -280,3 +280,50 @@ def curve_from_par_yields(tenors, rates, interpolation=None):
         else:
             quotes.append(ParRateQuote(float(t), float(r), frequency=2))
     return bootstrap_curve(quotes, interpolation or Interpolation.LOGLINEAR_DF)
+
+
+# --- Fama-French factors (Kenneth French data library) -------------------------------
+
+FRENCH_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
+FRENCH_FILES = {
+    "F-F_Research_Data_Factors_daily_CSV.zip": {"Mkt-RF": "mkt_rf", "SMB": "smb", "HML": "hml", "RF": "rf"},
+    "F-F_Research_Data_5_Factors_2x3_daily_CSV.zip": {"RMW": "rmw", "CMA": "cma"},
+    "F-F_Momentum_Factor_daily_CSV.zip": {"Mom": "mom"},
+}
+FACTORS_MAX_AGE_DAYS = 7
+
+
+def _read_french_csv(raw: bytes, columns: dict[str, str]) -> pd.DataFrame:
+    """The French CSVs have a text preamble, a header line starting with ',' and values in percent."""
+    import zipfile
+
+    text = zipfile.ZipFile(io.BytesIO(raw)).read(zipfile.ZipFile(io.BytesIO(raw)).namelist()[0]).decode("latin-1")
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(",") and any(c in line for c in columns))
+    body = []
+    for line in lines[start + 1:]:
+        if not line.strip() or not line.strip()[0].isdigit():
+            break
+        body.append(line)
+    header = [h.strip() for h in lines[start].split(",")]
+    frame = pd.read_csv(io.StringIO("\n".join(body)), header=None, names=["date"] + header[1:], skipinitialspace=True)
+    frame["date"] = pd.to_datetime(frame["date"].astype(str), format="%Y%m%d").dt.strftime("%Y-%m-%d")
+    frame = frame.set_index("date")
+    keep = {k: v for k, v in columns.items() if k in frame.columns}
+    return frame[list(keep)].rename(columns=keep) / 100.0
+
+
+def fetch_ff_factors(db: Database, force: bool = False) -> str:
+    """Daily Fama-French factors (market, size, value, profitability, investment, momentum, T-bill) since 1926."""
+    last = db.query("SELECT MAX(ts) AS d FROM refresh_log WHERE job='factors' AND status='ok'") if not force else None
+    if last is not None and last["d"].iloc[0]:
+        ts = datetime.fromisoformat(last["d"].iloc[0])
+        age = datetime.now(timezone.utc) - (ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc))
+        if age.days < FACTORS_MAX_AGE_DAYS and not db.factors().empty:
+            return "fresh"
+    n = 0
+    for name, cols in FRENCH_FILES.items():
+        req = urllib.request.Request(FRENCH_URL + name, headers={"User-Agent": "Mozilla/5.0 (research data download)"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            n = max(n, db.upsert_factors(_read_french_csv(resp.read(), cols)))
+    return f"{n} days"

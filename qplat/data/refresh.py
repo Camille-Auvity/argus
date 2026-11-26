@@ -55,6 +55,7 @@ def run_jobs(db: Database, tickers: list[str], jobs: tuple[str, ...] = JOBS) -> 
                                   "log_rows_deleted": db.prune_refresh_log()})
     if "rates" in jobs:
         run("rates", lambda: market.fetch_all_curves(db))
+        run("factors", lambda: market.fetch_ff_factors(db))
     if "sentiment" in jobs:
         from qplat.data.sentiment import SentimentScorer
 

@@ -98,6 +98,10 @@ CREATE TABLE IF NOT EXISTS refresh_log (
     status TEXT NOT NULL,
     message TEXT
 );
+CREATE TABLE IF NOT EXISTS factor_returns (
+    date TEXT PRIMARY KEY,        -- YYYY-MM-DD
+    mkt_rf REAL, smb REAL, hml REAL, rmw REAL, cma REAL, mom REAL, rf REAL   -- daily simple returns, fractions
+);
 CREATE INDEX IF NOT EXISTS idx_news_ticker ON news(ticker, published);
 CREATE INDEX IF NOT EXISTS idx_opt_ticker ON option_quotes(ticker, asof);
 """
@@ -192,6 +196,26 @@ class Database:
         self._upsert("refresh_log", [{"ts": utc_now(), "job": job, "status": status, "message": message[:2000]}])
 
     # --- reads ----------------------------------------------------------------
+
+    # --- Fama-French factors (research) ---------------------------------------------
+
+    FACTOR_COLUMNS = ("mkt_rf", "smb", "hml", "rmw", "cma", "mom", "rf")
+
+    def upsert_factors(self, frame: pd.DataFrame) -> int:
+        """frame indexed by date (YYYY-MM-DD) with any of FACTOR_COLUMNS; existing dates are updated column-wise."""
+        cols = [c for c in self.FACTOR_COLUMNS if c in frame.columns]
+        if frame.empty or not cols:
+            return 0
+        rows = [(d, *[None if pd.isna(v) else float(v) for v in vals]) for d, vals in zip(frame.index, frame[cols].to_numpy())]
+        updates = ",".join(f"{c}=COALESCE(excluded.{c}, factor_returns.{c})" for c in cols)
+        with self.connect() as con:
+            con.executemany(f"INSERT INTO factor_returns (date,{','.join(cols)}) VALUES (?{',?' * len(cols)}) "
+                            f"ON CONFLICT(date) DO UPDATE SET {updates}", rows)
+        return len(rows)
+
+    def factors(self) -> pd.DataFrame:
+        df = self.query("SELECT * FROM factor_returns ORDER BY date")
+        return df.set_index("date") if not df.empty else df
 
     def query(self, sql: str, params: tuple = ()) -> pd.DataFrame:
         with self.connect() as con:

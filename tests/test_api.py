@@ -204,6 +204,21 @@ def test_allocation_endpoints(client):
     assert {s["name"] for s in b.json()["strategies"]} >= {"1/N", "Min variance long-only"}
 
 
+def test_research_endpoints(client):
+    assert client.get("/api/research/vol-managed/summary").status_code == 409     # no factors yet
+    db = services.get_db()
+    dates = pd.bdate_range("2000-01-01", periods=21 * 80)
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame({c: rng.normal(0.0003, 0.01, len(dates)) for c in ("mkt_rf", "smb", "hml", "mom")},
+                         index=dates.strftime("%Y-%m-%d"))
+    frame["rf"] = 0.0001
+    db.upsert_factors(frame)
+    s = client.get("/api/research/vol-managed/summary").json()
+    assert {r["factor"] for r in s["rows"]} == {"mkt_rf", "smb", "hml", "mom"}
+    d = client.post("/api/research/vol-managed", json={"factor": "mom", "leverage_cap": 2, "cost_bp": 5}).json()
+    assert max(d["series"]["weight"]) <= 2 + 1e-9 and len(d["buckets"]) == 5
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

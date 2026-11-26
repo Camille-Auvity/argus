@@ -46,6 +46,7 @@ const allocationPage = (name: "OptimisationPage" | "LassoPage" | "BacktestPage")
 const OptimisationPage = allocationPage("OptimisationPage");
 const LassoPage = allocationPage("LassoPage");
 const BacktestPage = allocationPage("BacktestPage");
+const Research = lazy(() => import("./pages/Research"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
@@ -122,6 +123,8 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="lasso" element={<LassoPage />} />
                     <Route path="backtest" element={<BacktestPage />} />
                   </Route>
+                  <Route path="/research/vol-managed" element={<Research />} />
+                  <Route path="/research" element={<Navigate to="/research/vol-managed" replace />} />
                   <Route path="/sentiment" element={<Sentiment />} />
                   <Route path="/documentation" element={<Documentation />} />
                   <Route path="*" element={<Overview />} />
