@@ -412,3 +412,32 @@
 :root[data-design="billets"] .main .nav-section,
 :root[data-design="metro"] .main .nav-section { background: none; color: var(--text-muted); margin: 0; padding: 0 0 8px; border-radius: 0; }
 :root[data-design="metro"] .main .nav-section::before { display: none; }
+
+/* ---- Working paper: every panel is numbered like a paper's exhibits. A panel holding a chart is a Figure,
+   a panel holding only a table is a Tableau; numbering restarts on each page, in reading order. */
+:root[data-design="paper"] .main { counter-reset: figure exhibit; }
+:root[data-design="paper"] .card:has([role="img"]) > .card-head .card-title::before {
+  counter-increment: figure;
+  content: "Figure " counter(figure) ".\00a0";
+  color: var(--accent);
+  font-variant-caps: normal;
+  font-weight: 700;
+}
+:root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) > .card-head .card-title::before {
+  counter-increment: exhibit;
+  content: "Tableau " counter(exhibit) ".\00a0";
+  color: var(--accent);
+  font-variant-caps: normal;
+  font-weight: 700;
+}
+/* the replicated-results table and its source note */
+:root[data-design="paper"] table.replicated td { text-align: left; vertical-align: top; white-space: normal; }
+:root[data-design="paper"] table.replicated th { text-align: left; }
+:root[data-design="paper"] table.replicated td.ref { font-style: italic; color: var(--text-secondary); }
+table.replicated td { text-align: left; white-space: normal; }
+table.replicated th { text-align: left; }
+.caption-note { margin: 10px 0 0; font-size: 12.5px; color: var(--text-muted); }
+:root[data-design="paper"] .caption-note { font-style: italic; }
+/* a table panel: the caption floats above the table's own top rule, no extra panel rules */
+:root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) { border-top: 0; }
+:root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) > .card-head { border-bottom: 0; padding-bottom: 6px; }
