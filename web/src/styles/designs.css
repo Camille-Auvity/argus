@@ -534,3 +534,42 @@ table.replicated th { text-align: left; }
   background: var(--surface-3);
   color: var(--text-secondary);
 }
+
+/* ---- About page (all designs: tokens only, so every world dresses it) */
+.about { max-width: 1120px; }
+.about-lead { max-width: 72ch; margin: 4px 0 34px; }
+.about-lead p { margin: 0 0 12px; font-size: 16.5px; line-height: 1.6; }
+.about-lead p.secondary { font-size: 14.5px; }
+.about-section { margin: 0 0 40px; }
+.about-section h2 { margin: 0 0 14px; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; color: var(--text-primary); }
+.about-prose { max-width: 72ch; margin: 0 0 16px; line-height: 1.6; color: var(--text-secondary); }
+.about-areas { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 26px 32px; }
+.about-area { border-top: 2px solid var(--line, var(--accent)); padding-top: 12px; }
+.about-area h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.about-area p { margin: 0 0 8px; line-height: 1.55; color: var(--text-secondary); }
+.about-links { font-size: 13px; }
+.about-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+.about-stack { margin: 0; display: grid; gap: 12px; }
+.about-stack > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.about-stack dt { font-weight: 700; font-family: var(--mono); font-size: 13px; color: var(--accent); }
+.about-stack dd { margin: 0; line-height: 1.5; color: var(--text-secondary); }
+.about-sources { margin: 0 0 12px; padding-left: 18px; line-height: 1.7; color: var(--text-secondary); }
+.about-note { font-size: 12.5px; line-height: 1.55; max-width: 60ch; }
+.about-close { border-top: 1px solid var(--border); padding-top: 16px; color: var(--text-secondary); }
+@media (max-width: 900px) {
+  .about-two { grid-template-columns: minmax(0, 1fr); }
+}
+/* per-world touches */
+:root[data-design="eyes"] .about-area { border-top-color: var(--gold); }
+:root[data-design="paper"] .about-area { border-top: 1.5px solid var(--text-primary); }
+:root[data-design="paper"] .about-section h2 { font-variant-caps: small-caps; font-weight: 600; }
+:root[data-design="metro"] .about-area:nth-child(1) { border-top-color: #e5484d; }
+:root[data-design="metro"] .about-area:nth-child(2) { border-top-color: #4d8bf0; }
+:root[data-design="metro"] .about-area:nth-child(3) { border-top-color: #f2a541; }
+:root[data-design="metro"] .about-area:nth-child(4) { border-top-color: #2ba84a; }
+:root[data-design="metro"] .about-area:nth-child(5) { border-top-color: #a78bfa; }
+:root[data-design="billets"] .about-area:nth-child(1) { border-top-color: #d9812b; }
+:root[data-design="billets"] .about-area:nth-child(2) { border-top-color: #d9812b; }
+:root[data-design="billets"] .about-area:nth-child(3) { border-top-color: #2e8b57; }
+:root[data-design="billets"] .about-area:nth-child(4) { border-top-color: #c8423b; }
+:root[data-design="billets"] .about-area:nth-child(5) { border-top-color: #7b4b94; }

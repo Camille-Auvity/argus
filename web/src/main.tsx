@@ -26,6 +26,7 @@ const Structured = lazy(() => import("./pages/Structured"));
 const Rates = lazy(() => import("./pages/Rates"));
 const Sentiment = lazy(() => import("./pages/Sentiment"));
 const Documentation = lazy(() => import("./pages/Documentation"));
+const About = lazy(() => import("./pages/About"));
 const Models = lazy(() => import("./pages/Models"));
 const Exotics = lazy(() => import("./pages/Exotics"));
 const exoticPage = (name: "DigitalPage" | "AsianPage" | "CliquetPage") =>
@@ -145,6 +146,7 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/research" element={<Navigate to="/research/vol-managed" replace />} />
                   <Route path="/sentiment" element={<Sentiment />} />
                   <Route path="/documentation" element={<Documentation />} />
+                  <Route path="/about" element={<About />} />
                   <Route path="*" element={<Overview />} />
                 </Routes>
               </Suspense>
