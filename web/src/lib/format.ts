@@ -1,9 +1,11 @@
+import { currentLang, locale } from "./i18n";
+
 const nf = (min: number, max: number) =>
-  new Intl.NumberFormat("fr-FR", { minimumFractionDigits: min, maximumFractionDigits: max });
+  new Intl.NumberFormat(locale(), { minimumFractionDigits: min, maximumFractionDigits: max });
 
 const cache = new Map<string, Intl.NumberFormat>();
 function fmt(min: number, max: number) {
-  const key = `${min}:${max}`;
+  const key = `${locale()}:${min}:${max}`;
   if (!cache.has(key)) cache.set(key, nf(min, max));
   return cache.get(key)!;
 }
@@ -15,7 +17,8 @@ export function num(x: number | null | undefined, digits = 2): string {
 
 export function pct(x: number | null | undefined, digits = 2): string {
   if (x === null || x === undefined || !Number.isFinite(x)) return "—";
-  return `${fmt(digits, digits).format(x * 100)} %`;
+  // French puts a (narrow) space before %, English does not
+  return currentLang() === "fr" ? `${fmt(digits, digits).format(x * 100)} %` : `${fmt(digits, digits).format(x * 100)}%`;
 }
 
 export function signed(x: number | null | undefined, digits = 2, asPct = false): string {
@@ -40,11 +43,12 @@ export function relativeTime(iso: string | null | undefined): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "—";
   const minutes = Math.round((Date.now() - t) / 60000);
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
+  const fr = currentLang() === "fr";
+  if (minutes < 1) return fr ? "à l'instant" : "just now";
+  if (minutes < 60) return fr ? `il y a ${minutes} min` : `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `il y a ${hours} h`;
-  return `il y a ${Math.round(hours / 24)} j`;
+  if (hours < 24) return fr ? `il y a ${hours} h` : `${hours} h ago`;
+  return fr ? `il y a ${Math.round(hours / 24)} j` : `${Math.round(hours / 24)} d ago`;
 }
 
 export function tenorLabel(years: number): string {

@@ -5,12 +5,12 @@ export type ThemeMode = "dark" | "light";
 /** Visual worlds. "classic" is the original design (dark / light toggle); the others have one fixed scheme each. */
 export type Design = "classic" | "eyes" | "metro" | "billets" | "paper";
 
-export const DESIGNS: { value: Design; label: string; mode: ThemeMode | null }[] = [
-  { value: "classic", label: "Classique", mode: null },
-  { value: "eyes", label: "Les cent yeux", mode: "light" },
-  { value: "metro", label: "Plan de métro", mode: "dark" },
-  { value: "billets", label: "Série de billets", mode: "light" },
-  { value: "paper", label: "Working paper", mode: "light" },
+export const DESIGNS: { value: Design; label: [string, string]; mode: ThemeMode | null }[] = [
+  { value: "classic", label: ["Classique", "Classic"] as [string, string], mode: null },
+  { value: "eyes", label: ["Les cent yeux", "Hundred eyes"] as [string, string], mode: "light" },
+  { value: "metro", label: ["Plan de métro", "Metro map"] as [string, string], mode: "dark" },
+  { value: "billets", label: ["Série de billets", "Banknote series"] as [string, string], mode: "light" },
+  { value: "paper", label: ["Working paper", "Working paper"] as [string, string], mode: "light" },
 ];
 
 /** Chart palette — the validated reference palette, stepped per mode (mirrors tokens.css). */

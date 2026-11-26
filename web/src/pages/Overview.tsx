@@ -11,18 +11,19 @@ import { SurveillanceMap } from "../components/Ocelli";
 import { TransitMap } from "../components/TransitMap";
 import { FaceValue } from "../components/FaceValue";
 import { ReplicatedResults } from "../components/ReplicatedResults";
+import { locale, tr } from "../lib/i18n";
 
 export default function Overview() {
   const { data: tickers, error, isLoading } = useTickers();
   const { ticker, snapshot } = useTicker();
   const { design } = useTheme();
-  const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const today = new Date().toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Vue d'ensemble</h1>
+          <h1 className="page-title">{tr("Vue d'ensemble", "Overview")}</h1>
           <div className="page-sub" style={{ textTransform: "capitalize" }}>{today}</div>
         </div>
       </div>
@@ -34,7 +35,7 @@ export default function Overview() {
       {tickers && design === "eyes" && <SurveillanceMap tickers={tickers} />}
       {tickers && design !== "eyes" && (
         <>
-          <MarketSection title="États-Unis" list={tickers.filter((t) => t.market === "US")} />
+          <MarketSection title={tr("États-Unis", "United States")} list={tickers.filter((t) => t.market === "US")} />
           <MarketSection title="Europe" list={tickers.filter((t) => t.market === "EU")} />
         </>
       )}
@@ -70,7 +71,7 @@ function MarketSection({ title, list }: { title: string; list: TickerSnapshot[] 
               <Sparkline data={t.sparkline} color={palette.series[0]} width={96} height={30} />
             </div>
             <div className="row" style={{ marginTop: 8, fontSize: 11.5 }}>
-              <span className="muted">Vol 1M <span className="num secondary">{pct(t.realized_vol_1m, 1)}</span></span>
+              <span className="muted">{tr("Vol 1M", "1M vol")} <span className="num secondary">{pct(t.realized_vol_1m, 1)}</span></span>
               <span className="muted">Sentiment <span className="num secondary">{t.sentiment == null ? "—" : signed(t.sentiment, 2)}</span></span>
             </div>
           </button>
@@ -94,9 +95,9 @@ function PriceCard({ ticker, snapshot }: { ticker: string; snapshot?: TickerSnap
     }],
   }), [data, ticker]);
   return (
-    <Card title={`${ticker} — 1 an`} actions={snapshot && <span className="muted num">{snapshot.name}</span>}>
+    <Card title={tr(`${ticker} — 1 an`, `${ticker} — 1 year`)} actions={snapshot && <span className="muted num">{snapshot.name}</span>}>
       <ErrorBox error={error} />
-      {data ? <EChart option={option} height={340} ariaLabel={`Cours de clôture de ${ticker} sur un an`} /> : <Skeleton height={340} />}
+      {data ? <EChart option={option} height={340} ariaLabel={tr(`Cours de clôture de ${ticker} sur un an`, `${ticker} closing prices over one year`)} /> : <Skeleton height={340} />}
     </Card>
   );
 }
@@ -106,7 +107,7 @@ function CurvesCard() {
   const eur = useQuery({ queryKey: ["curve", "EUR"], queryFn: () => api.curve("EUR") });
   const option = useCallback((p: ChartPalette) => {
     const series = [usd.data, eur.data].filter(Boolean).map((c, i) => ({
-      type: "line", name: `Zéro ${c!.currency}`, showSymbol: false, lineStyle: { width: 2, color: p.series[i] },
+      type: "line", name: tr(`Zéro ${c!.currency}`, `${c!.currency} zero`), showSymbol: false, lineStyle: { width: 2, color: p.series[i] },
       itemStyle: { color: p.series[i] },
       data: c!.grid.map((t, j) => [t, c!.curves.loglinear_df.zero[j]]),
     }));
@@ -120,8 +121,8 @@ function CurvesCard() {
     };
   }, [usd.data, eur.data]);
   return (
-    <Card title="Courbes zéro-coupon" actions={<Link to="/rates" className="muted">Détail →</Link>}>
-      {usd.data || eur.data ? <EChart option={option} height={340} ariaLabel="Courbes de taux zéro USD et EUR" /> : <Skeleton height={340} />}
+    <Card title={tr("Courbes zéro-coupon", "Zero-coupon curves")} actions={<Link to="/rates" className="muted">{tr("Détail →", "Details →")}</Link>}>
+      {usd.data || eur.data ? <EChart option={option} height={340} ariaLabel={tr("Courbes de taux zéro USD et EUR", "USD and EUR zero-rate curves")} /> : <Skeleton height={340} />}
     </Card>
   );
 }
@@ -129,7 +130,7 @@ function CurvesCard() {
 function LatestNews() {
   const { data } = useQuery({ queryKey: ["news", "all"], queryFn: () => api.news(undefined, 8) });
   return (
-    <Card title="Dernières news" actions={<Link to="/sentiment" className="muted">Toutes les news →</Link>} flush>
+    <Card title={tr("Dernières news", "Latest news")} actions={<Link to="/sentiment" className="muted">{tr("Toutes les news →", "All news →")}</Link>} flush>
       {!data && <div className="card-body"><Skeleton height={120} /></div>}
       {data?.map((n) => (
         <div key={n.id} className="news-item">

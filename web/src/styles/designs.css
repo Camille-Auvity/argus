@@ -455,7 +455,7 @@
 }
 :root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) > .card-head .card-title::before {
   counter-increment: exhibit;
-  content: "Tableau " counter(exhibit) ".\00a0";
+  content: "Table " counter(exhibit) ".\00a0";
   color: var(--accent);
   font-variant-caps: normal;
   font-weight: 700;
@@ -468,6 +468,9 @@ table.replicated td { text-align: left; white-space: normal; }
 table.replicated th { text-align: left; }
 .caption-note { margin: 10px 0 0; font-size: 12.5px; color: var(--text-muted); }
 :root[data-design="paper"] .caption-note { font-style: italic; }
+:root[data-design="paper"]:lang(fr) .card:has(table.data):not(:has([role="img"])) > .card-head .card-title::before {
+  content: "Tableau " counter(exhibit) ".\00a0";
+}
 /* a table panel: the caption floats above the table's own top rule, no extra panel rules */
 :root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) { border-top: 0; }
 :root[data-design="paper"] .card:has(table.data):not(:has([role="img"])) > .card-head { border-bottom: 0; padding-bottom: 6px; }
@@ -507,3 +510,27 @@ table.replicated th { text-align: left; }
 :root[data-design]:not([data-design="classic"]) { caret-color: var(--accent); accent-color: var(--accent); }
 :root[data-design]:not([data-design="classic"]) .main,
 :root[data-design]:not([data-design="classic"]) .sidebar { scrollbar-color: var(--scroll) transparent; }
+
+/* secret menu: group labels and the language code chip */
+.design-menu .menu-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.design-menu .menu-label + button { margin-top: 0; }
+.design-menu .menu-label:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
+.design-menu .lang-code {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}

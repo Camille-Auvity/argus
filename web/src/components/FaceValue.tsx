@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { TickerSnapshot } from "../api/client";
 import { ccySymbol, num, pct } from "../lib/format";
 import { Delta } from "./ui";
+import { tr } from "../lib/i18n";
 
 /** "Série de billets": the selected underlying printed as a banknote face value. The background is a guilloché
  *  rosette (epitrochoid-like curves r(θ) = R + a·sin(kθ + φ)), the fine-line engraving of security printing. */
@@ -41,9 +42,9 @@ export function FaceValue({ snapshot }: { snapshot?: TickerSnapshot }) {
         <div className="fv-value num">{num(snapshot.last)}<span className="fv-ccy">{ccy}</span></div>
         <div className="fv-name">{snapshot.name}</div>
         <div className="fv-meta">
-          <span>Jour <Delta value={snapshot.change_pct} pct /></span>
-          <span>Vol réalisée 1M <b className="num">{pct(snapshot.realized_vol_1m, 1)}</b></span>
-          <span>Marché <b>{snapshot.market === "EU" ? "Europe" : "États-Unis"}</b></span>
+          <span>{tr("Jour", "Day")} <Delta value={snapshot.change_pct} pct /></span>
+          <span>{tr("Vol réalisée 1M", "1M realised vol")} <b className="num">{pct(snapshot.realized_vol_1m, 1)}</b></span>
+          <span>{tr("Marché", "Market")} <b>{snapshot.market === "EU" ? "Europe" : tr("États-Unis", "United States")}</b></span>
         </div>
       </div>
     </section>

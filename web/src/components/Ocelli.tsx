@@ -2,6 +2,7 @@ import type { TickerSnapshot } from "../api/client";
 import { ccySymbol, num, pct, signed } from "../lib/format";
 import { useTicker } from "../lib/hooks";
 import { Delta } from "./ui";
+import { tr } from "../lib/i18n";
 
 /** "Les cent yeux": the market under watch. Each underlying is an ocellus (the eye of a peacock feather):
  *  outer radius on one fixed ramp of 1-month realised vol, iris colour and strength from the day's move. */
@@ -17,7 +18,7 @@ function Eye({ t, selected, onSelect }: { t: TickerSnapshot; selected: boolean; 
   return (
     <button type="button" className={`eye${selected ? " selected" : ""}`} onClick={onSelect}
       aria-pressed={selected} title={`${t.ticker} — ${t.name}`}
-      aria-label={`${t.ticker}, ${signed(move, 2, true)}, vol réalisée 1 mois ${pct(t.realized_vol_1m, 1)}`}>
+      aria-label={tr(`${t.ticker}, ${signed(move, 2, true)}, vol réalisée 1 mois ${pct(t.realized_vol_1m, 1)}`, `${t.ticker}, ${signed(move, 2, true)}, 1-month realised vol ${pct(t.realized_vol_1m, 1)}`)}>
       <svg viewBox="-44 -44 88 88" width="88" height="88" aria-hidden="true">
         {selected && <circle r={R + 4} className="eye-select" />}
         <circle r={R} fill="var(--gold)" />
@@ -36,15 +37,15 @@ function Eye({ t, selected, onSelect }: { t: TickerSnapshot; selected: boolean; 
 export function SurveillanceMap({ tickers }: { tickers: TickerSnapshot[] }) {
   const { ticker, setTicker } = useTicker();
   const groups: [string, TickerSnapshot[]][] = [
-    ["États-Unis", tickers.filter((t) => t.market === "US")],
+    [tr("États-Unis", "United States"), tickers.filter((t) => t.market === "US")],
     ["Europe", tickers.filter((t) => t.market === "EU")],
   ];
   const ups = tickers.filter((t) => (t.change_pct ?? 0) >= 0).length;
   return (
     <section className="card surveillance">
       <header className="card-head">
-        <h2 className="card-title">Les cent yeux — {tickers.length} sous-jacents sous surveillance</h2>
-        <span className="muted num">{ups} en hausse · {tickers.length - ups} en baisse</span>
+        <h2 className="card-title">{tr(`Les cent yeux — ${tickers.length} sous-jacents sous surveillance`, `The hundred eyes — ${tickers.length} underlyings under watch`)}</h2>
+        <span className="muted num">{tr(`${ups} en hausse · ${tickers.length - ups} en baisse`, `${ups} up · ${tickers.length - ups} down`)}</span>
       </header>
       <div className="surveillance-body">
         <div className="ocelli-wrap">
@@ -57,15 +58,15 @@ export function SurveillanceMap({ tickers }: { tickers: TickerSnapshot[] }) {
             </div>
           ))}
           <p className="ocelli-legend">
-            <span><i className="lg-ring" /> Taille de l'œil : vol réalisée sur 1 mois</span>
-            <span><i className="lg-up" /> Iris vert : hausse du jour</span>
-            <span><i className="lg-down" /> Iris rouge : baisse</span>
-            <span>Intensité : ampleur du mouvement (pleine à 3 %)</span>
+            <span><i className="lg-ring" /> {tr("Taille de l'œil : vol réalisée sur 1 mois", "Eye size: 1-month realised vol")}</span>
+            <span><i className="lg-up" /> {tr("Iris vert : hausse du jour", "Green iris: up today")}</span>
+            <span><i className="lg-down" /> {tr("Iris rouge : baisse", "Red iris: down")}</span>
+            <span>{tr("Intensité : ampleur du mouvement (pleine à 3 %)", "Intensity: size of the move (full at 3%)")}</span>
           </p>
         </div>
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>Sous-jacent</th><th>Dernier</th><th>Jour</th><th>Vol 1M</th></tr></thead>
+            <thead><tr><th>{tr("Sous-jacent", "Underlying")}</th><th>{tr("Dernier", "Last")}</th><th>{tr("Jour", "Day")}</th><th>{tr("Vol 1M", "1M vol")}</th></tr></thead>
             <tbody>
               {groups.flatMap(([, l]) => l).map((t) => (
                 <tr key={t.ticker} className={t.ticker === ticker ? "selected" : ""} onClick={() => setTicker(t.ticker)}>

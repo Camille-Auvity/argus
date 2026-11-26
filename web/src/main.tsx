@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { Skeleton } from "./components/ui";
 import { TickerProvider } from "./lib/hooks";
 import { ThemeProvider } from "./lib/theme";
+import { LangKeyed, LangProvider } from "./lib/i18n";
 import "./styles/app.css";
 import "./styles/designs.css";
 
@@ -72,8 +73,10 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <LangProvider>
         <EngineGate>
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <LangKeyed>
           <TickerProvider>
             <Layout>
               <Suspense fallback={<Skeleton height={400} />}>
@@ -147,8 +150,10 @@ createRoot(document.getElementById("root")!).render(
               </Suspense>
             </Layout>
           </TickerProvider>
+          </LangKeyed>
         </BrowserRouter>
         </EngineGate>
+        </LangProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

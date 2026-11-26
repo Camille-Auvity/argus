@@ -9,32 +9,36 @@ import { STATIC_MODE } from "../engine/bridge";
 import { ccySymbol, num, relativeTime } from "../lib/format";
 import { useStatus, useTicker, useTickers } from "../lib/hooks";
 import { DESIGNS, useTheme, type Design } from "../lib/theme";
+import { LANGS, tr, useLang } from "../lib/i18n";
+
+/** [français, English] pair → text of the current language */
+const pick = (p: readonly [string, string]) => tr(p[0], p[1]);
 import { Delta } from "./ui";
 
 const NAV = [
-  { section: "Marchés", group: "marches" },
-  { to: "/", label: "Vue d'ensemble", icon: LayoutDashboard },
-  { to: "/sentiment", label: "News & sentiment", icon: Newspaper },
-  { section: "Portefeuille", group: "portefeuille" },
-  { to: "/portfolio", label: "Portefeuille & risques", icon: Briefcase },
-  { to: "/allocation", label: "Allocation de portefeuille", icon: PieChart },
-  { section: "Pricing", group: "pricing" },
-  { to: "/options", label: "Options vanille", icon: Sigma },
-  { to: "/methods", label: "Méthodes de pricing", icon: FlaskConical },
-  { to: "/volatility", label: "Volatilité implicite", icon: Activity },
-  { to: "/models", label: "Modèles de volatilité", icon: Layers },
-  { to: "/exotics", label: "Options exotiques", icon: Shapes },
-  { to: "/variance", label: "Swaps de variance", icon: AudioWaveform },
-  { to: "/structured", label: "Produits structurés", icon: BarChart3 },
-  { section: "Taux, change & crédit", group: "taux" },
-  { to: "/rates", label: "Courbes & obligations", icon: Landmark },
-  { to: "/rates-fx", label: "Options de taux & change", icon: ArrowLeftRight },
-  { to: "/credit", label: "Crédit : CDS & Merton", icon: ShieldAlert },
-  { section: "Recherche", group: "recherche" },
-  { to: "/research", label: "Volatility-managed (Moreira-Muir)", icon: Microscope },
-  { to: "/theory", label: "Théorie appliquée", icon: GraduationCap },
-  { section: "Référence", group: "reference" },
-  { to: "/documentation", label: "Documentation", icon: BookOpen },
+  { section: ["Marchés", "Markets"], group: "marches" },
+  { to: "/", label: ["Vue d'ensemble", "Overview"], icon: LayoutDashboard },
+  { to: "/sentiment", label: ["News & sentiment", "News & sentiment"], icon: Newspaper },
+  { section: ["Portefeuille", "Portfolio"], group: "portefeuille" },
+  { to: "/portfolio", label: ["Portefeuille & risques", "Portfolio & risk"], icon: Briefcase },
+  { to: "/allocation", label: ["Allocation de portefeuille", "Portfolio allocation"], icon: PieChart },
+  { section: ["Pricing", "Pricing"], group: "pricing" },
+  { to: "/options", label: ["Options vanille", "Vanilla options"], icon: Sigma },
+  { to: "/methods", label: ["Méthodes de pricing", "Pricing methods"], icon: FlaskConical },
+  { to: "/volatility", label: ["Volatilité implicite", "Implied volatility"], icon: Activity },
+  { to: "/models", label: ["Modèles de volatilité", "Volatility models"], icon: Layers },
+  { to: "/exotics", label: ["Options exotiques", "Exotic options"], icon: Shapes },
+  { to: "/variance", label: ["Swaps de variance", "Variance swaps"], icon: AudioWaveform },
+  { to: "/structured", label: ["Produits structurés", "Structured products"], icon: BarChart3 },
+  { section: ["Taux, change & crédit", "Rates, FX & credit"], group: "taux" },
+  { to: "/rates", label: ["Courbes & obligations", "Curves & bonds"], icon: Landmark },
+  { to: "/rates-fx", label: ["Options de taux & change", "Rate & FX options"], icon: ArrowLeftRight },
+  { to: "/credit", label: ["Crédit : CDS & Merton", "Credit: CDS & Merton"], icon: ShieldAlert },
+  { section: ["Recherche", "Research"], group: "recherche" },
+  { to: "/research", label: ["Volatility-managed (Moreira-Muir)", "Volatility-managed (Moreira-Muir)"], icon: Microscope },
+  { to: "/theory", label: ["Théorie appliquée", "Applied theory"], icon: GraduationCap },
+  { section: ["Référence", "Reference"], group: "reference" },
+  { to: "/documentation", label: ["Documentation", "Documentation"], icon: BookOpen },
 ] as const;
 
 /** Navigation group of the current route (drives per-section colour in some designs). */
@@ -82,34 +86,34 @@ function Sidebar() {
         <div className="brand-mark" onClick={onLogo}><LineChart size={17} /></div>
         <div className="brand-text">
           <div className="brand-name">ARGUS</div>
-          <div className="brand-sub">Quant Pricing Platform</div>
+          <div className="brand-sub">{tr("Plateforme quant de pricing", "Quant Pricing Platform")}</div>
         </div>
       </div>
       {NAV.map((item, i) => {
         if ("section" in item) {
           group = item.group;
-          return <div key={i} className="nav-section" data-group={item.group}>{item.section}</div>;
+          return <div key={i} className="nav-section" data-group={item.group}>{pick(item.section)}</div>;
         }
         return (
-          <NavLink key={item.to} to={item.to} end={item.to === "/"} title={item.label} data-group={group}
+          <NavLink key={item.to} to={item.to} end={item.to === "/"} title={pick(item.label)} data-group={group}
             className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
             <item.icon size={17} />
-            <span className="label">{item.label}</span>
+            <span className="label">{pick(item.label)}</span>
           </NavLink>
         );
       })}
       <div className="sidebar-footer">
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Clock size={12} /> Données {relativeTime(status?.last_refresh)}
+          <Clock size={12} /> {tr("Données", "Data")} {relativeTime(status?.last_refresh)}
         </span>
-        <span>Sentiment : {status?.sentiment_model ?? "—"}</span>
+        <span>{tr("Sentiment :", "Sentiment:")} {status?.sentiment_model ?? "—"}</span>
         {STATIC_MODE ? (
           <>
-            <span>Version en ligne : le moteur tourne dans votre navigateur</span>
-            <a href="https://github.com/Camille-Auvity/argus" target="_blank" rel="noreferrer">Code source sur GitHub ↗</a>
+            <span>{tr("Version en ligne : le moteur tourne dans votre navigateur", "Online version: the engine runs in your browser")}</span>
+            <a href="https://github.com/Camille-Auvity/argus" target="_blank" rel="noreferrer">{tr("Code source sur GitHub ↗", "Source code on GitHub ↗")}</a>
           </>
         ) : (
-          <a href="/docs" target="_blank" rel="noreferrer">Documentation de l'API ↗</a>
+          <a href="/docs" target="_blank" rel="noreferrer">{tr("Documentation de l'API ↗", "API documentation ↗")}</a>
         )}
       </div>
     </nav>
@@ -134,9 +138,9 @@ function TopBar() {
     <header className="topbar">
       <div className="ticker-select">
         <span className="badge accent">{snapshot?.market ?? "—"}</span>
-        <select value={ticker} onChange={(e) => setTicker(e.target.value)} aria-label="Sous-jacent">
+        <select value={ticker} onChange={(e) => setTicker(e.target.value)} aria-label={tr("Sous-jacent", "Underlying")}>
           {!tickers && <option value={ticker}>{ticker}</option>}
-          {[["États-Unis", us], ["Europe", eu]].map(([label, list]) => (
+          {[[tr("États-Unis", "United States"), us], ["Europe", eu]].map(([label, list]) => (
             <optgroup key={label as string} label={label as string}>
               {(list as typeof us).map((t) => (
                 <option key={t.ticker} value={t.ticker}>{t.ticker} — {t.name}</option>
@@ -158,24 +162,24 @@ function TopBar() {
           return (
             <span key={name} className="market-chip" title={`${m.open}–${m.close} (${m.tz})`}>
               <span className={`dot${open ? " open" : ""}`} />
-              {name} {open ? "ouvert" : "fermé"}
+              {name} {open ? tr("ouvert", "open") : tr("fermé", "closed")}
             </span>
           );
         })}
       {STATIC_MODE ? (
-        <span className="market-chip" title="Les données sont mises à jour automatiquement par GitHub Actions">
-          <Clock size={13} /> Données {relativeTime(status?.last_refresh)}
+        <span className="market-chip" title={tr("Les données sont mises à jour automatiquement par GitHub Actions", "Data are refreshed automatically by GitHub Actions")}>
+          <Clock size={13} /> {tr("Données", "Data")} {relativeTime(status?.last_refresh)}
         </span>
       ) : (
         <button className="btn" onClick={() => refresh.mutate()} disabled={refresh.isPending}
-          title={`Télécharger maintenant les données de ${ticker}`}>
+          title={tr(`Télécharger maintenant les données de ${ticker}`, `Download ${ticker} data now`)}>
           <RefreshCw size={14} className={refresh.isPending ? "spin" : ""} />
-          <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
+          <span className="label">{refresh.isPending ? tr("Mise à jour…", "Updating…") : tr("Actualiser", "Refresh")}</span>
         </button>
       )}
       {design === "classic" && (
-        <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
-          title={mode === "dark" ? "Thème clair" : "Thème sombre"}>
+        <button className="btn icon ghost" onClick={toggle} aria-label={tr("Changer de thème", "Switch theme")}
+          title={mode === "dark" ? tr("Thème clair", "Light theme") : tr("Thème sombre", "Dark theme")}>
           {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       )}
@@ -195,6 +199,7 @@ const SWATCHES: Record<Design, [string, string, string]> = {
 /** The easter-egg design menu: opens next to the logo, closes on pick, Escape or outside click. */
 function DesignMenu() {
   const { design, setDesign, pickerOpen, closePicker } = useTheme();
+  const { lang, setLang } = useLang();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -220,14 +225,23 @@ function DesignMenu() {
   };
 
   return (
-    <div ref={ref} className="design-menu" role="menu" aria-label="Choisir le design" onKeyDown={onKey}>
+    <div ref={ref} className="design-menu" role="menu" aria-label={tr("Design et langue", "Design and language")} onKeyDown={onKey}>
+      <div className="menu-label" role="presentation">{tr("Design", "Design")}</div>
       {DESIGNS.map((d) => (
         <button key={d.value} type="button" role="menuitemradio" aria-checked={d.value === design}
           onClick={() => { setDesign(d.value); closePicker(); }}>
           <span className="swatch" aria-hidden="true">
             {SWATCHES[d.value].map((c) => <i key={c} style={{ background: c }} />)}
           </span>
-          {d.label}
+          {pick(d.label)}
+        </button>
+      ))}
+      <div className="menu-label" role="presentation">{tr("Langue", "Language")}</div>
+      {LANGS.map((l) => (
+        <button key={l.value} type="button" role="menuitemradio" aria-checked={l.value === lang} lang={l.value}
+          onClick={() => { closePicker(); setLang(l.value); }}>
+          <span className="lang-code" aria-hidden="true">{l.value.toUpperCase()}</span>
+          {l.label}
         </button>
       ))}
     </div>
