@@ -38,8 +38,8 @@ const AREAS: { title: Pair; text: Pair; links: { to: string; label: Pair }[] }[]
   },
   {
     title: ["Recherche et théorie", "Research and theory"],
-    text: ["Portefeuilles à volatilité pilotée (Moreira et Muir) sur les facteurs Fama-French depuis 1926, et des laboratoires du cours de finance en temps continu : réplication, couverture delta, calcul stochastique, Girsanov, probabilités P et Q.",
-      "Volatility-managed portfolios (Moreira and Muir) on the Fama-French factors since 1926, and labs from the continuous-time finance course: replication, delta hedging, stochastic calculus, Girsanov, P and Q measures."],
+    text: ["Portefeuilles à volatilité pilotée (Moreira et Muir) sur les facteurs Fama-French depuis 1926, et des laboratoires de finance en temps continu : réplication, couverture delta, calcul stochastique, Girsanov, probabilités P et Q.",
+      "Volatility-managed portfolios (Moreira and Muir) on the Fama-French factors since 1926, and continuous-time finance labs: replication, delta hedging, stochastic calculus, Girsanov, P and Q measures."],
     links: [{ to: "/research", label: ["Recherche", "Research"] }, { to: "/theory", label: ["Théorie appliquée", "Applied theory"] }],
   },
 ];
@@ -136,8 +136,7 @@ export default function About() {
 
       <section className="about-section about-close">
         <p>
-          {tr("Projet personnel réalisé pendant mes études à l'EDHEC. Le code est public :",
-            "A personal project built during my studies at EDHEC. The code is public:")}{" "}
+          {tr("Un projet personnel, dont le code est public :", "A personal project, with public source code:")}{" "}
           <a href="https://github.com/Camille-Auvity/argus" target="_blank" rel="noreferrer">github.com/Camille-Auvity/argus ↗</a>
         </p>
       </section>

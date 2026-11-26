@@ -7,10 +7,6 @@ import { Card } from "./ui";
 
 type Pair = [string, string];
 const ROWS: { result: Pair; source: Pair; value: Pair; section: string; to: string }[] = [
-  { result: ["Put européen dans l'arbre binomial (S = 100, u = 1,2, d = 0,8, R = 1,05, K = 110)",
-    "European put on the binomial tree (S = 100, u = 1.2, d = 0.8, R = 1.05, K = 110)"],
-    source: ["Cours de finance en temps continu, lecture 2", "Continuous-time finance course, lecture 2"],
-    value: ["10,714 (1 période) · 11,820 (2 périodes)", "10.714 (1 period) · 11.820 (2 periods)"], section: "§19.1", to: "/theory/replication" },
   { result: ["Portefeuille à volatilité pilotée, facteur marché 1926-2015", "Volatility-managed portfolio, market factor 1926-2015"],
     source: ["Moreira et Muir (2017), Tableau I", "Moreira and Muir (2017), Table I"],
     value: ["α = 4,9 % par an · β = 0,60 · appraisal ratio 0,33", "α = 4.9% a year · β = 0.60 · appraisal ratio 0.33"], section: "§18.3", to: "/research" },
