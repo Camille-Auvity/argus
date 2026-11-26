@@ -969,3 +969,33 @@ export const theoryApi = {
   hedgeBacktest: (horizon: number, option_type: "call" | "put") =>
     request<HedgeBacktestResponse>(`/api/theory/hedge-backtest?horizon=${horizon}&option_type=${option_type}`),
 };
+
+export interface BrownianResponse {
+  paths: { t: number[]; paths: number[][]; band: number[] };
+  variations: { n: number; total_variation: number; total_variation_theory: number; quadratic_variation: number;
+    quadratic_variation_sd: number; quadratic_variation_sd_theory: number }[];
+  ito: { mean_left: number; mean_right: number; T: number; max_gap_left: number; max_gap_right: number; rms_gap_left: number;
+    histogram: { edges: number[]; left: number[]; right: number[] };
+    example: { t: number[]; B: number[]; left_running: number[]; ito_running: number[] } };
+  martingales: { t: number[]; lambda: number; series: Record<string, { mean: number[]; se: number[]; martingale: boolean }> };
+}
+
+export interface GirsanovResponse {
+  b: number[]; density_P: number[]; density_Q: number[]; weight: number[]; mean_weight: number; mean_weight_se: number;
+  q_mean_by_weighting: number; q_mean_theory: number; prob_above_q_mean: number; theta: number; T: number;
+}
+
+export interface ImportanceRequest { S0: number; K: number; T: number; r: number; q: number; vol: number; product: "call" | "put" | "digital"; n_paths: number }
+
+export interface ImportanceResponse {
+  exact: number; theta_star: number; plain: { price: number; se: number }; importance: { price: number; se: number };
+  variance_reduction: number | null; itm_probability: number;
+  theta_grid: { theta: number; price: number; se: number }[];
+  convergence: { n: number; plain: number; plain_se: number; importance: number; importance_se: number }[];
+}
+
+export const stochasticApi = {
+  brownian: () => request<BrownianResponse>("/api/theory/brownian"),
+  girsanov: (theta: number, T: number) => request<GirsanovResponse>(`/api/theory/girsanov?theta=${theta}&T=${T}`),
+  importance: (req: ImportanceRequest) => post<ImportanceResponse>("/api/theory/importance", req),
+};

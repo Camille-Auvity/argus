@@ -20,7 +20,7 @@ from scipy.stats import norm
 
 from qplat.instruments.exotics import AsianOption, Averaging, CliquetOption, DigitalKind, DigitalOption
 from qplat.pricers.base import FiniteDifferencePricer
-from qplat.pricers.paths import gbm_paths, standard_normals
+from qplat.pricers.paths import auto_theta, gbm_paths, importance_shift, standard_normals
 
 
 # ----------------------------------------------------------------------------- digital
@@ -147,26 +147,51 @@ class MonteCarloExoticPricer(FiniteDifferencePricer):
     """
 
     def __init__(self, n_paths: int = 50_000, seed: int = 17, antithetic: bool = True, model=None,
-                 control_variate: bool = True, **bumps):
+                 control_variate: bool = True, importance: float | str | None = None, **bumps):
+        """`importance`: Girsanov drift shift theta of the Brownian motion (a number, or "auto": the median of the
+        final spot is moved to the strike). Only with the Black-Scholes paths (model=None)."""
         super().__init__(**bumps)
+        self.importance = importance
         self.n_paths = n_paths
         self.seed = seed
         self.antithetic = antithetic
         self.model = model
         self.control_variate = control_variate
         self.name = "Monte Carlo" if model is None else f"Monte Carlo ({model.name})"
+        if importance is not None and model is None:
+            self.name = "Monte Carlo (échantillonnage préférentiel)"
 
     def uses_control_variate(self, inst) -> bool:
         return (self.control_variate and self.model is None and isinstance(inst, AsianOption)
                 and inst.averaging is Averaging.ARITHMETIC)
 
-    def simulate(self, inst) -> np.ndarray:
+    def drift_shift(self, inst) -> float:
+        """Girsanov drift shift used for importance sampling (0 = plain Monte Carlo)."""
+        if self.importance is None or self.model is not None:
+            return 0.0
+        if self.importance == "auto":
+            target = getattr(inst, "strike", None)
+            if target is None:
+                return 0.0
+            return auto_theta(inst.spot, target, inst.vol, inst.dividend_yield, inst.curve, inst.maturity)
+        return float(self.importance)
+
+    def simulate(self, inst, with_weights: bool = False):
+        """Simulated spots on the observation dates; with `with_weights`, also the likelihood ratio dP/dQ of each
+        path (ones without importance sampling)."""
         times = np.asarray(inst.observation_times)
         if self.model is None:
             z = standard_normals(self.n_paths, len(times), self.seed, self.antithetic)
-            return gbm_paths(inst.spot, inst.vol, inst.dividend_yield, inst.curve, times, z)
-        return self.model.simulate(inst.spot, inst.dividend_yield, inst.curve, times, self.n_paths, self.seed,
-                                   self.antithetic)
+            theta = self.drift_shift(inst)
+            weights = np.ones(len(z))
+            if theta:
+                z, weights = importance_shift(z, times, theta)
+            paths = gbm_paths(inst.spot, inst.vol, inst.dividend_yield, inst.curve, times, z)
+        else:
+            paths = self.model.simulate(inst.spot, inst.dividend_yield, inst.curve, times, self.n_paths, self.seed,
+                                        self.antithetic)
+            weights = np.ones(len(paths))
+        return (paths, weights) if with_weights else paths
 
     def _pairs(self, x: np.ndarray) -> np.ndarray:
         """Antithetic pairs averaged: i.i.d. samples for the error estimate."""
@@ -176,15 +201,15 @@ class MonteCarloExoticPricer(FiniteDifferencePricer):
         return 0.5 * (x[:half] + x[half:2 * half])
 
     def analyze(self, inst) -> dict:
-        paths = self.simulate(inst)
+        paths, weights = self.simulate(inst, with_weights=True)
         df = float(inst.curve.discount(inst.maturity))
         payoff = inst.path_payoff(paths)
-        x = self._pairs(df * payoff)
+        x = self._pairs(df * payoff * weights)
         out = {"plain_price": float(x.mean()), "plain_std_error": float(x.std(ddof=1) / math.sqrt(len(x))),
                "payoffs": payoff, "paths": paths}
         if self.uses_control_variate(inst):
             geo = dataclasses.replace(inst, averaging=Averaging.GEOMETRIC)
-            y = self._pairs(df * geo.path_payoff(paths))
+            y = self._pairs(df * geo.path_payoff(paths) * weights)
             var_y = y.var(ddof=1)
             b = float(np.cov(x, y, ddof=1)[0, 1] / var_y) if var_y > 0 else 0.0
             adj = x - b * (y - geometric_asian_price(geo))

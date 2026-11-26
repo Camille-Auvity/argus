@@ -7,15 +7,20 @@ import numpy as np
 
 from qplat.instruments.options import ExerciseStyle, VanillaOption
 from qplat.pricers.base import FiniteDifferencePricer
-from qplat.pricers.paths import gbm_paths, standard_normals
+from qplat.pricers.paths import auto_theta, gbm_paths, importance_shift, standard_normals
 
 
 class MonteCarloPricer(FiniteDifferencePricer):
     name = "Monte Carlo"
 
     def __init__(self, n_paths: int = 100_000, seed: int = 42, antithetic: bool = True,
-                 lsm_steps: int = 50, lsm_degree: int = 3, **bumps):
+                 lsm_steps: int = 50, lsm_degree: int = 3, importance: float | str | None = None, **bumps):
+        """`importance`: Girsanov drift shift theta for European payoffs (a number, or "auto": the median of S_T
+        is moved to the strike); None = plain Monte Carlo."""
         super().__init__(**bumps)
+        self.importance = importance
+        if importance is not None:
+            self.name = "Monte Carlo (échantillonnage préférentiel)"
         self.n_paths = n_paths
         self.seed = seed
         self.antithetic = antithetic
@@ -45,8 +50,21 @@ class MonteCarloPricer(FiniteDifferencePricer):
         z = standard_normals(self.n_paths, 1, self.seed, self.antithetic)
         return gbm_paths(opt.spot, opt.vol, opt.dividend_yield, opt.curve, np.array([opt.expiry]), z)[:, 0]
 
+    def drift_shift(self, opt: VanillaOption) -> float:
+        """Girsanov drift shift used for importance sampling (0 = plain Monte Carlo)."""
+        if self.importance is None:
+            return 0.0
+        if self.importance == "auto":
+            return auto_theta(opt.spot, opt.strike, opt.vol, opt.dividend_yield, opt.curve, opt.expiry)
+        return float(self.importance)
+
     def _european_pathwise(self, opt: VanillaOption) -> np.ndarray:
-        return opt.curve.discount(opt.expiry) * opt.payoff(self.terminal_spots(opt))
+        if self.importance is None:
+            return opt.curve.discount(opt.expiry) * opt.payoff(self.terminal_spots(opt))
+        times = np.array([opt.expiry])
+        z, weight = importance_shift(standard_normals(self.n_paths, 1, self.seed, self.antithetic), times, self.drift_shift(opt))
+        s_T = gbm_paths(opt.spot, opt.vol, opt.dividend_yield, opt.curve, times, z)[:, 0]
+        return opt.curve.discount(opt.expiry) * opt.payoff(s_T) * weight
 
     def lsm_diagnostics(self, opt: VanillaOption, snapshot_step: int | None = None) -> dict:
         """Run Longstaff-Schwartz and return the exercise boundary and one regression snapshot."""

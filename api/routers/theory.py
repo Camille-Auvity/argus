@@ -154,3 +154,58 @@ def hedge_backtest(horizon: int = 21, moneyness: float = 1.0, option_type: Liter
     db = services.get_db()
     stamp = f"{db.latest_spot('SPY')}|{db.latest_spot(VOL_INDEX_TICKERS['VIX'])}"
     return _backtest(horizon, moneyness, option_type, stamp)
+
+
+# ----------------------------------------------------------------------------- stochastic calculus and Girsanov
+
+@lru_cache(maxsize=1)
+def _brownian() -> dict:
+    from qplat.theory.stochastic import ito_sums, martingales, sample_paths, variations
+
+    return {"paths": sample_paths(), "variations": variations(), "ito": ito_sums(), "martingales": martingales()}
+
+
+@router.get("/brownian")
+def brownian():
+    """Brownian paths, total vs quadratic variation, Ito vs right-point sums, martingale checks."""
+    return _brownian()
+
+
+@lru_cache(maxsize=32)
+def _girsanov(theta: float, T: float) -> dict:
+    from qplat.theory.stochastic import girsanov
+
+    return girsanov(theta, T)
+
+
+@router.get("/girsanov")
+def girsanov_view(theta: float = 1.0, T: float = 1.0):
+    """Law of B_T under P and under Q (Radon-Nikodym weight exp(theta B_T - theta^2 T / 2))."""
+    if not (-3 <= theta <= 3 and 0.1 <= T <= 5):
+        raise HTTPException(422, "theta dans [-3, 3], T dans [0,1 ; 5]")
+    return _girsanov(round(theta, 4), round(T, 4))
+
+
+class ImportanceRequest(BaseModel):
+    S0: float = Field(100.0, gt=0)
+    K: float = Field(150.0, gt=0)
+    T: float = Field(0.5, gt=0.01, le=5)
+    r: float = Field(0.03, ge=-0.05, le=0.3)
+    q: float = Field(0.0, ge=0, le=0.2)
+    vol: float = Field(0.2, gt=0.01, le=2)
+    product: Literal["call", "put", "digital"] = "call"
+    n_paths: int = Field(20_000, ge=1_000, le=100_000)
+
+
+@lru_cache(maxsize=64)
+def _importance(payload: str) -> dict:
+    from qplat.theory.stochastic import importance_sampling
+
+    req = ImportanceRequest.model_validate_json(payload)
+    return importance_sampling(req.S0, req.K, req.T, req.r, req.q, req.vol, req.product, req.n_paths)
+
+
+@router.post("/importance")
+def importance(req: ImportanceRequest):
+    """Plain vs importance-sampled Monte Carlo (Girsanov drift shift) on a far out-of-the-money payoff."""
+    return _importance(req.model_dump_json())

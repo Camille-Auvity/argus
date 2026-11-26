@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { theoryApi, type HedgeRequest, type TreeRequest } from "../api/client";
+import { stochasticApi, theoryApi, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
 import { EChart } from "../components/EChart";
 import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { num, pct } from "../lib/format";
@@ -11,6 +11,8 @@ import type { ChartPalette } from "../lib/theme";
 export const THEORY_PAGES = [
   { path: "replication", label: "Réplication sur l'arbre" },
   { path: "couverture", label: "Couverture dynamique en delta" },
+  { path: "calcul-stochastique", label: "Calcul stochastique" },
+  { path: "girsanov", label: "Girsanov et échantillonnage préférentiel" },
 ] as const;
 
 export default function Theory() {
@@ -371,6 +373,266 @@ export function HedgingLab() {
           vente d'un swap de variance, mais pondéré par le gamma, donc concentré autour du strike.
         </InfoBox>
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------- stochastic calculus
+
+export function StochasticLab() {
+  const { data, error } = useQuery({ queryKey: ["brownian"], queryFn: stochasticApi.brownian });
+
+  const pathsOption = useCallback((p: ChartPalette) => {
+    if (!data) return {};
+    const t = data.paths.t;
+    return {
+      grid: { top: 20 },
+      tooltip: { show: false },
+      xAxis: { type: "value", name: "t", nameLocation: "middle", nameGap: 26, min: 0, max: 1 },
+      yAxis: { type: "value" },
+      series: [
+        ...data.paths.paths.map((path) => ({ type: "line", showSymbol: false, silent: true, color: p.series[0],
+          lineStyle: { width: 0.8, opacity: 0.45 }, data: path.map((v, i) => [t[i], v]) })),
+        { type: "line", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: t.map((x, i) => [x, data.paths.band[i]]) },
+        { type: "line", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: t.map((x, i) => [x, -data.paths.band[i]]) },
+      ],
+    };
+  }, [data]);
+
+  const variationOption = useCallback((p: ChartPalette) => {
+    if (!data) return {};
+    const v = data.variations;
+    return {
+      legend: {},
+      grid: { top: 34, right: 60 },
+      tooltip: { trigger: "axis", valueFormatter: (x: number) => num(x, 3) },
+      xAxis: { type: "log", name: "nombre de pas N", nameLocation: "middle", nameGap: 26, min: 2 },
+      yAxis: [{ type: "log", name: "Σ |ΔB|" }, { type: "value", name: "Σ (ΔB)²", min: 0, max: 2, splitLine: { show: false } }],
+      series: [
+        { type: "line", name: "Variation totale (simulée)", color: p.series[0], symbolSize: 7, data: v.map((x) => [x.n, x.total_variation]) },
+        { type: "line", name: "√(2N/π)", color: p.series[0], showSymbol: false, lineStyle: { type: "dashed" }, data: v.map((x) => [x.n, x.total_variation_theory]) },
+        { type: "line", name: "Variation quadratique ± 1 écart-type", yAxisIndex: 1, color: p.series[1], symbolSize: 7, data: v.map((x) => [x.n, x.quadratic_variation]) },
+        { type: "line", yAxisIndex: 1, color: p.series[1], showSymbol: false, lineStyle: { width: 1, type: "dotted" }, data: v.map((x) => [x.n, x.quadratic_variation + x.quadratic_variation_sd]) },
+        { type: "line", yAxisIndex: 1, color: p.series[1], showSymbol: false, lineStyle: { width: 1, type: "dotted" }, data: v.map((x) => [x.n, x.quadratic_variation - x.quadratic_variation_sd]) },
+      ],
+    };
+  }, [data]);
+
+  const itoOption = useCallback((p: ChartPalette) => {
+    if (!data) return {};
+    const h = data.ito.histogram;
+    const mid = h.left.map((_, i) => (h.edges[i] + h.edges[i + 1]) / 2);
+    return {
+      legend: {},
+      grid: { top: 34 },
+      tooltip: { trigger: "axis" },
+      xAxis: { type: "value", min: "dataMin", max: "dataMax", axisLabel: { formatter: (v: number) => num(v, 1) } },
+      yAxis: { type: "value" },
+      series: [
+        { type: "bar", name: "Somme au point gauche (Itô)", color: p.series[0], barGap: "-100%", itemStyle: { opacity: 0.6 }, data: mid.map((m, i) => [m, h.left[i]]),
+          markLine: { symbol: "none", silent: true, lineStyle: { color: p.series[0] }, label: { formatter: "E = 0", color: p.muted }, data: [{ xAxis: data.ito.mean_left }] } },
+        { type: "bar", name: "Somme au point droit", color: p.series[1], itemStyle: { opacity: 0.6 }, data: mid.map((m, i) => [m, h.right[i]]),
+          markLine: { symbol: "none", silent: true, lineStyle: { color: p.series[1] }, label: { formatter: "E = T", color: p.muted }, data: [{ xAxis: data.ito.mean_right }] } },
+      ],
+    };
+  }, [data]);
+
+  const exampleOption = useCallback((p: ChartPalette) => {
+    if (!data) return {};
+    const e = data.ito.example;
+    return {
+      legend: {},
+      grid: { top: 34 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 3) },
+      xAxis: { type: "category", data: e.t.map((x) => num(x, 2)), axisLabel: { hideOverlap: true } },
+      yAxis: { type: "value" },
+      series: [
+        { type: "line", name: "B_t", showSymbol: false, color: p.muted, lineStyle: { width: 1 }, data: e.B },
+        { type: "line", name: "Σ B_{tᵢ} ΔB (Itô)", showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: e.left_running },
+        { type: "line", name: "½ B_t² − ½ t", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: e.ito_running },
+      ],
+    };
+  }, [data]);
+
+  const martOption = useCallback((p: ChartPalette) => {
+    if (!data) return {};
+    const m = data.martingales;
+    return {
+      legend: { type: "scroll" },
+      grid: { top: 40 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 3) },
+      xAxis: { type: "category", data: m.t.map((x) => num(x, 1)), name: "t", nameLocation: "middle", nameGap: 26 },
+      yAxis: { type: "value" },
+      series: Object.entries(m.series).map(([name, s], i) => ({ type: "line", name: `E[${name}]${s.martingale ? " (martingale)" : ""}`, showSymbol: false,
+        color: p.series[i % p.series.length], lineStyle: { width: s.martingale ? 2.5 : 1.5, type: s.martingale ? "solid" : "dashed" }, data: s.mean })),
+    };
+  }, [data]);
+
+  const last = data?.variations[data.variations.length - 1];
+  return (
+    <div className="grid">
+      <ErrorBox error={error} />
+      <Explainer>
+        Les exercices de la Lecture 3, vérifiés sur des milliers de trajectoires simulées : un mouvement brownien n'a pas de longueur
+        finie mais sa variation quadratique est déterministe, (dB)² = dt. C'est ce qui oblige à choisir un point d'évaluation dans
+        l'intégrale stochastique et qui crée le terme ½ σ² f'' du lemme d'Itô.
+      </Explainer>
+      <div className="grid cols-4">
+        <Stat label="Variation totale (N = 4 096)" value={last ? num(last.total_variation, 1) : "—"} foot={last ? `√(2N/π) = ${num(last.total_variation_theory, 1)} → ∞` : undefined} />
+        <Stat label="Variation quadratique" value={last ? num(last.quadratic_variation, 4) : "—"} foot={last ? `écart-type ${num(last.quadratic_variation_sd, 4)} (théorie √(2/N) = ${num(last.quadratic_variation_sd_theory, 4)})` : undefined} />
+        <Stat label="E[Σ B ΔB] point gauche" value={data ? num(data.ito.mean_left, 3) : "—"} foot="Théorie : 0 (l'intégrale d'Itô est une martingale)" />
+        <Stat label="E[Σ B ΔB] point droit" value={data ? num(data.ito.mean_right, 3) : "—"} foot={data ? `Théorie : T = ${num(data.ito.T, 0)}` : undefined} />
+      </div>
+      <div className="grid cols-2">
+        <Card title="Trajectoires browniennes et bande ±1,96 √t">
+          {data ? <EChart option={pathsOption} height={320} ariaLabel="Trajectoires browniennes" /> : <Skeleton height={280} />}
+        </Card>
+        <Card title="Variation totale contre variation quadratique">
+          {data ? <EChart option={variationOption} height={320} ariaLabel="Variations totale et quadratique selon le nombre de pas" /> : <Skeleton height={280} />}
+        </Card>
+      </div>
+      <div className="grid cols-2">
+        <Card title="∫ B dB : le point d'évaluation change le résultat">
+          {data ? <EChart option={itoOption} height={300} ariaLabel="Distribution des sommes à gauche et à droite" /> : <Skeleton height={260} />}
+        </Card>
+        <Card title="Une trajectoire : la somme d'Itô suit ½ B_t² − ½ t">
+          {data ? <EChart option={exampleOption} height={300} ariaLabel="Somme d'Itô le long d'une trajectoire" /> : <Skeleton height={260} />}
+        </Card>
+      </div>
+      <InfoBox>
+        R<sub>N</sub> − L<sub>N</sub> = Σ (ΔB)² → T : évaluer l'intégrande à droite ajoute exactement la variation quadratique. La convention d'Itô
+        (à gauche : on choisit sa position avant de voir le choc) donne une martingale, et le lemme d'Itô retrouve d(B²) = 2B dB + dt.
+      </InfoBox>
+      <Card title={`Martingales et non-martingales (λ = ${data ? num(data.martingales.lambda, 1) : "…"})`}>
+        {data ? <EChart option={martOption} height={340} ariaLabel="Espérances de martingales et de processus qui n'en sont pas" /> : <Skeleton height={300} />}
+      </Card>
+      <InfoBox>
+        B<sub>t</sub>, B<sub>t</sub>² − t et e^(λB<sub>t</sub> − λ²t/2) gardent une espérance constante (exercice 6 du cours). Sans leur terme
+        correctif, B<sub>t</sub>² et e^(λB<sub>t</sub>) dérivent : E[B<sub>t</sub>²] = t et E[e^(λB<sub>t</sub>)] = e^(λ²t/2), la transformée de Laplace
+        de l'exercice 3. C'est la même correction qui rend e^(−σ²t/2 + σB<sub>t</sub>) martingale dans le prix actualisé de Black-Scholes.
+      </InfoBox>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------- Girsanov and importance sampling
+
+export function GirsanovLab() {
+  const [theta, setTheta] = useState(1.0);
+  const [T, setT] = useState(1.0);
+  const [req, setReq] = useState<ImportanceRequest>({ S0: 100, K: 150, T: 0.5, r: 0.03, q: 0, vol: 0.2, product: "call", n_paths: 20_000 });
+  const set = (patch: Partial<ImportanceRequest>) => setReq((r) => ({ ...r, ...patch }));
+  const g = useQuery({ queryKey: ["girsanov", theta, T], queryFn: () => stochasticApi.girsanov(theta, T), placeholderData: keepPreviousData });
+  const debounced = useDebounced(req, 400);
+  const imp = useQuery({ queryKey: ["importance", debounced], queryFn: () => stochasticApi.importance(debounced), placeholderData: keepPreviousData });
+  const d = imp.data;
+
+  const densityOption = useCallback((p: ChartPalette) => {
+    if (!g.data) return {};
+    const x = g.data;
+    return {
+      legend: {},
+      grid: { top: 34, right: 60 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 3) },
+      xAxis: { type: "value", name: "B_T", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax" },
+      yAxis: [{ type: "value", name: "densité" }, { type: "value", name: "poids Y", splitLine: { show: false } }],
+      series: [
+        { type: "line", name: "Densité sous P : N(0, T)", showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, areaStyle: { opacity: 0.12 },
+          data: x.b.map((b, i) => [b, x.density_P[i]]) },
+        { type: "line", name: "Densité sous Q : N(θT, T)", showSymbol: false, color: p.series[1], lineStyle: { width: 2.5 }, areaStyle: { opacity: 0.12 },
+          data: x.b.map((b, i) => [b, x.density_Q[i]]) },
+        { type: "line", name: "Y = dQ/dP = exp(θB_T − θ²T/2)", yAxisIndex: 1, showSymbol: false, color: p.muted, lineStyle: { width: 1.5, type: "dashed" },
+          data: x.b.map((b, i) => [b, Math.min(x.weight[i], 20)]) },
+      ],
+    };
+  }, [g.data]);
+
+  const thetaOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    return {
+      grid: { top: 20 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 6) },
+      xAxis: { type: "value", name: "décalage θ", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax",
+        axisLabel: { formatter: (v: number) => num(v, 1) } },
+      yAxis: { type: "log", name: "erreur standard" },
+      series: [{ type: "line", name: "Erreur standard", symbolSize: 6, color: p.series[0], lineStyle: { width: 2 }, data: d.theta_grid.map((x) => [x.theta, Math.max(x.se, 1e-12)]),
+        markLine: { symbol: "none", silent: true, lineStyle: { color: p.series[1], type: "dashed" }, label: { formatter: "θ* (médiane au strike)", color: p.muted },
+          data: [{ xAxis: d.theta_star }] } }],
+    };
+  }, [d]);
+
+  const convOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    const band = (key: "plain" | "importance", seKey: "plain_se" | "importance_se", sign: number) => d.convergence.map((c) => [c.n, c[key] + sign * 1.96 * c[seKey]]);
+    return {
+      legend: {},
+      grid: { top: 34 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 5) },
+      xAxis: { type: "log", name: "trajectoires", nameLocation: "middle", nameGap: 26, min: 800 },
+      yAxis: { type: "value", scale: true },
+      series: [
+        { type: "line", name: "Monte Carlo simple", color: p.series[1], symbolSize: 6, data: d.convergence.map((c) => [c.n, c.plain]) },
+        { type: "line", color: p.series[1], showSymbol: false, lineStyle: { type: "dotted", width: 1 }, data: band("plain", "plain_se", 1) },
+        { type: "line", color: p.series[1], showSymbol: false, lineStyle: { type: "dotted", width: 1 }, data: band("plain", "plain_se", -1) },
+        { type: "line", name: "Échantillonnage préférentiel", color: p.series[0], symbolSize: 6, lineStyle: { width: 2 }, data: d.convergence.map((c) => [c.n, c.importance]) },
+        { type: "line", name: "Prix exact", color: p.muted, showSymbol: false, lineStyle: { type: "dashed" }, data: d.convergence.map((c) => [c.n, d.exact]) },
+      ],
+    };
+  }, [d]);
+
+  return (
+    <div className="grid">
+      <ErrorBox error={g.error ?? imp.error} />
+      <Explainer>
+        Radon-Nikodym et Girsanov : multiplier par Y = exp(θB<sub>T</sub> − θ²T/2) définit une nouvelle probabilité Q, sous laquelle
+        B<sub>T</sub> suit N(θT, T) et B<sub>t</sub> − θt est un mouvement brownien. Les trajectoires possibles sont les mêmes, seuls leurs poids
+        changent : la dérive bouge, pas la volatilité.
+      </Explainer>
+      <Card title="Changement de mesure">
+        <div className="toolbar-grid" style={{ marginBottom: 12 }}>
+          <NumberField label="θ (dérive sous Q)" value={theta} min={-3} max={3} digits={2} onChange={setTheta} />
+          <NumberField label="T" value={T} min={0.1} max={5} digits={2} onChange={setT} />
+          <Stat label="E_P[Y]" value={g.data ? num(g.data.mean_weight, 4) : "—"} foot={g.data ? `± ${num(g.data.mean_weight_se, 4)} : Y est une densité` : undefined} />
+          <Stat label="E_P[Y B_T] = E_Q[B_T]" value={g.data ? num(g.data.q_mean_by_weighting, 3) : "—"} foot={g.data ? `théorie θT = ${num(g.data.q_mean_theory, 3)}` : undefined} />
+        </div>
+        {g.data ? <EChart option={densityOption} height={320} ariaLabel="Densités de B_T sous P et sous Q" /> : <Skeleton height={280} />}
+      </Card>
+      <Card title="Application : échantillonnage préférentiel dans le Monte Carlo">
+        <Explainer>
+          Pour une option très hors de la monnaie, presque toutes les trajectoires finissent à zéro et l'estimateur est très bruité. On
+          simule donc sous Q, avec une dérive θ qui amène la médiane de S<sub>T</sub> au strike, et on corrige chaque trajectoire par
+          dP/dQ = exp(−θW<sub>T</sub> + θ²T/2) : E<sub>P</sub>[payoff] = E<sub>Q</sub>[payoff · dP/dQ]. Le prix reste sans biais, la variance s'effondre.
+          L'option est disponible dans les pricers Monte Carlo de la plateforme (vanilles et exotiques).
+        </Explainer>
+        <div className="toolbar-grid" style={{ margin: "12px 0" }}>
+          <SelectField label="Produit" value={req.product} onChange={(product) => set({ product, K: product === "put" ? 65 : product === "digital" ? 140 : 150 })}
+            options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }, { value: "digital", label: "Digitale (cash)" }]} />
+          <NumberField label="Strike" value={req.K} min={1} digits={1} onChange={(K) => set({ K })} />
+          <NumberField label="Maturité" value={req.T} suffix="ans" min={0.02} max={5} digits={2} onChange={(T) => set({ T })} />
+          <NumberField label="Vol" value={req.vol} suffix="%" scale={100} min={0.01} digits={1} onChange={(vol) => set({ vol })} />
+          <SelectField label="Trajectoires" value={req.n_paths} onChange={(n_paths) => set({ n_paths })}
+            options={[5_000, 20_000, 50_000].map((v) => ({ value: v, label: v.toLocaleString("fr-FR") }))} />
+        </div>
+        <div className="grid cols-4">
+          <Stat label="Prix exact" value={num(d?.exact, 6)} foot={d ? `Proba de finir dans la monnaie ${pct(d.itm_probability, 2)}` : undefined} busy={imp.isFetching} />
+          <Stat label="Monte Carlo simple" value={d ? num(d.plain.price, 6) : "—"} foot={d ? `± ${num(1.96 * d.plain.se, 6)}` : undefined} busy={imp.isFetching} />
+          <Stat label="Échantillonnage préférentiel" value={d ? num(d.importance.price, 6) : "—"} foot={d ? `± ${num(1.96 * d.importance.se, 6)} (θ* = ${num(d.theta_star, 2)})` : undefined} busy={imp.isFetching} />
+          <Stat label="Variance divisée par" value={d?.variance_reduction != null ? num(d.variance_reduction, 0) : "—"} foot="À nombre de trajectoires égal" busy={imp.isFetching} />
+        </div>
+      </Card>
+      <div className="grid cols-2">
+        <Card title="Erreur standard selon le décalage θ">
+          {d ? <EChart option={thetaOption} height={300} ariaLabel="Erreur standard selon le décalage de Girsanov" /> : <Skeleton height={260} />}
+        </Card>
+        <Card title="Convergence : intervalle de confiance à 95 %">
+          {d ? <EChart option={convOption} height={300} ariaLabel="Convergence du Monte Carlo simple et préférentiel" /> : <Skeleton height={260} />}
+        </Card>
+      </div>
+      <InfoBox>
+        Le décalage optimal est proche de θ*, qui place la médiane de S<sub>T</sub> au strike ; trop décaler dégrade à nouveau l'estimateur,
+        car quelques poids deviennent énormes. À la monnaie, il n'y a presque rien à gagner. C'est la même mécanique que le passage de la
+        probabilité réelle à la probabilité risque-neutre : Girsanov change les poids des trajectoires, pas les trajectoires.
+      </InfoBox>
     </div>
   );
 }

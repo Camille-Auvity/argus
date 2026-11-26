@@ -346,7 +346,17 @@ L'erreur décroît en $1/\sqrt{M}$ : diviser l'erreur par deux coûte quatre foi
 
 **Nombres aléatoires communs.** Chaque appel utilise la même graine. Les prix « bumpés » qui servent aux grecques partagent donc les mêmes $Z$, et le bruit s'annule dans la différence.
 
-### 7.3 Longstaff-Schwartz (exercice américain)
+### 7.3 Échantillonnage préférentiel (Girsanov)
+
+Option `importance` des pricers Monte Carlo (vanilles européennes et exotiques, trajectoires Black-Scholes). Le mouvement brownien est simulé avec une dérive $\theta$ : chaque incrément $\sqrt{\Delta t}\,z$ devient $\sqrt{\Delta t}\,(z + \theta\sqrt{\Delta t})$. Chaque trajectoire est ensuite repondérée par la dérivée de Radon-Nikodym :
+
+$$
+\frac{dP}{dQ} = \exp\left(-\theta W_T + \tfrac12 \theta^2 T\right), \qquad \mathbb E_P[\text{payoff}] = \mathbb E_Q\left[\text{payoff} \cdot \frac{dP}{dQ}\right]
+$$
+
+Avec `importance="auto"`, $\theta^* = \left(\ln(K/F) + \tfrac12\sigma^2 T\right)/(\sigma T)$ place la médiane de $S_T$ au strike. L'estimateur reste sans biais. Pour une option très hors de la monnaie, la variance est divisée par plusieurs centaines ou milliers : environ 1 600 pour un call à 150 % du spot à 6 mois. Pour une option à la monnaie, il n'y a presque rien à gagner (section 19.5).
+
+### 7.4 Longstaff-Schwartz (exercice américain)
 
 Défaut : 50 dates d'exercice, régression polynomiale de degré 3 sur $x = S/K$.
 
@@ -1113,9 +1123,9 @@ Le rapport moyenne / variance, qui fixe l'exposition optimale $w^* = \mu / (\gam
 
 ---
 
-## 19. Théorie appliquée : réplication et couverture dynamique
+## 19. Théorie appliquée : réplication, couverture, calcul stochastique
 
-*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
+*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
 
 ### 19.1 Réplication dans l'arbre binomial
 
@@ -1167,6 +1177,24 @@ Chaque mois, on vend un call SPY à la monnaie à 21 jours. Son prix est fixé a
 - perd lors des mois agités.
 
 C'est la prime de risque de variance de la section 12.6, pondérée par le gamma.
+
+### 19.4 Calcul stochastique, vérifié numériquement
+
+Les exercices de la lecture 3 sont recalculés sur des milliers de trajectoires browniennes simulées exactement : $\Delta B = \sqrt{\Delta t}\, Z$.
+
+- **Scaling.** $B_t \sim N(0, t)$ : les trajectoires restent dans la bande $\pm 1{,}96\sqrt t$ avec une probabilité de 95 %.
+- **Variation totale.** $\mathbb E\left[\sum |\Delta B_i|\right] = N \sqrt{T/N}\, \mathbb E|Z| = \sqrt{2NT/\pi} \to \infty$. Les trajectoires n'ont pas de longueur finie, donc l'intégrale de Riemann-Stieltjes ne s'applique pas.
+- **Variation quadratique.** $\sum (\Delta B_i)^2 \to T$, de variance $2T^2/N \to 0$ : c'est la règle $(dB)^2 = dt$.
+- **Point d'évaluation.** La somme au point gauche $L_N = \sum B_{t_i} \Delta B_i$ tend vers $\tfrac12 B_T^2 - \tfrac12 T$ (d'espérance nulle : l'intégrale d'Itô est une martingale). La somme au point droit $R_N$ tend vers $\tfrac12 B_T^2 + \tfrac12 T$ (d'espérance $T$), car $R_N - L_N = \sum (\Delta B_i)^2$. Le lemme d'Itô le retrouve : $d(B^2) = 2B\,dB + dt$.
+- **Martingales.** $B_t$, $B_t^2 - t$ et $e^{\lambda B_t - \lambda^2 t/2}$ ont une espérance constante. $B_t^2$ et $e^{\lambda B_t}$ dérivent, avec $\mathbb E[e^{\lambda B_t}] = e^{\lambda^2 t/2}$ (la transformée de Laplace de l'exercice 3).
+
+### 19.5 Girsanov et échantillonnage préférentiel
+
+Avec $Y = dQ/dP = \exp(\theta B_T - \tfrac12\theta^2 T)$, on a $\mathbb E_P[Y] = 1$ et, sous $Q$, $B_T \sim N(\theta T, T)$ : la densité est la densité sous $P$ multipliée par $Y$. Les trajectoires possibles ne changent pas, seuls leurs poids changent ; la dérive bouge, pas la volatilité. La page vérifie $\mathbb E_P[Y] \approx 1$ et $\mathbb E_P[Y B_T] = \theta T$.
+
+**Application.** On lit le théorème dans l'autre sens : on simule sous une mesure où l'événement rare devient typique, puis on corrige par $dP/dQ$ (section 7.3). La page compare le Monte Carlo simple et l'échantillonnage préférentiel sur un call, un put ou une digitale très hors de la monnaie :
+- le prix exact, la réduction de variance et la convergence ;
+- l'erreur standard en fonction de $\theta$. Elle est minimale près de $\theta^*$ et remonte au-delà, quand quelques poids deviennent énormes.
 
 ---
 
@@ -1442,7 +1470,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 210 tests*
+*Dossier : `tests/` — 218 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1461,6 +1489,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
 | Risques | swap de variance en portefeuille (valeur nulle au strike juste, vega et gamma au départ, variance réalisée d'un swap en cours de vie, choc de vol) ; cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Calcul stochastique et Girsanov | variation totale ≈ √(2N/π), variation quadratique → T avec un écart-type √(2/N), sommes d'Itô et au point droit (espérances 0 et T), martingales et non-martingales, Girsanov (E_P[Y] = 1, moyenne θT), échantillonnage préférentiel sans biais avec une variance divisée par plus de 100 hors de la monnaie, grecques Monte Carlo avec échantillonnage préférentiel |
 | Théorie appliquée | exemple du cours (put 10,714 puis 11,820, Δ et B de chaque nœud, Q(S₂ = 96) = 0,46875), autofinancement à chaque nœud, absence d'arbitrage d < R < u, market maker couvert sur tous les chemins, convergence de l'arbre vers Black-Scholes, erreur de couverture en 1/√N (Derman-Kamal), indépendance du drift, P&L à vol réalisée ≠ implicite, backtest synthétique |
 | Recherche (Moreira-Muir) | rendement mensuel composé et variance réalisée, MCO Newey-West, même volatilité par construction, variance constante → stratégie = facteur, alpha positif sous régimes de volatilité et nul sans, version temps réel sans look-ahead, plafond de levier et coûts |
 | Allocation | minimum variance et moyenne-variance sans contrainte égaux aux formules fermées, frontière contrainte au-dessus de la frontière de Markowitz, tangence de Sharpe maximal (y compris la formule Σ⁻¹(μ − r)), long-only et plafonds respectés, LASSO inactif en long-only et actif avec shorts, coûts qui réduisent puis gèlent la rotation, Ledoit-Wolf défini positif et moins rétréci avec plus de données, conversion en euros, backtest sans look-ahead |
@@ -1489,6 +1518,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.
 - Merton, R. (1974). *On the Pricing of Corporate Debt: The Risk Structure of Interest Rates*. Journal of Finance.
 - ISDA (2009). *ISDA CDS Standard Model* (conventions du « Big Bang » des CDS).
+- Glasserman, P. (2003). *Monte Carlo Methods in Financial Engineering*. Springer (chapitre 4.6, échantillonnage préférentiel).
 - Derman, E. & Kamal, M. (1999). *When You Cannot Hedge Continuously: The Corrections of Black-Scholes*. Risk.
 - Carr, P. (2005). *FAQ's in Option Pricing Theory*. Journal of Derivatives.
 - Ahmad, R. & Wilmott, P. (2005). *Which Free Lunch Would You Like Today, Sir? Delta Hedging, Volatility Arbitrage and Optimal Portfolios*. Wilmott Magazine.
