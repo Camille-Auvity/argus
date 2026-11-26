@@ -37,9 +37,9 @@ export function MarketForm({ value, onChange, currency }: {
         ) : <div />}
       </div>
       <Segmented
-        label="Taux sans risque"
+        label="Taux sans risque (courbe ou constant)"
         value={value.rate.mode === "flat" ? "flat" : value.rate.currency}
-        options={[{ value: "USD", label: "Courbe USD" }, { value: "EUR", label: "Courbe EUR" }, { value: "flat", label: "Constant" }]}
+        options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }, { value: "flat", label: "Constant" }]}
         onChange={(v) => set({
           rate: v === "flat" ? { ...value.rate, mode: "flat" } : { ...value.rate, mode: "curve", currency: v as Currency },
         })}

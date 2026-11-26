@@ -122,7 +122,7 @@ export function CDSPage() {
             <div className="form-group-title">Courbe de spreads CDS</div>
             <SelectField label="Profil de crédit" value={preset} onChange={applyPreset}
               options={[...Object.entries(PRESETS).map(([value, p]) => ({ value, label: p.label })), { value: "custom", label: "Personnalisée" }]} />
-            <div className="toolbar-grid">
+            <div className="tenor-grid">
               {req.tenors.map((t, i) => (
                 <NumberField key={t} label={`${t} an${t > 1 ? "s" : ""}`} value={req.spreads_bp[i]} suffix="bp" min={0.01} digits={2} onChange={setSpread(i)} />
               ))}
@@ -135,7 +135,7 @@ export function CDSPage() {
             <div className="form-sep" />
             <div className="form-group-title">Contrat</div>
             <Segmented value={req.side} onChange={(side) => set({ side })}
-              options={[{ value: "buyer", label: "Acheteur de protection" }, { value: "seller", label: "Vendeur de protection" }]} />
+              options={[{ value: "buyer", label: "Achat de protection" }, { value: "seller", label: "Vente de protection" }]} />
             <div className="form-row">
               <NumberField label="Maturité" value={req.maturity} suffix="ans" min={0.25} max={30} digits={2} onChange={(maturity) => set({ maturity })} />
               <SelectField label="Coupon standard" value={req.coupon_bp} onChange={(coupon_bp) => set({ coupon_bp })}

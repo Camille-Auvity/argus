@@ -292,7 +292,7 @@ a {
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -359,6 +359,9 @@ a {
 
 .segmented button {
   flex: 1;
+  min-width: 0;            /* a long label must not widen the whole form */
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: 0;
   background: transparent;
   padding: 5px 10px;
@@ -1029,7 +1032,8 @@ table.data td.strong {
 
 .toolbar-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* min(…, 100%): never wider than its container (narrow side panels) */
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
   gap: 12px 14px;
   align-items: end;
 }
@@ -1302,4 +1306,18 @@ table.data td.strong {
   height: 6px;
   border-radius: 50%;
   background: var(--axis);
+}
+
+/* compact grid of quotes by tenor (CDS spreads) in a side panel */
+.tenor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* form children never impose their min-content width on narrow side panels */
+.form > *,
+.form-row > *,
+.tenor-grid > * {
+  min-width: 0;
 }

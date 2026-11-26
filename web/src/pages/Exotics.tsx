@@ -221,7 +221,7 @@ function AsianDesk() {
             <Segmented value={req.option_type} onChange={(option_type) => set({ option_type })}
               options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }]} />
             <Segmented value={req.averaging} onChange={(averaging) => set({ averaging })}
-              options={[{ value: "arithmetic", label: "Moyenne arithmétique" }, { value: "geometric", label: "Géométrique" }]} />
+              options={[{ value: "arithmetic", label: "Arithmétique" }, { value: "geometric", label: "Géométrique" }]} />
             <div className="form-row">
               <NumberField label="Strike" value={req.strike} suffix={ccy} min={0.0001} digits={2} onChange={(strike) => set({ strike })} />
               <NumberField label="Maturité" value={req.expiry} suffix="ans" min={0.05} max={10} digits={2} onChange={(expiry) => set({ expiry })} />

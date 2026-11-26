@@ -118,7 +118,7 @@ export function CapsPage() {
             <div className="form-sep" />
             <div className="form-group-title">Volatilité</div>
             <Segmented value={req.model} onChange={switchModel}
-              options={[{ value: "bachelier", label: "Normale (Bachelier)" }, { value: "black", label: "Log-normale (Black)" }]} />
+              options={[{ value: "bachelier", label: "Bachelier" }, { value: "black", label: "Black-76" }]} />
             {normal
               ? <NumberField label="Vol normale" value={req.vol} suffix="bp" scale={1e4} min={0.0001} digits={1} hint="Points de base par an" onChange={(vol) => set({ vol })} />
               : <NumberField label="Vol log-normale" value={req.vol} suffix="%" scale={100} min={0.01} digits={1} onChange={(vol) => set({ vol })} />}
