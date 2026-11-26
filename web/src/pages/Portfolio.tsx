@@ -12,7 +12,7 @@ import type { ChartPalette } from "../lib/theme";
 
 const KIND_LABEL: Record<PositionKind, string> = {
   equity: "Action", option: "Option", barrier: "Barrière", digital: "Digitale", asian: "Asiatique", cliquet: "Cliquet",
-  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS",
+  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS", capfloor: "Cap / floor", fxoption: "Option de change",
 };
 
 export const PORTFOLIO_PAGES = [
@@ -200,7 +200,8 @@ function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void })
       </td>
       <td className="muted">{p.book}</td>
       <td>{num(p.quantity, 0)}{p.params.multiplier ? <span className="muted"> ×{String(p.params.multiplier)}</span> : null}</td>
-      <td>{cds ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">pts</span></>
+      <td>{cds || p.kind === "capfloor" ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">% nom.</span></>
+        : p.kind === "fxoption" ? <>{num(p.unit_price != null ? p.unit_price * 1e4 : null, 1)} <span className="muted">pips</span></>
         : <>{num(p.unit_price, 2)} <span className="muted">{p.currency}</span></>}</td>
       <td className="strong">{money(p.market_value_base)}</td>
       <td><Delta value={p.pnl_base} digits={0} /></td>
@@ -280,6 +281,9 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     local_floor: -0.05, local_cap: 0.05, global_floor: 0,
     reference: "", cds_currency: "EUR", cds_maturity: inMonths(60), coupon_bp: 100, recovery: 0.4, cds_preset: "bbb",
     spreads_bp: CDS_PRESETS.bbb.spreads,
+    cf_kind: "cap", cf_currency: "USD", cf_maturity: inMonths(60), cf_frequency: 4, cf_atm: true, cf_strike: 0.04,
+    cf_model: "bachelier", cf_vol: 0.01,
+    fx_type: "call", fx_expiry: inMonths(6), fx_strike: 1.12, fx_atm: 0.07, fx_rr: 0.003, fx_bf: 0.0025,
   });
   const set = (k: string) => (v: unknown) => setPrm((p) => ({ ...p, [k]: v }));
   const spot = tickers?.find((t) => t.ticker === ticker)?.last;
@@ -299,10 +303,14 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         autocall: pick("maturity_years", "frequency", "coupon_rate", "autocall_barrier", "coupon_barrier", "protection_barrier", "memory"),
         bond: { currency: prm.currency, maturity: prm.maturity, coupon_rate: prm.bond_coupon, frequency: prm.bond_frequency },
         future: pick("expiry", "multiplier"),
+        capfloor: { currency: prm.cf_currency, cf_kind: prm.cf_kind, maturity: prm.cf_maturity, frequency: prm.cf_frequency,
+          strike: prm.cf_atm ? null : prm.cf_strike, model: prm.cf_model, vol: prm.cf_vol },
+        fxoption: { expiry: prm.fx_expiry, strike: prm.fx_strike, option_type: prm.fx_type, atm: prm.fx_atm,
+          rr25: prm.fx_rr, bf25: prm.fx_bf },
         cds: { reference: prm.reference || "Émetteur", currency: prm.cds_currency, maturity: prm.cds_maturity,
           coupon_bp: prm.coupon_bp, recovery: prm.recovery, spreads_bp: prm.spreads_bp },
       };
-      const noTicker = kind === "bond" || kind === "cds";
+      const noTicker = kind === "bond" || kind === "cds" || kind === "capfloor" || kind === "fxoption";
       const body: PositionIn = { kind, quantity, ticker: noTicker ? null : ticker, params: params[kind], book, label };
       return portfolioApi.add(body);
     },
@@ -388,6 +396,37 @@ function AddPosition({ onDone }: { onDone: () => void }) {
           options={[{ value: 1, label: "Annuel" }, { value: 2, label: "Semestriel" }]} />
       </>
     );
+  } else if (kind === "capfloor") {
+    const normal = prm.cf_model === "bachelier";
+    fields = (
+      <>
+        <Segmented label="Type" value={prm.cf_kind as string} onChange={set("cf_kind")} options={[{ value: "cap", label: "Cap" }, { value: "floor", label: "Floor" }]} />
+        <Segmented label="Courbe" value={prm.cf_currency as string} onChange={set("cf_currency")} options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }]} />
+        <DateField label="Maturité" value={prm.cf_maturity as string} onChange={set("cf_maturity")} />
+        <SelectField label="Fréquence" value={prm.cf_frequency as number} onChange={set("cf_frequency")}
+          options={[{ value: 12, label: "Mensuelle" }, { value: 4, label: "Trimestrielle" }, { value: 2, label: "Semestrielle" }, { value: 1, label: "Annuelle" }]} />
+        <SelectField label="Strike" value={prm.cf_atm ? "atm" : "fixed"} onChange={(v: string) => set("cf_atm")(v === "atm")}
+          options={[{ value: "atm", label: "ATM (fixé à l'ajout)" }, { value: "fixed", label: "Niveau fixé" }]} />
+        {!prm.cf_atm && <NumberField label="Niveau du strike" value={prm.cf_strike as number} suffix="%" scale={100} digits={3} onChange={set("cf_strike")} />}
+        <Segmented label="Modèle" value={prm.cf_model as string} onChange={(v: string) => setPrm((q) => ({ ...q, cf_model: v, cf_vol: v === "bachelier" ? 0.01 : 0.25 }))}
+          options={[{ value: "bachelier", label: "Normal" }, { value: "black", label: "Log-normal" }]} />
+        {normal
+          ? <NumberField label="Vol normale" value={prm.cf_vol as number} suffix="bp" scale={1e4} min={0.0001} digits={1} onChange={set("cf_vol")} />
+          : <NumberField label="Vol log-normale" value={prm.cf_vol as number} suffix="%" scale={100} min={0.01} digits={1} onChange={set("cf_vol")} />}
+      </>
+    );
+  } else if (kind === "fxoption") {
+    fields = (
+      <>
+        <Segmented label="Type" value={prm.fx_type as string} onChange={set("fx_type")}
+          options={[{ value: "call", label: "Call EUR" }, { value: "put", label: "Put EUR" }]} />
+        <DateField label="Échéance" value={prm.fx_expiry as string} onChange={set("fx_expiry")} />
+        <NumberField label="Strike EUR/USD" value={prm.fx_strike as number} min={0.0001} digits={4} onChange={set("fx_strike")} />
+        <NumberField label="Vol ATM" value={prm.fx_atm as number} suffix="%" scale={100} min={0.001} digits={2} onChange={set("fx_atm")} />
+        <NumberField label="Risk reversal 25Δ" value={prm.fx_rr as number} suffix="%" scale={100} digits={2} onChange={set("fx_rr")} />
+        <NumberField label="Butterfly 25Δ" value={prm.fx_bf as number} suffix="%" scale={100} digits={2} onChange={set("fx_bf")} />
+      </>
+    );
   } else if (kind === "cds") {
     const spreads = prm.spreads_bp as number[];
     fields = (
@@ -418,19 +457,23 @@ function AddPosition({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="form">
-      <Segmented value={kind} onChange={(k) => {
+      <div style={{ maxWidth: 320 }}>
+        <SelectField label="Type d'instrument" value={kind} onChange={(k: PositionKind) => {
         // a CDS quantity is a notional: switch between unit counts and notionals with sensible defaults
-        if (k === "cds" && kind !== "cds") setQuantity(10_000_000);
-        if (k !== "cds" && kind === "cds") setQuantity(1);
+        const notional = (x: PositionKind) => x === "cds" || x === "capfloor" || x === "fxoption";
+        if (notional(k) && !notional(kind)) setQuantity(10_000_000);
+        if (!notional(k) && notional(kind)) setQuantity(1);
         setKind(k);
       }} options={(Object.keys(KIND_LABEL) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
+      </div>
       <div className="toolbar-grid">
-        {kind !== "bond" && kind !== "cds" && (
+        {!["bond", "cds", "capfloor", "fxoption"].includes(kind) && (
           <SelectField label="Sous-jacent" value={ticker} onChange={setTicker}
             options={(tickers ?? []).map((t) => ({ value: t.ticker, label: `${t.ticker} — ${t.name}` }))} />
         )}
         <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)"
-          : kind === "cds" ? "Nominal (> 0 achat de protection, < 0 vente)" : "Quantité (négatif = vente)"}
+          : kind === "cds" ? "Nominal (> 0 achat de protection, < 0 vente)"
+          : kind === "capfloor" ? "Nominal (négatif = vente)" : kind === "fxoption" ? "Nominal en EUR (négatif = vente)" : "Quantité (négatif = vente)"}
           value={quantity} digits={2} onChange={setQuantity} />
         {fields}
         <TextField label="Book" value={book} onChange={setBook} />

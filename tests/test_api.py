@@ -155,6 +155,24 @@ def test_caps_and_fx_endpoints(client):
     assert fx["smile"]["pillars"]["25D call"]["vol"] - fx["smile"]["pillars"]["25D put"]["vol"] == pytest.approx(0.003)
 
 
+def test_cap_and_fx_positions(client):
+    params = {"currency": "USD", "cf_kind": "cap", "maturity": "2031-06-20", "frequency": 4, "strike": None,
+              "model": "bachelier", "vol": 0.01}
+    r = client.post("/api/portfolio/positions", json={"kind": "capfloor", "quantity": 1e7, "params": params})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    try:
+        row = next(p for p in client.get("/api/portfolio").json()["positions"] if p["id"] == pid)
+        assert 0.03 < row["params"]["strike"] < 0.07              # ATM strike filled in at inception
+        assert row["dv01"] < 0 and row["vega"] > 0 and row["error"] is None
+    finally:
+        client.delete(f"/api/portfolio/positions/{pid}")
+    # no EUR/USD history in this database: the FX option cannot be valued
+    fx = client.post("/api/portfolio/positions", json={"kind": "fxoption", "quantity": 1e6, "params": {
+        "expiry": "2027-06-20", "strike": 1.1, "option_type": "call", "atm": 0.07}})
+    assert fx.status_code == 409
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

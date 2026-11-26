@@ -139,6 +139,31 @@ def _shifted_price(cap: CapFloor, curve: RateCurve, vol: float, model: Model, dt
     return float(np.sum(cap.notional * tau * P * v))
 
 
+def strip_value(starts, ends, strike: float, phi: int, curve: RateCurve, vol: float, model: Model,
+                notional: float = 1.0) -> float:
+    """Caplets / floorlets on explicit periods, some possibly already started (seasoned cap).
+
+    A period whose fixing date is past (start <= 0 < end) is valued at its intrinsic value, with the
+    fixing approximated by today's curve rate to the payment date (historical fixings are not stored).
+    """
+    starts, ends = np.asarray(starts, float), np.asarray(ends, float)
+    keep = ends > 0
+    starts, ends = starts[keep], ends[keep]
+    tau = ends - starts
+    P = np.asarray(curve.discount(ends), float)
+    fixed = starts <= 0
+    total = 0.0
+    if fixed.any():
+        rate = (1.0 / P[fixed] - 1.0) / ends[fixed]
+        total += float(np.sum(notional * tau[fixed] * P[fixed] * np.maximum(phi * (rate - strike), 0.0)))
+    live = ~fixed
+    if live.any():
+        F = forward_rates(curve, starts[live], ends[live])
+        v, _, _ = caplet_values(F, strike, starts[live], vol, phi, model)
+        total += float(np.sum(notional * tau[live] * P[live] * v))
+    return total
+
+
 def implied_flat_vol(cap: CapFloor, curve: RateCurve, price: float, model: Model = "black") -> float:
     """Single vol that reprices the whole cap (the market 'flat' vol quote)."""
     lo, hi = (1e-4, 5.0) if model == "black" else (1e-6, 0.1)
@@ -158,5 +183,5 @@ def with_strike(cap: CapFloor, strike: float) -> CapFloor:
 
 __all__ = [
     "CapFloor", "CapFloorGreeks", "CapFloorResult", "CapletRow", "caplet_values", "capfloor_greeks",
-    "forward_rates", "forward_swap_rate", "implied_flat_vol", "price_capfloor", "swap_value", "with_strike",
+    "forward_rates", "forward_swap_rate", "implied_flat_vol", "price_capfloor", "strip_value", "swap_value", "with_strike",
 ]

@@ -132,7 +132,7 @@ for pricer in (BlackScholesPricer(), BinomialTreePricer(), MonteCarloPricer()):
 - **Exotiques comparés** : la même barrière, le même autocall, la même digitale, asiatique et cliquet pricés sous Black-Scholes, Heston et volatilité locale, pour mesurer le risque de modèle.
 - **Options de taux et de change** : caps et floors (Black-76 ou Bachelier) sur les courbes USD et EUR, avec parité, strike ATM, vol plate implicite, DV01, vega et détail des caplets ; options EUR/USD en Garman-Kohlhagen (deux rhos, deltas spot / forward / ajusté de la prime), smile construit sur ATM, risk reversal et butterfly 25Δ (butterfly de smile à la Clark, interpolation Vanna-Volga, densité risque-neutre).
 - **Crédit** : bootstrap d'une courbe d'intensité de défaut à partir de spreads CDS (jambes façon ISDA), spread au pair, upfront, CS01, IR01, sensibilité au recouvrement, jump-to-default ; modèle de Merton calibré sur la capitalisation, la vol action et le bilan (distance au défaut, probabilité de défaut, spread, courbe CDS implicite, vol implicite d'un CDS de marché).
-- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures, CDS ; fixings passés lus dans l'historique) avec :
+- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures, CDS, caps et floors, options EUR/USD ; fixings passés lus dans l'historique) avec :
   - grecques agrégées ;
   - stress tests actions × vol, taux et spreads de crédit, en revalorisation complète ;
   - CS01 et jump-to-default des CDS ;

@@ -210,3 +210,61 @@ def test_cds_seller_mirrors_buyer_and_spread_stress():
     # +100 bp: the protection buyer gains roughly 100 x CS01 (a bit less: convexity of the risky annuity)
     assert 80 * buy.cs01_base < up["pnl"] < 100 * buy.cs01_base
     assert all(row == [0.0] * len(row) for row in grid["pnl"])          # no equity / vol exposure
+
+
+# ----------------------------------------------------------------------------- caps / floors and FX options
+
+def test_new_cap_position_matches_pricer():
+    from qplat.pricers.capfloor import CapFloor, price_capfloor
+
+    # quarterly schedule built on dates: ~ the 5y quarterly cap of the pricer
+    q = {"currency": "EUR", "cf_kind": "cap", "start_date": TODAY.isoformat(), "maturity": iso(5 * 365), "frequency": 4,
+         "strike": 0.025, "model": "bachelier", "vol": 0.008}
+    v = value_position(Position(30, "capfloor", 1e7, None, q), snapshot())
+    ref = price_capfloor(CapFloor(maturity=5, strike=0.025, notional=1e7), FlatCurve(0.025), 0.008, "bachelier").price
+    assert v.market_value_base == pytest.approx(ref, rel=2e-3)
+    assert v.dv01_base < 0 and v.rho_base > 0 and v.vega_base > 0      # a cap gains when rates rise
+    floor = value_position(Position(31, "capfloor", 1e7, None, {**q, "cf_kind": "floor"}), snapshot())
+    assert floor.dv01_base > 0
+
+
+def test_seasoned_cap_values_the_running_period_at_intrinsic():
+    q = {"currency": "EUR", "cf_kind": "cap", "start_date": iso(-200), "maturity": iso(365), "frequency": 4,
+         "strike": 0.0, "model": "bachelier", "vol": 1e-6}
+    from qplat.risk.portfolio import capfloor_schedule
+
+    v = value_position(Position(32, "capfloor", 1.0, None, q), snapshot())
+    starts, ends = capfloor_schedule(q, TODAY)
+    running = (starts <= 0) & (ends > 0)
+    assert running.sum() == 1
+    # zero strike, no vol: future caplets telescope to P(e0) - P(T); the running one pays its full accrual
+    # at today's rate to its payment date (fixings are not stored)
+    P = lambda t: math.exp(-0.025 * t)  # noqa: E731
+    s0, e0 = float(starts[running][0]), float(ends[running][0])
+    expected = (e0 - s0) * P(e0) * (1 / P(e0) - 1) / e0 + P(e0) - P(float(ends[-1]))
+    assert v.unit_price == pytest.approx(expected, rel=1e-9)
+
+
+def fx_snapshot(spot=1.10):
+    m = snapshot()
+    m.spots["EURUSD=X"] = spot
+    m.currencies["EURUSD=X"] = "USD"
+    m.vols["EURUSD=X"] = lambda T: 0.07
+    return m
+
+
+def test_fx_option_position():
+    from qplat.fx import FXMarket, build_smile, gk_greeks
+
+    q = {"expiry": iso(182), "strike": 1.13, "option_type": "call", "atm": 0.07, "rr25": 0.004, "bf25": 0.003}
+    m = fx_snapshot()
+    v = value_position(Position(40, "fxoption", 5e6, "EURUSD=X", q), m)
+    T = 182 / 365
+    smile = build_smile(FXMarket(1.10, T, 0.04, 0.025), 0.07, 0.004, 0.003)
+    g = gk_greeks(1.10, 1.13, T, 0.04, 0.025, smile.vol(1.13), 1)
+    assert v.unit_price == pytest.approx(g.price)
+    assert v.market_value_base == pytest.approx(5e6 * g.price * 0.9)         # USD premium converted to EUR
+    assert v.delta == pytest.approx(5e6 * g.delta_spot)
+    # a vol shock moves the quoted smile
+    up = value_position(Position(40, "fxoption", 5e6, "EURUSD=X", q), m.shocked(vol_shift=0.01))
+    assert up.market_value_base - v.market_value_base == pytest.approx(v.vega_base, rel=0.05)

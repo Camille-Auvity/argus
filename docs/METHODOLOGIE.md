@@ -751,7 +751,7 @@ La même comparaison existe pour la digitale (avec en plus le prix « BS + pente
 
 ### 15.1 Positions et valorisation
 
-Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
+Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS, caps et floors, options de change EUR/USD. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
 Chaque position est valorisée avec le pricer adapté :
 
@@ -766,6 +766,8 @@ Chaque position est valorisée avec le pricer adapté :
 | Autocall | Monte Carlo, 20 000 trajectoires |
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
+| Cap / floor | caplets en Black-76 ou Bachelier sur la courbe de la devise (section 17.1) ; strike ATM figé à l'ajout ; quantité = nominal |
+| Option de change | Garman-Kohlhagen à la vol du smile de la position (ATM, RR et BF saisis) au strike ; sous-jacent EUR/USD ; quantité = nominal en EUR |
 | CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 16) ; quantité = nominal, positive pour un acheteur de protection |
 
 **Données de marché** : dernier cours, dividende, courbe de la devise. La volatilité est la vol ATM de la surface SVI à la maturité de la position quand le sous-jacent a des options cotées, sinon la vol réalisée sur un an.
@@ -776,6 +778,10 @@ Chaque position est valorisée avec le pricer adapté :
 - Une fois tous les fixings connus, la valeur est le payoff, sans plus aucune sensibilité.
 
 Pour le theta, un fixing qui tombe pendant le décalage d'un jour est fixé au spot du jour.
+
+**Caps déjà lancés.** L'échéancier est construit sur les dates du contrat. Les caplets dont le paiement est passé sont ignorés. Le caplet de la période en cours a déjà été fixé, mais les fixings SOFR / Euribor ne sont pas stockés : il est valorisé à sa valeur intrinsèque, avec un fixing approché par le taux de la courbe jusqu'à sa date de paiement.
+
+**Options de change.** Le sous-jacent EUR/USD est un sous-jacent comme un autre. Il a son delta cash (exposition en euros), entre dans la VaR historique avec ses propres rendements, et subit les chocs de spot des stress tests. Le choc de vol des stress tests translate la vol ATM du smile coté de la position. Le rho additionne les sensibilités aux taux USD et EUR, puisque les chocs de taux translatent les deux courbes. Le vega des caps est exprimé pour 1 % de vol log-normale ou 1 bp de vol normale, selon le modèle.
 
 Les montants sont convertis en **euros**, avec le dernier taux EUR/USD stocké en base. Les positions sont enregistrées dans la table SQLite `positions` (conditions du contrat en JSON, prix d'entrée par unité).
 
@@ -1111,7 +1117,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 20. Validation
 
-*Dossier : `tests/` — 165 tests*
+*Dossier : `tests/` — 169 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1129,7 +1135,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Arbre | un nœud recalculé à la main redonne la valeur du moteur |
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
-| Risques | CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Risques | cap et option de change en portefeuille (cohérence avec les pricers, caplet en cours à sa valeur intrinsèque, choc de vol sur le smile FX) ; CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
 | Caps / floors | caplet = Black-76, parité cap − floor = swap, cap = floor au strike ATM, Black ≈ Bachelier près de la monnaie, rejet de Black avec des taux négatifs, vol plate implicite |
 | Options de change | Garman-Kohlhagen = Black-Scholes avec dividende étranger, parité, grecques par différences finies, aller-retour delta ↔ strike, straddle delta-neutre, Vanna-Volga reprice les piliers, smile plat, strangle de marché repricé, densité positive |
 | CDS | survie d'une courbe par morceaux, jambe de protection en formule fermée, triangle du crédit, bootstrap exact, rejet d'une courbe inversée, CDS au pair de valeur nulle, CS01 ≈ RPV01 × nominal × 1 bp, jump-to-default |

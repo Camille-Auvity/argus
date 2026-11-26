@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field
 
 from api import services
 from qplat.data.market import FX_TICKERS, realized_vol
+from qplat.pricers.capfloor import forward_swap_rate
 from qplat.risk.portfolio import (
-    CDS_TENORS, KINDS, MarketSnapshot, Position, aggregate, historical_var, pnl_explain, stress_grid, value_book,
+    CDS_TENORS, FX_TICKER, KINDS, capfloor_schedule, MarketSnapshot, Position, aggregate, historical_var, pnl_explain, stress_grid, value_book,
 )
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -121,7 +122,7 @@ def portfolio():
         "vol_source": info["vol_source"], "elapsed_ms": (time.perf_counter() - t0) * 1000,
         "positions": _valuation_rows(vals),
         "totals": tot[0] if tot else None,
-        "by_underlying": aggregate(vals, lambda v: v.position.ticker or (
+        "by_underlying": aggregate(vals, lambda v: ("EUR/USD" if v.position.ticker == FX_TICKER else v.position.ticker) or (
             f"Crédit {v.position.params.get('reference') or v.currency}" if v.position.kind == "cds" else f"Taux {v.currency}")),
         "by_kind": aggregate(vals, lambda v: v.position.kind),
         "by_book": aggregate(vals, lambda v: v.position.book),
@@ -167,7 +168,8 @@ def risk():
 
 
 class PositionIn(BaseModel):
-    kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds"]
+    kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds",
+                  "capfloor", "fxoption"]
     quantity: float
     ticker: str | None = None
     params: dict = Field(default_factory=dict)
@@ -179,7 +181,16 @@ class PositionIn(BaseModel):
 @router.post("/positions")
 def add_position(p: PositionIn):
     """Add a position. Without an entry price, the current model price is used (P&L starts at 0)."""
-    if p.kind not in ("bond", "cds") and not p.ticker:
+    if p.kind == "fxoption":
+        p.ticker = FX_TICKER
+    if p.kind == "capfloor":
+        p.params.setdefault("start_date", date.today().isoformat())
+        if p.params.get("strike") is None:   # ATM: par rate of the swap on the caplet periods
+            snap, _ = build_snapshot([])
+            curve = snap.curves[p.params["currency"]]
+            s_, e_ = capfloor_schedule(p.params, snap.valuation_date)
+            p.params["strike"] = forward_swap_rate(curve, s_, e_)
+    if p.kind not in ("bond", "cds", "capfloor") and not p.ticker:
         raise HTTPException(422, "ticker requis")
     if p.kind in ("autocall", "asian", "cliquet"):
         p.params.setdefault("start_date", date.today().isoformat())
@@ -250,7 +261,7 @@ def load_demo():
     """A diversified demo book across both markets (entry prices = today's model prices)."""
     db = services.get_db()
     db.clear_positions()
-    spot = {t: db.latest_spot(t) for t in ("SPY", "AAPL", "NVDA", "MC.PA", "^STOXX50E", "^FCHI")}
+    spot = {t: db.latest_spot(t) for t in ("SPY", "AAPL", "NVDA", "MC.PA", "^STOXX50E", "^FCHI", FX_TICKER)}
     missing = [t for t, s in spot.items() if s is None]
     if missing:
         raise HTTPException(409, f"cours manquants : {missing} — lancez un rafraîchissement")
@@ -289,6 +300,12 @@ def load_demo():
         dict(kind="cds", quantity=-3_000_000, book="Crédit", label="Vente de protection high yield",
              params={"reference": "Emetteur B", "currency": "USD", "maturity": _in_months(36), "coupon_bp": 500,
                      "recovery": 0.3, "spreads_bp": [300, 360, 410, 470, 490, 500]}),
+        dict(kind="capfloor", quantity=10_000_000, book="Taux", label="Cap 5 ans USD (protection hausse des taux)",
+             params={"currency": "USD", "cf_kind": "cap", "maturity": _in_months(60), "frequency": 4, "strike": None,
+                     "model": "bachelier", "vol": 0.01}),
+        dict(kind="fxoption", quantity=5_000_000, book="Change", label="Call EUR/USD 6 mois",
+             params={"expiry": _in_months(6), "strike": float(round(spot[FX_TICKER] * 1.03, 4)), "option_type": "call",
+                     "atm": 0.07, "rr25": 0.003, "bf25": 0.0025}),
         dict(kind="future", ticker="^FCHI", quantity=-1, book="Couvertures", label="Vente future CAC 40",
              params={"expiry": _in_months(3), "multiplier": 10}),
     ]

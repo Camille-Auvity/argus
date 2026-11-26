@@ -18,6 +18,8 @@ import numpy as np
 
 from qplat.core.conventions import year_fraction
 from qplat.credit import CDS, cds_risk
+from qplat.fx import FXMarket, build_smile, gk_greeks
+from qplat.pricers.capfloor import strip_value
 from qplat.curves.rate_curve import RateCurve
 from qplat.instruments import (
     AmericanOption, AsianOption, Autocallable, BarrierOption, CliquetOption, DigitalOption, EquityFuture, EuropeanOption,
@@ -28,7 +30,8 @@ from qplat.pricers import (
     FuturesPricer, GeometricAsianPricer, MonteCarloAutocallPricer, MonteCarloExoticPricer,
 )
 
-KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds")
+KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds", "capfloor", "fxoption")
+FX_TICKER = "EURUSD=X"   # underlying of FX options: price of 1 EUR in USD
 CDS_TENORS = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
 
@@ -57,6 +60,7 @@ class MarketSnapshot:
     # (ticker, date) -> close on or before that date: past fixings of Asians and cliquets
     past_close: Optional[Callable[[str, date], Optional[float]]] = None
     credit_spread_shift: float = 0.0              # parallel shift of every CDS spread curve (stress)
+    vol_shift: float = 0.0                        # absolute vol shock, also applied to quoted FX smiles
 
     def fixing(self, ticker: str, d: date) -> float:
         """Observed level at a past fixing date (falls back to the current spot when no history is available)."""
@@ -70,7 +74,8 @@ class MarketSnapshot:
         vols = {t: (lambda T, f=f: max(f(T) + vol_shift, 0.01)) for t, f in self.vols.items()}
         curves = {c: (cv.shifted(rate_shift) if rate_shift else cv) for c, cv in self.curves.items()}
         return dataclasses.replace(self, spots=spots, vols=vols, curves=curves,
-                                   credit_spread_shift=self.credit_spread_shift + spread_shift)
+                                   credit_spread_shift=self.credit_spread_shift + spread_shift,
+                                   vol_shift=self.vol_shift + vol_shift)
 
 
 @dataclass
@@ -114,6 +119,14 @@ def describe(p: Position) -> str:
         return f"Obligation {q['currency']} {100 * q['coupon_rate']:.3f} % éch. {q['maturity']}"
     if p.kind == "future":
         return f"Future {p.ticker} éch. {q['expiry']} (×{q.get('multiplier', 1):g})"
+    if p.kind == "capfloor":
+        vol = (f"{1e4 * q['vol']:.0f} bp normale" if q.get("model", "bachelier") == "bachelier"
+               else f"{100 * q['vol']:.1f} % log-normale")
+        return (f"{q['cf_kind'].capitalize()} {q['currency']} {100 * q['strike']:.3f} % éch. {q['maturity']} "
+                f"({ {1: 'annuel', 2: 'semestriel', 4: 'trimestriel', 12: 'mensuel'}[int(q['frequency'])] }, vol {vol})")
+    if p.kind == "fxoption":
+        side = "Call EUR / put USD" if q["option_type"] == "call" else "Put EUR / call USD"
+        return f"{side} K={q['strike']:.4f} éch. {q['expiry']}"
     if p.kind == "cds":
         side = "achat" if p.quantity >= 0 else "vente"
         return f"CDS {q.get('reference', '')} {side} de protection, coupon {q['coupon_bp']:g} bp, éch. {q['maturity']}"
@@ -188,11 +201,67 @@ def _seasoned_cliquet(p: Position, m: MarketSnapshot, common: dict) -> CliquetOp
     return inst
 
 
+def capfloor_schedule(q: dict, valuation: date) -> tuple[np.ndarray, np.ndarray]:
+    """Caplet periods (start, end) in years from the valuation date; the first period of the trade is excluded."""
+    start = date.fromisoformat(q["start_date"])
+    end = date.fromisoformat(q["maturity"])
+    f = int(q["frequency"])
+    n = max(int(round((end - start).days / 365 * f)), 2)
+    dates = [start + timedelta(days=round((end - start).days * i / n)) for i in range(n + 1)]
+    t = np.array([(d - valuation).days / 365 for d in dates])
+    return t[1:-1], t[2:]
+
+
+def _value_capfloor(p: Position, m: MarketSnapshot, ccy: str, scale: float, result) -> Valuation:
+    q = p.params
+    starts, ends = capfloor_schedule(q, m.valuation_date)
+    if not np.any(ends > 0):
+        return result(0.0)
+    curve = m.curves[ccy]
+    phi = 1 if q["cf_kind"] == "cap" else -1
+    model = q.get("model", "bachelier")
+
+    def value(cv=curve, vol=q["vol"], s=starts, e=ends):
+        return strip_value(s, e, q["strike"], phi, cv, vol, model)
+
+    v0 = value()
+    bp = 1e-4
+    dv01 = (value(cv=curve.shifted(-bp)) - value(cv=curve.shifted(bp))) / 2      # bond convention: gain for -1 bp
+    unit = 0.01 if model == "black" else 1e-4
+    vega = value(vol=q["vol"] + unit / 2) - value(vol=q["vol"] - unit / 2)
+    theta = value(s=starts - 1 / 365, e=ends - 1 / 365) - v0
+    return result(v0, dv01_base=dv01 * scale, rho_base=-100 * dv01 * scale, vega_base=vega * scale,
+                  theta_base=theta * scale)
+
+
+def _value_fx_option(p: Position, m: MarketSnapshot, scale: float, fx: float, result) -> Valuation:
+    """EUR/USD option, quantity = EUR notional, priced on its quoted smile (ATM / RR / BF) at its strike."""
+    q = p.params
+    T = _T(m, q["expiry"])
+    if T <= 0:
+        return result(0.0)
+    spot = m.spots[p.ticker]
+    rd, rf = float(m.curves["USD"].zero_rate(T)), float(m.curves["EUR"].zero_rate(T))
+    smile = build_smile(FXMarket(spot, T, rd, rf), q["atm"] + m.vol_shift, q.get("rr25", 0.0), q.get("bf25", 0.0))
+    vol = smile.vol(q["strike"]) or q["atm"] + m.vol_shift
+    phi = 1 if q["option_type"] == "call" else -1
+    g = gk_greeks(spot, q["strike"], T, rd, rf, vol, phi)
+    return result(
+        g.price,
+        delta=g.delta_spot * p.quantity,
+        delta_cash_base=g.delta_spot * spot * scale,
+        gamma_cash_base=0.5 * g.gamma * (0.01 * spot) ** 2 * scale,
+        vega_base=g.vega / 100 * scale,
+        theta_base=g.theta / 365 * scale,
+        rho_base=(g.rho_domestic + g.rho_foreign) / 100 * scale,
+    )
+
+
 def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Valuation:
     """Price one position and its Greeks (desk units), converted to the base currency."""
     q = p.params
     mult = float(q.get("multiplier", 1.0))
-    if p.kind in ("bond", "cds"):
+    if p.kind in ("bond", "cds", "capfloor"):
         ccy = q["currency"]
     else:
         ccy = m.currencies.get(p.ticker, "USD")
@@ -230,6 +299,12 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
             r, _ = cds_risk(cds, q.get("tenors", CDS_TENORS), spreads, m.curves[ccy], buyer=True)
             return result(r.value, cs01_base=r.cs01 * scale, jtd_base=r.jump_to_default * scale,
                           rho_base=100 * r.ir01 * scale, dv01_base=-r.ir01 * scale, theta_base=r.carry_1d * scale)
+
+        if p.kind == "capfloor":
+            return _value_capfloor(p, m, ccy, scale, result)
+
+        if p.kind == "fxoption":
+            return _value_fx_option(p, m, scale, fx, result)
 
         spot = m.spots[p.ticker]
         div = m.dividends.get(p.ticker, 0.0)
