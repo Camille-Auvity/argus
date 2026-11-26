@@ -52,6 +52,50 @@ def fetch_ticker_info(db: Database, ticker: str) -> None:
     )
 
 
+FUNDAMENTALS_MAX_AGE_DAYS = 7
+
+
+def _first(frame, *rows):
+    for r in rows:
+        if r in frame.index:
+            v = frame.loc[r].dropna()
+            if len(v):
+                return float(v.iloc[0])
+    return None
+
+
+def fetch_fundamentals(db: Database, ticker: str, force: bool = False) -> str:
+    """Shares outstanding and debt (latest annual balance sheet) for the Merton model; weekly at most.
+
+    Indices and ETFs have no balance sheet: nothing is stored for them.
+    """
+    import yfinance as yf
+
+    row = db.tickers().query("ticker == @ticker")
+    if not force and not row.empty and row.fundamentals_at.notna().iloc[0]:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(row.fundamentals_at.iloc[0])
+        if age.days < FUNDAMENTALS_MAX_AGE_DAYS:
+            return "fresh"
+    tk = yf.Ticker(ticker)
+    info = tk.info or {}
+    if info.get("quoteType") not in (None, "EQUITY"):
+        return "not an equity"
+    bs = tk.balance_sheet
+    if bs is None or bs.empty:
+        return "no balance sheet"
+    db.upsert_ticker(
+        ticker=ticker,
+        shares_outstanding=info.get("sharesOutstanding"),
+        short_term_debt=_first(bs, "Current Debt And Capital Lease Obligation", "Current Debt"),
+        long_term_debt=_first(bs, "Long Term Debt And Capital Lease Obligation", "Long Term Debt"),
+        total_debt=_first(bs, "Total Debt"),
+        cash=_first(bs, "Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"),
+        financial_currency=info.get("financialCurrency") or info.get("currency"),
+        fundamentals_at=datetime.now(timezone.utc).isoformat(),
+    )
+    return "updated"
+
+
 def fetch_spot_history(db: Database, ticker: str, period: str = "2y") -> int:
     import yfinance as yf
 

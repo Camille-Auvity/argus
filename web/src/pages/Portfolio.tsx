@@ -1,17 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Wand2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { ApiError, portfolioApi, type PositionIn, type PositionKind, type PositionRow } from "../api/client";
 import { EChart } from "../components/EChart";
 import { Card, Check, Delta, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { money, num, pct, signedMoney } from "../lib/format";
+import { CDS_PRESETS, CDS_TENORS } from "../lib/credit";
 import { useTickers } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
 
 const KIND_LABEL: Record<PositionKind, string> = {
   equity: "Action", option: "Option", barrier: "Barrière", digital: "Digitale", asian: "Asiatique", cliquet: "Cliquet",
-  autocall: "Autocall", bond: "Obligation", future: "Future",
+  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS",
 };
 
 export const PORTFOLIO_PAGES = [
@@ -100,6 +101,16 @@ export function PositionsPage() {
           <Stat label="Theta (1 jour)" value={signedMoney(t.theta)} foot={`Rho 1 % : ${signedMoney(t.rho)} · DV01 ${money(t.dv01)}`} />
         </div>
       )}
+      {t && data?.positions.some((p) => p.kind === "cds") && (
+        <div className="grid cols-4">
+          <Stat label="CS01 (+1 bp de spread)" value={signedMoney(t.cs01)} foot="Tous les CDS, courbes re-bootstrapées" />
+          <Stat label="Jump-to-default total" value={signedMoney(t.jtd)} foot="Si tous les émetteurs faisaient défaut" />
+          <Stat label="Pire défaut isolé" value={signedMoney(Math.min(0, ...data.positions.filter((p) => p.kind === "cds").map((p) => p.jtd ?? 0)))}
+            foot="Position CDS la plus exposée" />
+          <Stat label="Notionnel CDS net" value={signedMoney(data.positions.filter((p) => p.kind === "cds").reduce((a, p) => a + p.quantity, 0))}
+            foot="> 0 : acheteur net de protection (devise des contrats)" />
+        </div>
+      )}
       <Card title={`Positions (${data?.positions.length ?? 0})`} flush actions={
         <button className="btn primary" onClick={() => setAdding((a) => !a)}><Plus size={14} /> Ajouter une position</button>
       }>
@@ -146,8 +157,40 @@ export function PositionsPage() {
   );
 }
 
-function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void }) {
+function SpreadEditor({ p, onClose }: { p: PositionRow; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [spreads, setSpreads] = useState<number[]>((p.params.spreads_bp as number[]) ?? []);
+  const save = useMutation({
+    mutationFn: () => portfolioApi.updateSpreads(p.id, spreads),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["portfolio"] }); onClose(); },
+  });
   return (
+    <tr>
+      <td colSpan={10} style={{ textAlign: "left" }}>
+        <div className="form">
+          <div className="toolbar-grid">
+            {CDS_TENORS.map((t, i) => (
+              <NumberField key={t} label={`${t} an${t > 1 ? "s" : ""}`} value={spreads[i]} suffix="bp" min={0.01} digits={1}
+                onChange={(v) => setSpreads((s) => s.map((x, j) => (j === i ? v : x)))} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className="btn primary" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? "Revalorisation…" : "Mettre à jour les spreads"}</button>
+            <button className="btn ghost" onClick={onClose}>Annuler</button>
+            <span className="muted" style={{ fontSize: 12 }}>Le prix d'entrée est conservé : l'effet du mouvement de spread apparaît dans le P&L.</span>
+          </div>
+          <ErrorBox error={save.error} />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const cds = p.kind === "cds";
+  return (
+    <>
     <tr>
       <td style={{ textAlign: "left", whiteSpace: "normal", minWidth: 260 }}>
         <span className="badge" style={{ marginRight: 6 }}>{KIND_LABEL[p.kind]}</span>
@@ -157,14 +200,20 @@ function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void })
       </td>
       <td className="muted">{p.book}</td>
       <td>{num(p.quantity, 0)}{p.params.multiplier ? <span className="muted"> ×{String(p.params.multiplier)}</span> : null}</td>
-      <td>{num(p.unit_price, 2)} <span className="muted">{p.currency}</span></td>
+      <td>{cds ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">pts</span></>
+        : <>{num(p.unit_price, 2)} <span className="muted">{p.currency}</span></>}</td>
       <td className="strong">{money(p.market_value_base)}</td>
       <td><Delta value={p.pnl_base} digits={0} /></td>
-      <td>{signedMoney(p.delta_cash)}</td>
-      <td>{signedMoney(p.vega)}</td>
+      <td>{cds ? <span title="CS01">{signedMoney(p.cs01)} <span className="muted">CS01</span></span> : signedMoney(p.delta_cash)}</td>
+      <td>{cds ? <span title="Jump-to-default">{signedMoney(p.jtd)} <span className="muted">JTD</span></span> : signedMoney(p.vega)}</td>
       <td>{signedMoney(p.theta)}</td>
-      <td><button className="btn icon ghost" onClick={onDelete} aria-label="Supprimer la position" title="Supprimer"><Trash2 size={14} /></button></td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        {cds && <button className="btn icon ghost" onClick={() => setEditing((e) => !e)} aria-label="Modifier les spreads" title="Mettre à jour la courbe de spreads"><Pencil size={14} /></button>}
+        <button className="btn icon ghost" onClick={onDelete} aria-label="Supprimer la position" title="Supprimer"><Trash2 size={14} /></button>
+      </td>
     </tr>
+    {editing && <SpreadEditor p={p} onClose={() => setEditing(false)} />}
+    </>
   );
 }
 
@@ -229,6 +278,8 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     maturity: inMonths(60), bond_coupon: 0.03, bond_frequency: 1,
     digital_kind: "cash-or-nothing", cash: 100, n_fixings: 12, averaging: "arithmetic", cliquet_years: 2,
     local_floor: -0.05, local_cap: 0.05, global_floor: 0,
+    reference: "", cds_currency: "EUR", cds_maturity: inMonths(60), coupon_bp: 100, recovery: 0.4, cds_preset: "bbb",
+    spreads_bp: CDS_PRESETS.bbb.spreads,
   });
   const set = (k: string) => (v: unknown) => setPrm((p) => ({ ...p, [k]: v }));
   const spot = tickers?.find((t) => t.ticker === ticker)?.last;
@@ -248,8 +299,11 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         autocall: pick("maturity_years", "frequency", "coupon_rate", "autocall_barrier", "coupon_barrier", "protection_barrier", "memory"),
         bond: { currency: prm.currency, maturity: prm.maturity, coupon_rate: prm.bond_coupon, frequency: prm.bond_frequency },
         future: pick("expiry", "multiplier"),
+        cds: { reference: prm.reference || "Émetteur", currency: prm.cds_currency, maturity: prm.cds_maturity,
+          coupon_bp: prm.coupon_bp, recovery: prm.recovery, spreads_bp: prm.spreads_bp },
       };
-      const body: PositionIn = { kind, quantity, ticker: kind === "bond" ? null : ticker, params: params[kind], book, label };
+      const noTicker = kind === "bond" || kind === "cds";
+      const body: PositionIn = { kind, quantity, ticker: noTicker ? null : ticker, params: params[kind], book, label };
       return portfolioApi.add(body);
     },
     onSuccess: () => {
@@ -334,6 +388,25 @@ function AddPosition({ onDone }: { onDone: () => void }) {
           options={[{ value: 1, label: "Annuel" }, { value: 2, label: "Semestriel" }]} />
       </>
     );
+  } else if (kind === "cds") {
+    const spreads = prm.spreads_bp as number[];
+    fields = (
+      <>
+        <TextField label="Entité de référence" value={prm.reference as string} onChange={set("reference")} />
+        <Segmented label="Devise" value={prm.cds_currency as string} onChange={set("cds_currency")} options={[{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }]} />
+        <DateField label="Maturité" value={prm.cds_maturity as string} onChange={set("cds_maturity")} />
+        <SelectField label="Coupon standard" value={prm.coupon_bp as number} onChange={set("coupon_bp")}
+          options={[{ value: 100, label: "100 bp" }, { value: 500, label: "500 bp" }, { value: 25, label: "25 bp" }, { value: 1000, label: "1 000 bp" }]} />
+        <NumberField label="Recouvrement" value={prm.recovery as number} suffix="%" scale={100} min={0} max={0.95} digits={0} onChange={set("recovery")} />
+        <SelectField label="Courbe de spreads" value={prm.cds_preset as string} onChange={(k: string) => setPrm((q) => ({
+          ...q, cds_preset: k, ...(CDS_PRESETS[k] ? { spreads_bp: CDS_PRESETS[k].spreads, recovery: CDS_PRESETS[k].recovery } : {}) }))}
+          options={[...Object.entries(CDS_PRESETS).map(([value, c]) => ({ value, label: c.label })), { value: "custom", label: "Personnalisée" }]} />
+        {CDS_TENORS.map((t, i) => (
+          <NumberField key={t} label={`Spread ${t} an${t > 1 ? "s" : ""}`} value={spreads[i]} suffix="bp" min={0.01} digits={1}
+            onChange={(v) => setPrm((q) => ({ ...q, cds_preset: "custom", spreads_bp: (q.spreads_bp as number[]).map((x, j) => (j === i ? v : x)) }))} />
+        ))}
+      </>
+    );
   } else if (kind === "future") {
     fields = (
       <>
@@ -345,13 +418,19 @@ function AddPosition({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="form">
-      <Segmented value={kind} onChange={setKind} options={(Object.keys(KIND_LABEL) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
+      <Segmented value={kind} onChange={(k) => {
+        // a CDS quantity is a notional: switch between unit counts and notionals with sensible defaults
+        if (k === "cds" && kind !== "cds") setQuantity(10_000_000);
+        if (k !== "cds" && kind === "cds") setQuantity(1);
+        setKind(k);
+      }} options={(Object.keys(KIND_LABEL) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
       <div className="toolbar-grid">
-        {kind !== "bond" && (
+        {kind !== "bond" && kind !== "cds" && (
           <SelectField label="Sous-jacent" value={ticker} onChange={setTicker}
             options={(tickers ?? []).map((t) => ({ value: t.ticker, label: `${t.ticker} — ${t.name}` }))} />
         )}
-        <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)" : "Quantité (négatif = vente)"}
+        <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)"
+          : kind === "cds" ? "Nominal (> 0 achat de protection, < 0 vente)" : "Quantité (négatif = vente)"}
           value={quantity} digits={2} onChange={setQuantity} />
         {fields}
         <TextField label="Book" value={book} onChange={setBook} />
@@ -477,6 +556,16 @@ export function RiskPage() {
               </div>
             </Card>
           </div>
+          {data.stress.spread_shocks.length > 0 && (
+            <Card title="Chocs de spreads de crédit (positions CDS, courbes re-bootstrapées)" flush>
+              <div className="table-wrap">
+                <table className="data">
+                  <thead><tr>{data.stress.spread_shocks.map((r) => <th key={r.shift}>{r.shift > 0 ? "+" : ""}{num(r.shift * 1e4, 0)} bp</th>)}</tr></thead>
+                  <tbody><tr>{data.stress.spread_shocks.map((r) => <td key={r.shift}><Delta value={r.pnl} digits={0} /> €</td>)}</tr></tbody>
+                </table>
+              </div>
+            </Card>
+          )}
           <div className="grid cols-2">
             <Card title="Explication du P&L depuis la clôture précédente">
               <EChart option={explainOption} height={300} ariaLabel="Décomposition du P&L du jour" />

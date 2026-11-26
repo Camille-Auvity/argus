@@ -10,8 +10,8 @@ La plateforme est organisée en quatre couches, chacune ignorant le fonctionneme
 
 | Couche | Dossier | Rôle |
 |---|---|---|
-| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
-| Données | `qplat/data` | Téléchargement des marchés, taux et news ; stockage SQLite ; scoring du sentiment par Claude. |
+| Moteur de calcul | `qplat/core`, `qplat/curves`, `qplat/instruments`, `qplat/pricers`, `qplat/models`, `qplat/credit`, `qplat/risk`, `qplat/analytics` | Conventions, courbes de taux, instruments, méthodes de pricing. Python pur (numpy, scipy). |
+| Données | `qplat/data` | Téléchargement des marchés, bilans, taux et news ; stockage SQLite ; scoring du sentiment par Claude. |
 | Interface | `api/` (FastAPI), `web/` (React) | L'API expose le moteur et la base ; l'interface web l'appelle. |
 | Orchestration | `scripts/refresh.py`, crontab | Rafraîchissement automatique pendant les heures de marché. |
 
@@ -751,7 +751,7 @@ La même comparaison existe pour la digitale (avec en plus le prix « BS + pente
 
 ### 15.1 Positions et valorisation
 
-Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
+Types de positions : actions, options européennes ou américaines, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures sur indices, CDS. Les maturités sont saisies en dates et converties en ACT/365F à la date de valorisation.
 
 Chaque position est valorisée avec le pricer adapté :
 
@@ -766,6 +766,7 @@ Chaque position est valorisée avec le pricer adapté :
 | Autocall | Monte Carlo, 20 000 trajectoires |
 | Obligation | actualisation sur la courbe |
 | Future | portage, avec une valeur égale à $(F - F_{entrée})$ × nominal |
+| CDS | bootstrap de la courbe de spreads de la position, puis jambes ISDA (section 16) ; quantité = nominal, positive pour un acheteur de protection |
 
 **Données de marché** : dernier cours, dividende, courbe de la devise. La volatilité est la vol ATM de la surface SVI à la maturité de la position quand le sous-jacent a des options cotées, sinon la vol réalisée sur un an.
 
@@ -786,14 +787,25 @@ $$
 \Delta_{cash} = \Delta\, S\, Q M \cdot fx, \qquad \Gamma_{1\%} = \tfrac{1}{2}\, \Gamma\, (0{,}01\, S)^2\, Q M \cdot fx
 $$
 
-$\Gamma_{1\%}$ est le P&L du terme de gamma pour un mouvement de 1 % du sous-jacent. Le vega est donné pour 1 point de vol, le theta par jour, le rho pour 1 % de taux, et la DV01 pour les obligations. Les agrégats sont présentés par sous-jacent, par book et par type d'instrument.
+$\Gamma_{1\%}$ est le P&L du terme de gamma pour un mouvement de 1 % du sous-jacent. Le vega est donné pour 1 point de vol, le theta par jour, le rho pour 1 % de taux, et la DV01 pour les obligations et les CDS. Les agrégats sont présentés par sous-jacent, par book et par type d'instrument.
+
+**Positions CDS.**
+- **CS01** : variation pour +1 bp sur toute la courbe de spreads.
+- **Jump-to-default** : P&L si l'émetteur fait défaut immédiatement, $\pm N(1-R) - V$.
+- **Theta** : portage de la prime sur un jour.
+- **Rho** : IR01 × 100.
+
+Ces mesures sont agrégées, avec en plus le pire défaut isolé et le nominal net de protection. Une position CDS garde sa courbe de spreads dans ses paramètres. On la met à jour depuis la liste des positions. Le prix d'entrée est conservé, si bien que l'effet de l'écartement ou du resserrement des spreads apparaît dans le P&L.
 
 ### 15.3 Stress tests
 
 Chaque scénario est une **revalorisation complète** du book :
 
 - **Grille actions × volatilité** : chocs relatifs sur tous les sous-jacents de −20 % à +20 %, croisés avec des chocs absolus de vol de −5 à +10 points.
-- **Chocs de taux** : translations parallèles de ±50 et ±100 points de base, appliquées à toutes les courbes.
+- **Chocs de taux** : translations parallèles de ±50 et ±100 points de base, appliquées à toutes les courbes. Pour les CDS, les spreads cotés sont conservés et la courbe de défaut est re-bootstrapée.
+- **Chocs de spreads de crédit** : translations de −25, +25, +50, +100 et +200 bp de toutes les courbes CDS, avec revalorisation complète.
+
+La VaR historique ne porte que sur les sous-jacents actions. Il n'existe pas d'historique public de spreads CDS : le risque de crédit est donc mesuré par les chocs de spreads et le jump-to-default.
 
 ### 15.4 Value at Risk et Expected Shortfall (1 jour)
 
@@ -829,23 +841,124 @@ Un résiduel faible valide les sensibilités. Un résiduel important signale des
 
 ---
 
-## 16. Données et orchestration
+## 16. Crédit : CDS et modèle de Merton
+
+*Fichiers : `qplat/credit/cds.py`, `qplat/credit/merton.py`, `api/routers/credit.py`*
+
+### 16.1 Courbe de défaut
+
+Le défaut est le premier saut d'un processus de Poisson d'intensité $\lambda(t)$, constante par morceaux entre des piliers $T_1 < \dots < T_n$ (et constante au-delà du dernier) :
+
+$$
+Q(t) = \mathbb{P}(\tau > t) = \exp\left( -\int_0^t \lambda(s)\, ds \right)
+$$
+
+**Triangle du crédit** : avec une intensité constante, $s \approx \lambda (1 - R)$.
+
+### 16.2 Les deux jambes d'un CDS
+
+Prime $c$ payée trimestriellement (base ACT/360, échéancier construit à rebours depuis la maturité), recouvrement $R$, courbe d'actualisation $P(0,t)$ :
+
+$$
+\text{Protection} = (1 - R) \int_0^T P(0,t)\, dF(t), \qquad F = 1 - Q
+$$
+
+$$
+\text{RPV01} = \sum_k \alpha_k\, P(0,t_k)\, Q(t_k) \;+\; \underbrace{\int_0^T \alpha(t)\, P(0,t)\, dF(t)}_{\text{prime courue payée au défaut}}
+$$
+
+Les intégrales sont calculées sur une grille hebdomadaire qui inclut toutes les dates de paiement et les piliers. Sur chaque sous-intervalle, $\lambda$ et le taux forward $f$ sont constants, et la formule de l'ISDA Standard Model est exacte :
+
+$$
+\int_a^b \lambda\, P(t) Q(t)\, dt = \frac{\lambda}{\lambda + f} \left[ P(a)Q(a) - P(b)Q(b) \right]
+$$
+
+**Spread au pair** : $s = \text{Protection} / \text{RPV01}$.
+
+**Upfront.** Depuis le Big Bang de 2009, un CDS se traite avec un coupon standard (100 bp pour l'investment grade, 500 bp pour le high yield). La différence se règle à la signature : $U = \text{Protection} - c \cdot \text{RPV01}$, positif si l'acheteur de protection paie.
+
+### 16.3 Bootstrap
+
+On part des spreads au pair cotés pour $T_1 < \dots < T_n$. On résout séquentiellement $\lambda_j$ (Brent) sur le segment $(T_{j-1}, T_j]$ pour que le CDS de maturité $T_j$ reprice son spread, les segments précédents étant déjà fixés. Chaque spread coté est repricé à $10^{-12}$ près. Une courbe trop inversée exigerait une intensité négative : elle est rejetée.
+
+Il n'existe pas de source gratuite de spreads CDS. La plateforme propose donc des courbes types (A, BBB, BB, B, stressée), une saisie libre, et la courbe implicite du modèle de Merton (section 16.6).
+
+### 16.4 Risques d'une position
+
+Valeur pour l'acheteur de protection : $N(\text{Protection} - c \cdot \text{RPV01})$ ; pour le vendeur, l'opposé.
+
+| Mesure | Définition |
+|---|---|
+| CS01 | variation de valeur pour +1 bp sur tous les spreads cotés, courbe re-bootstrapée ($\approx N \cdot \text{RPV01} \cdot 10^{-4}$) |
+| IR01 | +1 bp sur la courbe de taux, spreads cotés inchangés (re-bootstrap) |
+| Recouvrement +1 % | spreads cotés inchangés : un recouvrement plus haut implique une intensité plus forte |
+| Jump-to-default | $\pm N(1 - R) - V$ : P&L si l'émetteur fait défaut immédiatement |
+| Portage 1 jour | $\mp N c / 360$ |
+
+### 16.5 Modèle de Merton (1974)
+
+La valeur des actifs $V$ suit un mouvement brownien géométrique de volatilité $\sigma_V$. La dette est un zéro-coupon de nominal $D$ à l'horizon $T$, et le défaut a lieu si $V_T < D$. L'action est donc un call sur les actifs :
+
+$$
+E = V N(d_1) - D e^{-rT} N(d_2), \qquad d_{1,2} = \frac{\ln(V/D) + (r \pm \sigma_V^2/2) T}{\sigma_V \sqrt T}
+$$
+
+$$
+\sigma_E E = N(d_1)\, \sigma_V V \qquad \text{(lemme d'Itô)}
+$$
+
+**Calibration.** $E$ (cours × nombre d'actions) et $\sigma_E$ (vol implicite ATM 1 an de la surface SVI quand elle existe, sinon vol réalisée 1 an) sont observés. On résout ces deux équations en $(V, \sigma_V)$ par moindres carrés, en variables logarithmiques normalisées par $E$, avec une tolérance de $10^{-14}$.
+
+**Point de défaut.** Le bilan annuel est téléchargé chaque semaine (Yahoo Finance) et converti dans la devise de cotation si besoin. Par défaut, on prend la convention KMV : $D$ = dette court terme + ½ dette long terme. La dette totale ou une valeur libre sont aussi possibles.
+
+**Sorties :**
+
+$$
+\text{DD} = d_2, \qquad \text{PD}^{\mathbb Q} = N(-d_2), \qquad B = V - E = D e^{-rT} - \text{Put}(V, D)
+$$
+
+$$
+s = -\frac1T \ln\frac{B}{D e^{-rT}}, \qquad R_{impl} = \frac{\mathbb{E}^{\mathbb Q}[V_T \mid V_T < D]}{D} = \frac{V e^{rT} N(-d_1)}{D\, N(-d_2)}
+$$
+
+**Structure par terme.** Avec $V$ et $\sigma_V$ fixés, on recalcule la probabilité de défaut et le spread pour une dette de maturité $T$ variable.
+
+**Sensibilités.**
+- Spread en fonction de la vol action.
+- Spread en fonction du cours de l'action, à dette inchangée : c'est le lien actions / crédit, base de l'arbitrage de structure du capital.
+- Variation du spread pour une baisse de 1 % de l'action.
+
+### 16.6 Du structurel au CDS
+
+La survie de Merton $Q(T) = N(d_2(T))$ est échantillonnée chaque trimestre. On en tire une intensité constante par morceaux, puis les spreads CDS au pair avec un recouvrement de marché (en général 40 %, distinct du recouvrement implicite du modèle). Cette courbe peut être envoyée au pricer CDS.
+
+**Vol implicite du crédit.** Si l'on saisit un CDS 5 ans observé, on cherche par Brent la vol action $\sigma_E$ pour laquelle Merton redonne ce spread.
+
+**Limite connue.** Pour une grande entreprise peu endettée, Merton donne des spreads quasi nuls, surtout à court terme. Le processus des actifs est continu : une firme à 9 écarts-types de son point de défaut ne peut pas l'atteindre en un an. Les spreads observés sont bien plus élevés : c'est le *credit spread puzzle*. Les extensions classiques ajoutent :
+- une barrière franchissable à tout moment (Black-Cox) ;
+- un point de défaut incertain (CreditGrades) ;
+- des sauts dans la valeur des actifs.
+
+---
+
+## 17. Données et orchestration
 
 *Fichiers : `qplat/data/*.py`, `scripts/refresh.py`*
 
-### 16.1 Sources
+### 17.1 Sources
 
 | Donnée | Source | Fréquence |
 |---|---|---|
 | Cours de clôture (2 ans) et dernier cours | yfinance | chaque passage |
 | Nom, secteur, devise, dividende ($q$ = rendement sur 12 mois glissants) | yfinance | chaque passage |
 | Chaînes d'options (US) | yfinance | chaque passage |
+| Bilan : nombre d'actions, dettes court et long terme, devise des comptes (modèle de Merton) | yfinance | une fois par semaine |
 | Taux USD | FRED (CSV public), repli yfinance | chaque passage |
 | Taux EUR | API de données de la BCE | chaque passage |
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
-### 16.2 Volatilité réalisée
+### 17.2 Volatilité réalisée
 
 Volatilité par défaut des pricers et vol 1 mois de la vue d'ensemble :
 
@@ -855,7 +968,7 @@ $$
 
 sur les 252 derniers rendements journaliers (1 an) ou les 21 derniers (1 mois).
 
-### 16.3 Rafraîchissement
+### 17.3 Rafraîchissement
 
 Une tâche cron s'exécute toutes les 15 minutes en semaine. Le script ne rafraîchit que les sous-jacents dont le marché est ouvert :
 
@@ -872,11 +985,11 @@ Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 1
 
 ---
 
-## 17. Sentiment des news par IA
+## 18. Sentiment des news par IA
 
 *Fichier : `qplat/data/sentiment.py` — modèle `claude-opus-5-5`, effort `low`*
 
-### 17.1 Scoring
+### 18.1 Scoring
 
 Les titres non encore notés sont envoyés à Claude par paquets de 25, regroupés par sous-jacent. La consigne demande, pour chaque titre, l'impact probable sur le cours du sous-jacent dans les prochaines séances, vu par un actionnaire. Les titres sont traités comme des données, jamais comme des instructions. La réponse est contrainte par un schéma JSON :
 
@@ -886,7 +999,7 @@ Les titres non encore notés sont envoyés à Claude par paquets de 25, regroup�
 | `label` | very_negative, negative, neutral, positive ou very_positive |
 | `rationale` | une phrase de justification |
 
-### 17.2 Agrégation
+### 18.2 Agrégation
 
 Le sentiment d'un sous-jacent est une moyenne pondérée par la récence, avec une demi-vie de 3 jours. Pour un article d'âge $a$ jours et de score $s$ :
 
@@ -898,9 +1011,9 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 18. Validation
+## 19. Validation
 
-*Dossier : `tests/` — 138 tests*
+*Dossier : `tests/` — 154 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -918,12 +1031,14 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Arbre | un nœud recalculé à la main redonne la valeur du moteur |
 | Heston | limite Black-Scholes, parité, Monte Carlo, paramètres retrouvés par la calibration |
 | SVI / Dupire | ajustement retrouvé, vol locale d'une surface plate, détection d'arbitrage calendaire, Monte Carlo sous vol locale |
-| Risques | digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| Risques | CDS en portefeuille (cohérence avec le moteur crédit, symétrie acheteur/vendeur, choc de spreads ≈ CS01, mise à jour des spreads) ; digitale, asiatique et cliquet en portefeuille, fixings passés lus dans l'historique ; valorisation en euros, cohérence Black-Scholes, stress linéaire exact, VaR historique et paramétrique, explication du P&L |
+| CDS | survie d'une courbe par morceaux, jambe de protection en formule fermée, triangle du crédit, bootstrap exact, rejet d'une courbe inversée, CDS au pair de valeur nulle, CS01 ≈ RPV01 × nominal × 1 bp, jump-to-default |
+| Merton | aller-retour de la calibration, dette = sans risque − put (Black-Scholes), monotonie en levier et en vol, courbe de survie, vol implicite d'un spread |
 | API | routes testées sur une base de test synthétique, dont une chaîne d'options générée par Heston |
 
 ---
 
-## 19. Limites et extensions possibles
+## 20. Limites et extensions possibles
 
 - **Volatilité** : Heston et volatilité locale sont calibrés séparément. Un modèle à volatilité locale-stochastique (LSV) combinerait les deux.
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
@@ -933,10 +1048,13 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ---
 
-## 20. Références
+## 21. Références
 
 - Black, F. & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*. Journal of Political Economy.
 - Merton, R. (1973). *Theory of Rational Option Pricing*. Bell Journal of Economics.
+- Merton, R. (1974). *On the Pricing of Corporate Debt: The Risk Structure of Interest Rates*. Journal of Finance.
+- ISDA (2009). *ISDA CDS Standard Model* (conventions du « Big Bang » des CDS).
+- O'Kane, D. (2008). *Modelling Single-name and Multi-name Credit Derivatives*. Wiley.
 - Cox, J., Ross, S. & Rubinstein, M. (1979). *Option Pricing: A Simplified Approach*. Journal of Financial Economics.
 - Reiner, E. & Rubinstein, M. (1991). *Breaking Down the Barriers*. Risk.
 - Broadie, M., Glasserman, P. & Kou, S. (1997). *A Continuity Correction for Discrete Barrier Options*. Mathematical Finance.

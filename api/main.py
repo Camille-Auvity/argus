@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routers import explain, market, models, portfolio, pricing, rates
+from api.routers import credit, explain, market, models, portfolio, pricing, rates
 from api.services import MissingDataError
 
 DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
@@ -26,7 +26,7 @@ app = FastAPI(
 )
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
 
-for r in (market.router, pricing.router, rates.router, explain.router, models.router, portfolio.router):
+for r in (market.router, pricing.router, rates.router, explain.router, models.router, portfolio.router, credit.router):
     app.include_router(r)
 
 

@@ -17,6 +17,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from qplat.core.conventions import year_fraction
+from qplat.credit import CDS, cds_risk
 from qplat.curves.rate_curve import RateCurve
 from qplat.instruments import (
     AmericanOption, AsianOption, Autocallable, BarrierOption, CliquetOption, DigitalOption, EquityFuture, EuropeanOption,
@@ -27,7 +28,8 @@ from qplat.pricers import (
     FuturesPricer, GeometricAsianPricer, MonteCarloAutocallPricer, MonteCarloExoticPricer,
 )
 
-KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future")
+KINDS = ("equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds")
+CDS_TENORS = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class MarketSnapshot:
     base_currency: str = "EUR"
     # (ticker, date) -> close on or before that date: past fixings of Asians and cliquets
     past_close: Optional[Callable[[str, date], Optional[float]]] = None
+    credit_spread_shift: float = 0.0              # parallel shift of every CDS spread curve (stress)
 
     def fixing(self, ticker: str, d: date) -> float:
         """Observed level at a past fixing date (falls back to the current spot when no history is available)."""
@@ -61,12 +64,13 @@ class MarketSnapshot:
         return float(level) if level else self.spots[ticker]
 
     def shocked(self, spot_shift: float = 0.0, vol_shift: float = 0.0, rate_shift: float = 0.0,
-                spot_moves: dict[str, float] | None = None) -> "MarketSnapshot":
-        """Relative spot shock (all underlyings, or per ticker), absolute vol and parallel rate shifts."""
+                spot_moves: dict[str, float] | None = None, spread_shift: float = 0.0) -> "MarketSnapshot":
+        """Relative spot shock (all underlyings, or per ticker), absolute vol, rate and credit spread shifts."""
         spots = {t: s * (1 + (spot_moves or {}).get(t, spot_shift)) for t, s in self.spots.items()}
         vols = {t: (lambda T, f=f: max(f(T) + vol_shift, 0.01)) for t, f in self.vols.items()}
         curves = {c: (cv.shifted(rate_shift) if rate_shift else cv) for c, cv in self.curves.items()}
-        return dataclasses.replace(self, spots=spots, vols=vols, curves=curves)
+        return dataclasses.replace(self, spots=spots, vols=vols, curves=curves,
+                                   credit_spread_shift=self.credit_spread_shift + spread_shift)
 
 
 @dataclass
@@ -86,6 +90,8 @@ class Valuation:
     dv01_base: float
     description: str
     error: str | None = None
+    cs01_base: float = 0.0       # +1 bp on the credit spreads (CDS)
+    jtd_base: float = 0.0        # P&L if the reference entity defaults now (CDS)
 
 
 def _T(snapshot: MarketSnapshot, iso: str) -> float:
@@ -108,6 +114,9 @@ def describe(p: Position) -> str:
         return f"Obligation {q['currency']} {100 * q['coupon_rate']:.3f} % éch. {q['maturity']}"
     if p.kind == "future":
         return f"Future {p.ticker} éch. {q['expiry']} (×{q.get('multiplier', 1):g})"
+    if p.kind == "cds":
+        side = "achat" if p.quantity >= 0 else "vente"
+        return f"CDS {q.get('reference', '')} {side} de protection, coupon {q['coupon_bp']:g} bp, éch. {q['maturity']}"
     if p.kind == "digital":
         what = "cash" if q.get("digital_kind", "cash-or-nothing") == "cash-or-nothing" else "asset"
         return f"Digitale {what} {q['option_type']} {p.ticker} K={q['strike']:g} éch. {q['expiry']}"
@@ -183,13 +192,14 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
     """Price one position and its Greeks (desk units), converted to the base currency."""
     q = p.params
     mult = float(q.get("multiplier", 1.0))
-    if p.kind == "bond":
+    if p.kind in ("bond", "cds"):
         ccy = q["currency"]
     else:
         ccy = m.currencies.get(p.ticker, "USD")
     fx = m.fx_to_base.get(ccy, 1.0)
     scale = p.quantity * mult * fx
-    zero = dict(delta=0.0, delta_cash_base=0.0, gamma_cash_base=0.0, vega_base=0.0, theta_base=0.0, rho_base=0.0, dv01_base=0.0)
+    zero = dict(delta=0.0, delta_cash_base=0.0, gamma_cash_base=0.0, vega_base=0.0, theta_base=0.0, rho_base=0.0, dv01_base=0.0,
+                cs01_base=0.0, jtd_base=0.0)
 
     def result(unit_price: float, **greeks) -> Valuation:
         mv = unit_price * p.quantity * mult
@@ -209,6 +219,17 @@ def value_position(p: Position, m: MarketSnapshot, mc_paths: int = 20_000) -> Va
             dv01 = (pricer.dirty_price(bond, m.curves[ccy].shifted(-bp)) - pricer.dirty_price(bond, m.curves[ccy].shifted(bp))) / 2
             theta = (DiscountingBondPricer(m.curves[ccy]).dirty_price(dataclasses.replace(bond, maturity=T - 1 / 365)) - dirty)
             return result(dirty, dv01_base=dv01 * scale, rho_base=-100 * dv01 * scale, theta_base=theta * scale)
+
+        if p.kind == "cds":
+            # quantity = notional (> 0: protection buyer); unit price = value per 1 of notional
+            T = _T(m, q["maturity"])
+            if T <= 0:
+                return result(0.0)
+            spreads = np.maximum(np.asarray(q["spreads_bp"], dtype=float) * 1e-4 + m.credit_spread_shift, 1e-7)
+            cds = CDS(maturity=T, coupon=q["coupon_bp"] * 1e-4, recovery=q.get("recovery", 0.4))
+            r, _ = cds_risk(cds, q.get("tenors", CDS_TENORS), spreads, m.curves[ccy], buyer=True)
+            return result(r.value, cs01_base=r.cs01 * scale, jtd_base=r.jump_to_default * scale,
+                          rho_base=100 * r.ir01 * scale, dv01_base=-r.ir01 * scale, theta_base=r.carry_1d * scale)
 
         spot = m.spots[p.ticker]
         div = m.dividends.get(p.ticker, 0.0)
@@ -302,7 +323,8 @@ def aggregate(valuations: list[Valuation], key: Callable[[Valuation], str]) -> l
         if v.error:
             continue
         g = groups.setdefault(key(v), {"key": key(v), "market_value": 0.0, "pnl": 0.0, "delta_cash": 0.0,
-                                       "gamma_cash": 0.0, "vega": 0.0, "theta": 0.0, "rho": 0.0, "dv01": 0.0, "n": 0})
+                                       "gamma_cash": 0.0, "vega": 0.0, "theta": 0.0, "rho": 0.0, "dv01": 0.0,
+                                       "cs01": 0.0, "jtd": 0.0, "n": 0})
         g["market_value"] += v.market_value_base
         g["pnl"] += v.pnl_base or 0.0
         g["delta_cash"] += v.delta_cash_base
@@ -311,6 +333,8 @@ def aggregate(valuations: list[Valuation], key: Callable[[Valuation], str]) -> l
         g["theta"] += v.theta_base
         g["rho"] += v.rho_base
         g["dv01"] += v.dv01_base
+        g["cs01"] += v.cs01_base
+        g["jtd"] += v.jtd_base
         g["n"] += 1
     return sorted(groups.values(), key=lambda g: -abs(g["market_value"]))
 
@@ -318,6 +342,7 @@ def aggregate(valuations: list[Valuation], key: Callable[[Valuation], str]) -> l
 SPOT_SHOCKS = (-0.20, -0.10, -0.05, -0.02, 0.0, 0.02, 0.05, 0.10, 0.20)
 VOL_SHOCKS = (-0.05, 0.0, 0.05, 0.10)
 RATE_SHOCKS = (-0.01, -0.005, 0.005, 0.01)
+SPREAD_SHOCKS = (-0.0025, 0.0025, 0.005, 0.01, 0.02)
 
 
 def stress_grid(positions: list[Position], m: MarketSnapshot, mc_paths: int = 10_000) -> dict:
@@ -326,8 +351,15 @@ def stress_grid(positions: list[Position], m: MarketSnapshot, mc_paths: int = 10
     grid = [[book_value(positions, m.shocked(spot_shift=s, vol_shift=v), mc_paths) - base for s in SPOT_SHOCKS]
             for v in VOL_SHOCKS]
     rates = [{"shift": r, "pnl": book_value(positions, m.shocked(rate_shift=r), mc_paths) - base} for r in RATE_SHOCKS]
-    return {"base_value": base, "spot_shocks": list(SPOT_SHOCKS), "vol_shocks": list(VOL_SHOCKS), "pnl": grid,
-            "rate_shocks": rates}
+    out = {"base_value": base, "spot_shocks": list(SPOT_SHOCKS), "vol_shocks": list(VOL_SHOCKS), "pnl": grid,
+           "rate_shocks": rates, "spread_shocks": []}
+    credit = [p for p in positions if p.kind == "cds"]
+    if credit:
+        # only the CDS move with credit spreads: revalue them alone
+        base_c = book_value(credit, m, mc_paths)
+        out["spread_shocks"] = [{"shift": s, "pnl": book_value(credit, m.shocked(spread_shift=s), mc_paths) - base_c}
+                                for s in SPREAD_SHOCKS]
+    return out
 
 
 def historical_var(valuations: list[Valuation], returns: dict[str, np.ndarray], spots: dict[str, float],

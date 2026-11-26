@@ -130,9 +130,11 @@ for pricer in (BlackScholesPricer(), BinomialTreePricer(), MonteCarloPricer()):
 - **Heston** : pricer semi-analytique (formule de Lewis), calibré en environ 0,3 s sur la partie liquide du smile (erreur moyenne de l'ordre d'un point de vol sur SPY), et simulation pour les exotiques.
 - **Surface SVI et Dupire** : une tranche SVI par échéance, avec des pénalités de non-arbitrage (papillon et calendrier), une surface implicite interpolée en variance totale, puis la volatilité locale de Gatheral-Dupire et sa simulation.
 - **Exotiques comparés** : la même barrière, le même autocall, la même digitale, asiatique et cliquet pricés sous Black-Scholes, Heston et volatilité locale, pour mesurer le risque de modèle.
-- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures ; fixings passés lus dans l'historique) avec :
+- **Crédit** : bootstrap d'une courbe d'intensité de défaut à partir de spreads CDS (jambes façon ISDA), spread au pair, upfront, CS01, IR01, sensibilité au recouvrement, jump-to-default ; modèle de Merton calibré sur la capitalisation, la vol action et le bilan (distance au défaut, probabilité de défaut, spread, courbe CDS implicite, vol implicite d'un CDS de marché).
+- **Portefeuille** : book multi-actifs en euros (actions, options, barrières, digitales, asiatiques, cliquets, autocalls, obligations, futures, CDS ; fixings passés lus dans l'historique) avec :
   - grecques agrégées ;
-  - stress tests actions × vol et taux, en revalorisation complète ;
+  - stress tests actions × vol, taux et spreads de crédit, en revalorisation complète ;
+  - CS01 et jump-to-default des CDS ;
   - VaR et ES historiques (delta-gamma) et VaR paramétrique ;
   - explication du P&L du jour.
 

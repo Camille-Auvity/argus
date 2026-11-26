@@ -177,3 +177,36 @@ def test_new_cliquet_is_struck_at_inception():
          "local_cap": 0.05, "global_floor": None, "initial_level": 100.0}
     v = value_position(Position(15, "cliquet", 1, "AAPL", q), snapshot(), mc_paths=50_000)
     assert v.error is None and v.unit_price > 0
+
+
+# ----------------------------------------------------------------------------- CDS positions
+
+CDS_PARAMS = {"reference": "Test", "currency": "EUR", "maturity": iso(5 * 365), "coupon_bp": 100, "recovery": 0.4,
+              "spreads_bp": [40, 55, 70, 95, 110, 120]}
+
+
+def test_cds_position_matches_credit_engine():
+    from qplat.credit import CDS, cds_risk
+
+    m = snapshot()
+    v = value_position(Position(20, "cds", 1e7, None, CDS_PARAMS), m)
+    r, _ = cds_risk(CDS(maturity=5.0, coupon=0.01, recovery=0.4), [1, 2, 3, 5, 7, 10],
+                    np.array(CDS_PARAMS["spreads_bp"]) * 1e-4, m.curves["EUR"])
+    assert v.unit_price == pytest.approx(r.value)
+    assert v.market_value_base == pytest.approx(1e7 * r.value)          # EUR position: no FX
+    assert v.cs01_base == pytest.approx(1e7 * r.cs01) and v.cs01_base > 0
+    assert v.jtd_base == pytest.approx(1e7 * (0.6 - r.value))
+    assert v.delta == 0 and v.vega_base == 0
+
+
+def test_cds_seller_mirrors_buyer_and_spread_stress():
+    m = snapshot()
+    buy = value_position(Position(21, "cds", 1e7, None, CDS_PARAMS), m)
+    sell = value_position(Position(22, "cds", -1e7, None, CDS_PARAMS), m)
+    assert sell.market_value_base == pytest.approx(-buy.market_value_base)
+    assert sell.cs01_base == pytest.approx(-buy.cs01_base) and sell.jtd_base < 0
+    grid = stress_grid([Position(21, "cds", 1e7, None, CDS_PARAMS)], m)
+    up = next(s for s in grid["spread_shocks"] if s["shift"] == 0.01)
+    # +100 bp: the protection buyer gains roughly 100 x CS01 (a bit less: convexity of the risky annuity)
+    assert 80 * buy.cs01_base < up["pnl"] < 100 * buy.cs01_base
+    assert all(row == [0.0] * len(row) for row in grid["pnl"])          # no equity / vol exposure

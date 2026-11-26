@@ -110,6 +110,37 @@ def test_digital_asian_cliquet(client):
     assert sum(c["histogram"]["counts"]) == 20000 and len(c["vol_profile"]["spots"]) == 12
 
 
+def test_credit_endpoints(client):
+    c = client.post("/api/credit/cds", json={"maturity": 5, "coupon_bp": 100}).json()
+    assert [round(r["model_bp"], 6) for r in c["table"]] == [40, 55, 70, 95, 110, 120]
+    assert c["risk"]["cs01"] > 0 and c["risk"]["par_spread"] == pytest.approx(0.0095)
+    bad = client.post("/api/credit/cds", json={"tenors": [1, 5], "spreads_bp": [500, 10]})
+    assert bad.status_code == 422
+    # AAPL has no balance sheet in this database
+    assert client.get("/api/credit/merton/AAPL/inputs").status_code == 404
+    m = client.post("/api/credit/merton", json={"equity": 100, "equity_vol": 0.6, "debt_face": 120,
+                                                "market_spread_bp": 300}).json()
+    assert 0 < m["fit"]["default_probability"] < 1 and len(m["cds"]["spreads_bp"]) == 6
+    assert m["spread_change_for_equity_down_1pct_bp"] > 0 and m["implied_equity_vol"] is not None
+
+
+def test_cds_position_and_spread_update(client):
+    params = {"reference": "X", "currency": "EUR", "maturity": "2031-06-20", "coupon_bp": 100,
+              "spreads_bp": [40, 55, 70, 95, 110, 120]}
+    pid = client.post("/api/portfolio/positions", json={"kind": "cds", "quantity": 1e7, "params": params}).json()["id"]
+    try:
+        row = next(p for p in client.get("/api/portfolio").json()["positions"] if p["id"] == pid)
+        assert row["pnl_base"] == pytest.approx(0.0, abs=1e-6) and row["cs01"] > 0 and row["jtd"] > 0
+        r = client.patch(f"/api/portfolio/positions/{pid}/spreads", json={"spreads_bp": [80, 110, 140, 190, 220, 240]})
+        assert r.status_code == 200
+        row = next(p for p in client.get("/api/portfolio").json()["positions"] if p["id"] == pid)
+        assert row["pnl_base"] > 0          # protection buyer gains when spreads widen
+        bad = client.patch(f"/api/portfolio/positions/{pid}/spreads", json={"spreads_bp": [1, 2]})
+        assert bad.status_code == 422
+    finally:
+        client.delete(f"/api/portfolio/positions/{pid}")
+
+
 def test_market_endpoints(client):
     tickers = client.get("/api/tickers").json()
     aapl = next(t for t in tickers if t["ticker"] == "AAPL")

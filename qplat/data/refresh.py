@@ -42,6 +42,7 @@ def run_jobs(db: Database, tickers: list[str], jobs: tuple[str, ...] = JOBS) -> 
     for t in tickers:
         if "info" in jobs:
             run(f"info:{t}", lambda t=t: market.fetch_ticker_info(db, t) or "updated")
+            run(f"fundamentals:{t}", lambda t=t: market.fetch_fundamentals(db, t))
         if "prices" in jobs:
             run(f"prices:{t}", lambda t=t: (market.fetch_spot_history(db, t), market.fetch_intraday_spot(db, t)))
         if "options" in jobs:

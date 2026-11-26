@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from api import services
 from qplat.data.market import FX_TICKERS, realized_vol
 from qplat.risk.portfolio import (
-    KINDS, MarketSnapshot, Position, aggregate, historical_var, pnl_explain, stress_grid, value_book,
+    CDS_TENORS, KINDS, MarketSnapshot, Position, aggregate, historical_var, pnl_explain, stress_grid, value_book,
 )
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -94,7 +94,8 @@ def _valuation_rows(vals) -> list[dict]:
             "entry_price": p.entry_price, "market_value": _f(v.market_value), "market_value_base": _f(v.market_value_base),
             "pnl_base": _f(v.pnl_base), "delta": _f(v.delta), "delta_cash": _f(v.delta_cash_base),
             "gamma_cash": _f(v.gamma_cash_base), "vega": _f(v.vega_base), "theta": _f(v.theta_base),
-            "rho": _f(v.rho_base), "dv01": _f(v.dv01_base), "error": v.error,
+            "rho": _f(v.rho_base), "dv01": _f(v.dv01_base), "cs01": _f(v.cs01_base), "jtd": _f(v.jtd_base),
+            "error": v.error,
         })
     return rows
 
@@ -120,7 +121,8 @@ def portfolio():
         "vol_source": info["vol_source"], "elapsed_ms": (time.perf_counter() - t0) * 1000,
         "positions": _valuation_rows(vals),
         "totals": tot[0] if tot else None,
-        "by_underlying": aggregate(vals, lambda v: v.position.ticker or f"Taux {v.currency}"),
+        "by_underlying": aggregate(vals, lambda v: v.position.ticker or (
+            f"Crédit {v.position.params.get('reference') or v.currency}" if v.position.kind == "cds" else f"Taux {v.currency}")),
         "by_kind": aggregate(vals, lambda v: v.position.kind),
         "by_book": aggregate(vals, lambda v: v.position.book),
     }
@@ -165,7 +167,7 @@ def risk():
 
 
 class PositionIn(BaseModel):
-    kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future"]
+    kind: Literal["equity", "option", "barrier", "digital", "asian", "cliquet", "autocall", "bond", "future", "cds"]
     quantity: float
     ticker: str | None = None
     params: dict = Field(default_factory=dict)
@@ -177,7 +179,7 @@ class PositionIn(BaseModel):
 @router.post("/positions")
 def add_position(p: PositionIn):
     """Add a position. Without an entry price, the current model price is used (P&L starts at 0)."""
-    if p.kind != "bond" and not p.ticker:
+    if p.kind not in ("bond", "cds") and not p.ticker:
         raise HTTPException(422, "ticker requis")
     if p.kind in ("autocall", "asian", "cliquet"):
         p.params.setdefault("start_date", date.today().isoformat())
@@ -195,6 +197,31 @@ def add_position(p: PositionIn):
     pid = services.get_db().add_position(p.kind, p.quantity, p.params, p.ticker, entry, p.book, p.label)
     _risk.cache_clear()
     return {"id": pid, "entry_price": entry}
+
+
+class SpreadsUpdate(BaseModel):
+    spreads_bp: list[float] = Field(min_length=1, max_length=12)
+
+
+@router.patch("/positions/{position_id}/spreads")
+def update_spreads(position_id: int, body: SpreadsUpdate):
+    """New market spread curve for a CDS position (the entry price is kept: the move shows in the P&L)."""
+    db = services.get_db()
+    row = next((r for r in db.positions() if r["id"] == position_id), None)
+    if row is None:
+        raise HTTPException(404, "position introuvable")
+    if row["kind"] != "cds":
+        raise HTTPException(422, "seule une position CDS a une courbe de spreads")
+    if len(body.spreads_bp) != len(row["params"].get("tenors", CDS_TENORS)) or min(body.spreads_bp) <= 0:
+        raise HTTPException(422, "un spread positif par maturité")
+    params = {**row["params"], "spreads_bp": body.spreads_bp}
+    snap, _ = build_snapshot([])
+    val = value_book([Position(None, "cds", row["quantity"], None, params)], snap)[0]
+    if val.error:
+        raise HTTPException(422, val.error)
+    db.update_position_params(position_id, params)
+    _risk.cache_clear()
+    return {"id": position_id, "unit_price": val.unit_price}
 
 
 @router.delete("/positions/{position_id}")
@@ -256,6 +283,12 @@ def load_demo():
              params={"currency": "USD", "maturity": _in_months(120), "coupon_rate": 0.045, "frequency": 2}),
         dict(kind="bond", quantity=300, book="Taux", label="OAT 5 ans",
              params={"currency": "EUR", "maturity": _in_months(60), "coupon_rate": 0.03, "frequency": 1}),
+        dict(kind="cds", quantity=5_000_000, book="Crédit", label="Protection CDS 5 ans TotalEnergies",
+             params={"reference": "TotalEnergies", "currency": "EUR", "maturity": _in_months(60), "coupon_bp": 100,
+                     "recovery": 0.4, "spreads_bp": [20, 28, 36, 55, 68, 80]}),
+        dict(kind="cds", quantity=-3_000_000, book="Crédit", label="Vente de protection high yield",
+             params={"reference": "Emetteur B", "currency": "USD", "maturity": _in_months(36), "coupon_bp": 500,
+                     "recovery": 0.3, "spreads_bp": [300, 360, 410, 470, 490, 500]}),
         dict(kind="future", ticker="^FCHI", quantity=-1, book="Couvertures", label="Vente future CAC 40",
              params={"expiry": _in_months(3), "multiplier": 10}),
     ]

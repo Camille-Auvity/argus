@@ -24,7 +24,15 @@ CREATE TABLE IF NOT EXISTS tickers (
     sector TEXT,
     dividend_yield REAL,          -- annual, as a fraction
     currency TEXT,
-    updated_at TEXT
+    updated_at TEXT,
+    -- balance sheet (structural credit model), in financial_currency, refreshed weekly
+    shares_outstanding REAL,
+    short_term_debt REAL,
+    long_term_debt REAL,
+    total_debt REAL,
+    cash REAL,
+    financial_currency TEXT,
+    fundamentals_at TEXT
 );
 CREATE TABLE IF NOT EXISTS spot_prices (
     ticker TEXT NOT NULL,
@@ -111,7 +119,9 @@ class Database:
     def _migrate(con: sqlite3.Connection) -> None:
         """Add columns introduced after the first release to existing databases."""
         added = {
-            "tickers": [("currency", "TEXT")],
+            "tickers": [("currency", "TEXT"), ("shares_outstanding", "REAL"), ("short_term_debt", "REAL"),
+                        ("long_term_debt", "REAL"), ("total_debt", "REAL"), ("cash", "REAL"),
+                        ("financial_currency", "TEXT"), ("fundamentals_at", "TEXT")],
             "rate_quotes": [("currency", "TEXT NOT NULL DEFAULT 'USD'"), ("quote_type", "TEXT NOT NULL DEFAULT 'par'")],
         }
         for table, columns in added.items():
@@ -146,7 +156,13 @@ class Database:
         return len(rows)
 
     def upsert_ticker(self, **row) -> None:
-        self._upsert("tickers", [{**row, "updated_at": utc_now()}])
+        """Insert or update only the given columns (info and balance sheet are refreshed separately)."""
+        row = {**row, "updated_at": utc_now()}
+        cols = list(row)
+        updates = ",".join(f"{c}=excluded.{c}" for c in cols if c != "ticker")
+        with self.connect() as con:
+            con.execute(f"INSERT INTO tickers ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
+                        f"ON CONFLICT(ticker) DO UPDATE SET {updates}", tuple(row.values()))
 
     def upsert_spots(self, rows: Iterable[dict]) -> int:
         return self._upsert("spot_prices", rows)
@@ -265,6 +281,12 @@ class Database:
             r["entry_price"] = None if pd.isna(r["entry_price"]) else float(r["entry_price"])
             r["ticker"] = None if r["ticker"] is None or (isinstance(r["ticker"], float) and pd.isna(r["ticker"])) else r["ticker"]
         return rows
+
+    def update_position_params(self, position_id: int, params: dict) -> int:
+        import json
+
+        with self.connect() as con:
+            return con.execute("UPDATE positions SET params=? WHERE id=?", (json.dumps(params), position_id)).rowcount
 
     def delete_position(self, position_id: int) -> int:
         with self.connect() as con:

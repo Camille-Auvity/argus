@@ -490,7 +490,7 @@ export const modelsApi = {
 
 // ----------------------------------------------------------------------------- portfolio
 
-export type PositionKind = "equity" | "option" | "barrier" | "digital" | "asian" | "cliquet" | "autocall" | "bond" | "future";
+export type PositionKind = "equity" | "option" | "barrier" | "digital" | "asian" | "cliquet" | "autocall" | "bond" | "future" | "cds";
 
 export interface Exposure {
   key: string;
@@ -502,6 +502,8 @@ export interface Exposure {
   theta: number;
   rho: number;
   dv01: number;
+  cs01: number;
+  jtd: number;
   n: number;
 }
 
@@ -527,6 +529,8 @@ export interface PositionRow {
   theta: number | null;
   rho: number | null;
   dv01: number | null;
+  cs01: number | null;
+  jtd: number | null;
   error: string | null;
 }
 
@@ -545,7 +549,8 @@ export interface PortfolioResponse {
 export interface RiskResponse {
   base_currency: string;
   history_days: number;
-  stress: { base_value: number; spot_shocks: number[]; vol_shocks: number[]; pnl: number[][]; rate_shocks: { shift: number; pnl: number }[] };
+  stress: { base_value: number; spot_shocks: number[]; vol_shocks: number[]; pnl: number[][]; rate_shocks: { shift: number; pnl: number }[];
+    spread_shocks: { shift: number; pnl: number }[] };
   var: {
     n_scenarios: number;
     tickers?: string[];
@@ -576,4 +581,78 @@ export const portfolioApi = {
   remove: (id: number) => request<{ deleted: number }>(`/api/portfolio/positions/${id}`, { method: "DELETE" }),
   clear: () => request<{ deleted: number }>("/api/portfolio", { method: "DELETE" }),
   demo: () => post<{ created: number }>("/api/portfolio/demo", {}),
+  updateSpreads: (id: number, spreads_bp: number[]) =>
+    request<{ id: number; unit_price: number }>(`/api/portfolio/positions/${id}/spreads`, { method: "PATCH", body: JSON.stringify({ spreads_bp }) }),
+};
+
+// ----------------------------------------------------------------------------- credit
+
+export interface CDSRequest {
+  tenors: number[];
+  spreads_bp: number[];
+  recovery: number;
+  rate: RateSpec;
+  maturity: number;
+  coupon_bp: number;
+  notional: number;
+  side: "buyer" | "seller";
+}
+
+export interface CDSResponse {
+  risk: { value: number; par_spread: number; upfront: number; rpv01: number; cs01: number; ir01: number; rec01: number;
+    jump_to_default: number; carry_1d: number };
+  table: { tenor: number; quoted_bp: number; model_bp: number; hazard: number; survival: number; default_probability: number;
+    rpv01: number; upfront_100: number; upfront_500: number }[];
+  curves: { t: number[]; survival: number[]; default_probability: number[]; hazard: number[] };
+  par_curve: { maturity: number; par_bp: number }[];
+  pillars: number[];
+  hazards: number[];
+}
+
+export interface MertonInputs {
+  ticker: string;
+  name: string;
+  currency: Currency;
+  spot: number;
+  shares_outstanding: number;
+  equity: number;
+  short_term_debt: number;
+  long_term_debt: number;
+  total_debt: number;
+  kmv_default_point: number;
+  equity_vol: number;
+  equity_vol_source: string;
+  financial_currency: string;
+  fundamentals_at: string | null;
+}
+
+export interface MertonRequest {
+  equity: number;
+  equity_vol: number;
+  debt_face: number;
+  horizon: number;
+  currency: Currency;
+  recovery: number;
+  market_spread_bp: number | null;
+}
+
+export interface MertonResponse {
+  rate: number;
+  fit: { equity: number; equity_vol: number; debt_face: number; T: number; r: number; assets: number; asset_vol: number;
+    d1: number; d2: number; default_probability: number; debt_value: number; spread: number; recovery: number;
+    leverage: number; equity_delta: number };
+  spread_bp: number;
+  spread_change_for_equity_down_1pct_bp: number;
+  term_structure: { T: number[]; spread_bp: number[]; default_probability: number[]; distance_to_default: number[] };
+  cds: { tenors: number[]; spreads_bp: number[]; recovery: number };
+  hazard: { pillars: number[]; hazards: number[] };
+  by_vol: { equity_vol: number; spread_bp: number; pd: number; asset_vol: number }[];
+  by_equity: { move: number; spread_bp: number; pd: number; distance_to_default: number }[];
+  implied_equity_vol: number | null;
+}
+
+export const creditApi = {
+  cds: (req: CDSRequest) => post<CDSResponse>("/api/credit/cds", req),
+  mertonInputs: (ticker: string) => request<MertonInputs>(`/api/credit/merton/${encodeURIComponent(ticker)}/inputs`),
+  merton: (req: MertonRequest) => post<MertonResponse>("/api/credit/merton", req),
 };
