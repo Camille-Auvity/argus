@@ -59,7 +59,7 @@ function withBase(opt: EOption, p: ChartPalette): EOption {
     Array.isArray(axis) ? axis.map((a) => deepMerge(axisStyle, a)) : axis ? deepMerge(axisStyle, axis) : axis;
   return {
     animationDuration: 300,
-    textStyle: { fontFamily: "Inter Variable, system-ui, sans-serif", color: p.textSecondary },
+    textStyle: { fontFamily: p.font, color: p.textSecondary },
     grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
     color: p.series,
     ...opt,

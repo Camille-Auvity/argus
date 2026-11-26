@@ -1,0 +1,238 @@
+/* Visual worlds, selected by <html data-design="…">. "classic" (no rule here) is the original design in
+   tokens.css / app.css and stays untouched. Each world overrides the tokens, then the few shell rules that
+   carry its character. Chart colours mirror DESIGN_PALETTES in src/lib/theme.tsx. */
+
+@import "@fontsource-variable/hanken-grotesk";
+@import "@fontsource-variable/red-hat-text";
+@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/source-sans-3";
+
+/* the design picker in the top bar (all designs) */
+.design-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.design-select select {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .design-select .label { display: none; }
+}
+
+/* ======================================================================= Les cent yeux
+   Argus Panoptes: deep peacock-teal rail, cool fog ground, iridescent series (cobalt, gold, emerald, violet). */
+:root[data-design="eyes"] {
+  color-scheme: light;
+  --page: #e8efec;
+  --surface-1: #ffffff;
+  --surface-2: #f2f6f4;
+  --surface-3: #dde7e3;
+  --border: #d3deda;
+  --border-strong: #b9c9c4;
+  --text-primary: #0b1f24;
+  --text-secondary: #3a5157;
+  --text-muted: #5e7378;
+  --grid: #e3ebe8;
+  --axis: #b9c9c4;
+  --accent: #1f4fd1;
+  --accent-soft: rgba(31, 79, 209, 0.1);
+  --accent-ink: #ffffff;
+  --good: #1e8a5a;
+  --good-ink: #17704a;
+  --critical: #b23a48;
+  --critical-ink: #9c2f3c;
+  --warning: #c99a2e;
+  --shadow: 0 1px 2px rgba(11, 31, 36, 0.05), 0 6px 18px rgba(11, 31, 36, 0.05);
+  --radius: 8px;
+  --radius-sm: 5px;
+  --font: "Hanken Grotesk Variable", system-ui, sans-serif;
+  --rail: #0e3b43;
+  --rail-2: #16525c;
+  --rail-text: #cfe3df;
+  --rail-muted: #8fb5ae;
+  --gold: #c99a2e;
+}
+:root[data-design="eyes"] .sidebar { background: var(--rail); border-right-color: var(--rail); }
+:root[data-design="eyes"] .brand-name { color: #ffffff; }
+:root[data-design="eyes"] .brand-sub,
+:root[data-design="eyes"] .nav-section { color: var(--rail-muted); }
+:root[data-design="eyes"] .nav-link { color: var(--rail-text); }
+:root[data-design="eyes"] .nav-link:hover { background: rgba(255, 255, 255, 0.07); color: #ffffff; }
+:root[data-design="eyes"] .nav-link.active { background: var(--rail-2); color: #ffffff; box-shadow: none; }
+:root[data-design="eyes"] .sidebar-footer { border-top-color: rgba(255, 255, 255, 0.12); color: var(--rail-muted); }
+/* the brand mark becomes an ocellus: gold ring, cobalt iris, dark pupil */
+:root[data-design="eyes"] .brand-mark {
+  border-radius: 50%;
+  background: radial-gradient(circle, #0b1f24 0 26%, #1f4fd1 27% 48%, #1e8a5a 49% 66%, #c99a2e 67% 100%);
+  color: transparent;
+}
+:root[data-design="eyes"] .brand-mark svg { display: none; }
+:root[data-design="eyes"] .card-head { background: var(--surface-2); }
+:root[data-design="eyes"] .card-title { color: var(--rail); letter-spacing: 0.05em; }
+:root[data-design="eyes"] .market-chip .dot.open { background: var(--good); box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px var(--gold); }
+:root[data-design="eyes"] .tabs button.on,
+:root[data-design="eyes"] .subnav a.on { border-bottom-color: var(--rail); }
+
+/* ======================================================================= Plan de métro
+   Midnight-blue enamel, porcelain text, line inks: cobalt, scarlet, amber, green. */
+:root[data-design="metro"] {
+  color-scheme: dark;
+  --page: #0f1a3a;
+  --surface-1: #16234a;
+  --surface-2: #1c2b57;
+  --surface-3: #253666;
+  --border: rgba(244, 241, 232, 0.1);
+  --border-strong: rgba(244, 241, 232, 0.22);
+  --text-primary: #f4f1e8;
+  --text-secondary: #c9c6bc;
+  --text-muted: #9aa3bd;
+  --grid: #223163;
+  --axis: #34447a;
+  --accent: #4d8bf0;
+  --accent-soft: rgba(77, 139, 240, 0.16);
+  --accent-ink: #0f1a3a;
+  --good: #2ba84a;
+  --good-ink: #4cc76a;
+  --critical: #e5484d;
+  --critical-ink: #f0686c;
+  --warning: #f2a541;
+  --shadow: 0 1px 0 rgba(244, 241, 232, 0.04) inset, 0 8px 24px rgba(5, 10, 26, 0.45);
+  --radius: 6px;
+  --radius-sm: 4px;
+  --font: "Red Hat Text Variable", system-ui, sans-serif;
+}
+:root[data-design="metro"] .sidebar,
+:root[data-design="metro"] .topbar { background: #0b1430; }
+/* nav groups as metro lines: each section label carries its line colour, the active page is a station ring */
+:root[data-design="metro"] .nav-section { color: var(--text-primary); letter-spacing: 0.12em; display: flex; align-items: center; gap: 8px; }
+:root[data-design="metro"] .nav-section::before { content: ""; width: 18px; height: 4px; border-radius: 2px; background: var(--line, #4d8bf0); }
+:root[data-design="metro"] .nav-link { color: var(--text-secondary); }
+:root[data-design="metro"] .nav-link.active { background: rgba(244, 241, 232, 0.07); box-shadow: none; color: #ffffff; }
+:root[data-design="metro"] .brand-mark { background: #e5484d; border-radius: 50%; }
+:root[data-design="metro"] .card-title { color: var(--text-primary); letter-spacing: 0.1em; }
+
+/* ======================================================================= Série de billets
+   Cool paper white, crisp corners, one denomination hue per part of the app. */
+:root[data-design="billets"] {
+  color-scheme: light;
+  --page: #f3f4f1;
+  --surface-1: #ffffff;
+  --surface-2: #f7f8f6;
+  --surface-3: #e6e8e4;
+  --border: #d9dcd6;
+  --border-strong: #c4c8c1;
+  --text-primary: #1c2230;
+  --text-secondary: #454b57;
+  --text-muted: #6a6f78;
+  --grid: #e6e8e4;
+  --axis: #c4c8c1;
+  --accent: #2f5da8;
+  --accent-soft: rgba(47, 93, 168, 0.1);
+  --accent-ink: #ffffff;
+  --good: #2e8b57;
+  --good-ink: #23704a;
+  --critical: #c8423b;
+  --critical-ink: #a8352f;
+  --warning: #c9a227;
+  --shadow: 0 1px 2px rgba(28, 34, 48, 0.06);
+  --radius: 3px;
+  --radius-sm: 2px;
+  --font: "Public Sans Variable", system-ui, sans-serif;
+}
+:root[data-design="billets"] .sidebar { background: #ffffff; }
+:root[data-design="billets"] .nav-section {
+  color: #ffffff;
+  background: var(--line, #8a8d91);
+  margin: 12px 4px 4px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+:root[data-design="billets"] .nav-link.active { background: var(--surface-3); box-shadow: none; color: var(--text-primary); font-weight: 650; }
+:root[data-design="billets"] .brand-mark { background: #1c2230; border-radius: 2px; }
+:root[data-design="billets"] .card { border-color: var(--border); }
+:root[data-design="billets"] .card-title { color: var(--text-primary); font-weight: 700; }
+:root[data-design="billets"] .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+
+/* ======================================================================= Working paper
+   Set like a finance working paper: serif text and tables, booktabs rules, burgundy rubric, no boxes. */
+:root[data-design="paper"] {
+  color-scheme: light;
+  --page: #fcfcfa;
+  --surface-1: #fcfcfa;
+  --surface-2: #f4f3ef;
+  --surface-3: #e8e6e0;
+  --border: #d8d6cf;
+  --border-strong: #16181d;
+  --text-primary: #16181d;
+  --text-secondary: #3f434c;
+  --text-muted: #6b6f78;
+  --grid: #e8e6e0;
+  --axis: #16181d;
+  --accent: #7a1f2b;
+  --accent-soft: rgba(122, 31, 43, 0.08);
+  --accent-ink: #ffffff;
+  --good: #2f6b3f;
+  --good-ink: #2f6b3f;
+  --critical: #9b1c1c;
+  --critical-ink: #9b1c1c;
+  --warning: #a86b00;
+  --shadow: none;
+  --radius: 0px;
+  --radius-sm: 2px;
+  --font: "Source Serif 4 Variable", Georgia, serif;
+  --ui-font: "Source Sans 3 Variable", system-ui, sans-serif;
+}
+:root[data-design="paper"] body { font-size: 14.5px; }
+:root[data-design="paper"] .sidebar,
+:root[data-design="paper"] .topbar,
+:root[data-design="paper"] .btn,
+:root[data-design="paper"] .segmented,
+:root[data-design="paper"] .tabs,
+:root[data-design="paper"] .subnav,
+:root[data-design="paper"] .badge,
+:root[data-design="paper"] .field-label,
+:root[data-design="paper"] .design-select { font-family: var(--ui-font); }
+:root[data-design="paper"] .sidebar { background: #f4f3ef; }
+:root[data-design="paper"] .nav-link.active { background: transparent; box-shadow: none; color: var(--accent); font-weight: 650; }
+:root[data-design="paper"] .brand-mark { background: var(--accent); border-radius: 0; }
+:root[data-design="paper"] .card { border: 0; border-top: 1.5px solid var(--text-primary); box-shadow: none; background: transparent; }
+:root[data-design="paper"] .card-head { border-bottom: 0.5px solid var(--border); padding-left: 0; padding-right: 0; }
+:root[data-design="paper"] .card-body { padding-left: 0; padding-right: 0; }
+:root[data-design="paper"] .card-title {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-caps: small-caps;
+}
+:root[data-design="paper"] .stat.card { border-top-width: 0.5px; }
+:root[data-design="paper"] .page-title { font-weight: 600; letter-spacing: -0.01em; }
+/* booktabs: thick top and bottom rules, thin rule under the header */
+:root[data-design="paper"] table.data { border-top: 1.5px solid var(--text-primary); border-bottom: 1.5px solid var(--text-primary); }
+:root[data-design="paper"] table.data th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-caps: small-caps;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 0.75px solid var(--text-primary);
+}
+:root[data-design="paper"] table.data tbody tr:hover td { background: var(--surface-2); }
+
+/* collapsed icon rail (same breakpoint as app.css): section labels stay hidden in every design */
+@media (max-width: 1080px) {
+  :root[data-design] .nav-section { display: none; }
+}

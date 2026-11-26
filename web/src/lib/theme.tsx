@@ -2,6 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export type ThemeMode = "dark" | "light";
 
+/** Visual worlds. "classic" is the original design (dark / light toggle); the others have one fixed scheme each. */
+export type Design = "classic" | "eyes" | "metro" | "billets" | "paper";
+
+export const DESIGNS: { value: Design; label: string; mode: ThemeMode | null }[] = [
+  { value: "classic", label: "Classique", mode: null },
+  { value: "eyes", label: "Les cent yeux", mode: "light" },
+  { value: "metro", label: "Plan de métro", mode: "dark" },
+  { value: "billets", label: "Série de billets", mode: "light" },
+  { value: "paper", label: "Working paper", mode: "light" },
+];
+
 /** Chart palette — the validated reference palette, stepped per mode (mirrors tokens.css). */
 export interface ChartPalette {
   surface: string;
@@ -15,6 +26,8 @@ export interface ChartPalette {
   critical: string;
   /** diverging blue <-> red with a gray midpoint, for sentiment */
   diverging: [string, string, string];
+  /** chart typography (mirrors the design's --font) */
+  font: string;
 }
 
 const PALETTES: Record<ThemeMode, ChartPalette> = {
@@ -29,6 +42,7 @@ const PALETTES: Record<ThemeMode, ChartPalette> = {
     good: "#0ca30c",
     critical: "#e66767",
     diverging: ["#e66767", "#383835", "#3987e5"],
+    font: "Inter Variable, system-ui, sans-serif",
   },
   light: {
     surface: "#fcfcfb",
@@ -41,6 +55,34 @@ const PALETTES: Record<ThemeMode, ChartPalette> = {
     good: "#0ca30c",
     critical: "#d03b3b",
     diverging: ["#d03b3b", "#f0efec", "#2a78d6"],
+    font: "Inter Variable, system-ui, sans-serif",
+  },
+};
+
+const DESIGN_PALETTES: Record<Exclude<Design, "classic">, ChartPalette> = {
+  eyes: {
+    surface: "#ffffff", text: "#0b1f24", textSecondary: "#3a5157", muted: "#5e7378", grid: "#e3ebe8", axis: "#b9c9c4",
+    series: ["#1f4fd1", "#c99a2e", "#1e8a5a", "#5b3fa8", "#b23a48", "#0e7c86", "#8c6a2b", "#5e7378"],
+    good: "#1e8a5a", critical: "#b23a48", diverging: ["#b23a48", "#e3ebe8", "#1f4fd1"],
+    font: "Hanken Grotesk Variable, system-ui, sans-serif",
+  },
+  metro: {
+    surface: "#16234a", text: "#f4f1e8", textSecondary: "#c9c6bc", muted: "#9aa3bd", grid: "#223163", axis: "#34447a",
+    series: ["#4d8bf0", "#e5484d", "#f2a541", "#2ba84a", "#a78bfa", "#35c2c1", "#f4f1e8", "#9aa3bd"],
+    good: "#2ba84a", critical: "#e5484d", diverging: ["#e5484d", "#34447a", "#4d8bf0"],
+    font: "Red Hat Text Variable, system-ui, sans-serif",
+  },
+  billets: {
+    surface: "#ffffff", text: "#1c2230", textSecondary: "#454b57", muted: "#6a6f78", grid: "#e6e8e4", axis: "#c4c8c1",
+    series: ["#2f5da8", "#c8423b", "#d9812b", "#2e8b57", "#7b4b94", "#c9a227", "#8a8d91", "#1c2230"],
+    good: "#2e8b57", critical: "#c8423b", diverging: ["#c8423b", "#e6e8e4", "#2f5da8"],
+    font: "Public Sans Variable, system-ui, sans-serif",
+  },
+  paper: {
+    surface: "#fcfcfa", text: "#16181d", textSecondary: "#3f434c", muted: "#6b6f78", grid: "#e8e6e0", axis: "#16181d",
+    series: ["#2b4c7e", "#7a1f2b", "#5e7f3e", "#b8860b", "#6b4e9b", "#3f434c", "#a0522d", "#8a8f98"],
+    good: "#2f6b3f", critical: "#9b1c1c", diverging: ["#9b1c1c", "#e8e6e0", "#2b4c7e"],
+    font: "Source Serif 4 Variable, Georgia, serif",
   },
 };
 
@@ -48,6 +90,8 @@ interface ThemeCtx {
   mode: ThemeMode;
   palette: ChartPalette;
   toggle: () => void;
+  design: Design;
+  setDesign: (d: Design) => void;
 }
 
 const Ctx = createContext<ThemeCtx | null>(null);
@@ -58,12 +102,29 @@ function initialMode(): ThemeMode {
   return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
+function initialDesign(): Design {
+  const stamped = document.documentElement.dataset.design;
+  return DESIGNS.some((d) => d.value === stamped) ? (stamped as Design) : "classic";
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(initialMode);
+  const [userMode, setMode] = useState<ThemeMode>(initialMode);
+  const [design, setDesignState] = useState<Design>(initialDesign);
+  const mode = DESIGNS.find((d) => d.value === design)?.mode ?? userMode;
 
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
-  }, [mode]);
+    document.documentElement.dataset.design = design;
+  }, [mode, design]);
+
+  const setDesign = useCallback((d: Design) => {
+    setDesignState(d);
+    try {
+      localStorage.setItem("argus-design", d);
+    } catch {
+      /* storage unavailable: design still switches for this session */
+    }
+  }, []);
 
   const toggle = useCallback(() => {
     setMode((m) => {
@@ -77,7 +138,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const value = useMemo(() => ({ mode, palette: PALETTES[mode], toggle }), [mode, toggle]);
+  const value = useMemo(
+    () => ({ mode, palette: design === "classic" ? PALETTES[mode] : DESIGN_PALETTES[design], toggle, design, setDesign }),
+    [mode, toggle, design, setDesign],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

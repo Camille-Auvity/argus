@@ -8,7 +8,7 @@ import { api } from "../api/client";
 import { STATIC_MODE } from "../engine/bridge";
 import { ccySymbol, num, relativeTime } from "../lib/format";
 import { useStatus, useTicker, useTickers } from "../lib/hooks";
-import { useTheme } from "../lib/theme";
+import { DESIGNS, useTheme, type Design } from "../lib/theme";
 import { Delta } from "./ui";
 
 const NAV = [
@@ -91,7 +91,7 @@ function TopBar() {
   const { ticker, setTicker, snapshot } = useTicker();
   const { data: tickers } = useTickers();
   const { data: status } = useStatus();
-  const { mode, toggle } = useTheme();
+  const { mode, toggle, design, setDesign } = useTheme();
   const qc = useQueryClient();
   const refresh = useMutation({
     mutationFn: () => api.refresh(ticker),
@@ -144,10 +144,18 @@ function TopBar() {
           <span className="label">{refresh.isPending ? "Mise à jour…" : "Actualiser"}</span>
         </button>
       )}
-      <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
-        title={mode === "dark" ? "Thème clair" : "Thème sombre"}>
-        {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-      </button>
+      <label className="design-select" title="Univers visuel ; « Classique » est le design d'origine">
+        <span className="label">Design</span>
+        <select value={design} onChange={(e) => setDesign(e.target.value as Design)} aria-label="Design">
+          {DESIGNS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </label>
+      {design === "classic" && (
+        <button className="btn icon ghost" onClick={toggle} aria-label="Changer de thème"
+          title={mode === "dark" ? "Thème clair" : "Thème sombre"}>
+          {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+      )}
     </header>
   );
 }

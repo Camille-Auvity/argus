@@ -8,6 +8,7 @@ import { Skeleton } from "./components/ui";
 import { TickerProvider } from "./lib/hooks";
 import { ThemeProvider } from "./lib/theme";
 import "./styles/app.css";
+import "./styles/designs.css";
 
 const Overview = lazy(() => import("./pages/Overview"));
 const Options = lazy(() => import("./pages/Options"));
