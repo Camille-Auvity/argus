@@ -97,6 +97,11 @@ EXACT: dict[str, str] = {
     "série trop courte pour estimer le processus": "series too short to estimate the process",
     "historique des taux courts indisponible (lancer scripts/refresh.py --jobs rates --force)":
         "short-rate history unavailable (run scripts/refresh.py --jobs rates --force)",
+    "données de Shiller indisponibles (lancer scripts/refresh.py --jobs rates --force)":
+        "Shiller data unavailable (run scripts/refresh.py --jobs rates --force)",
+    "aucune news notée pour ce titre": "no scored news for this ticker",
+    "paramètres hors bornes : 0 ≤ ρ ≤ 0,999, −0,99 ≤ corrélation ≤ 0,99, 20 ≤ n ≤ 2000":
+        "parameters out of range: 0 ≤ ρ ≤ 0.999, −0.99 ≤ correlation ≤ 0.99, 20 ≤ n ≤ 2000",
 }
 
 _FREQ = {"annuel": "annual", "semestriel": "semi-annual", "trimestriel": "quarterly", "mensuel": "monthly"}
@@ -112,6 +117,8 @@ def _pct(s: str) -> str:
 TEMPLATES: list[tuple[re.Pattern, callable]] = [
     (re.compile(r"Action (\S+)"), lambda m: f"Equity {m[1]}"),
     (re.compile(r"début possible : (.+)"), lambda m: f"possible start: {m[1]}"),
+    (re.compile(r"titre possible : (.+)"), lambda m: f"possible ticker: {m[1]}"),
+    (re.compile(r"demi-vie possible : (.+)"), lambda m: f"possible half-life: {m[1]}"),
     (re.compile(r"(Call|Put) (européen|américain) (\S+) K=(\S+) éch\. (\S+)"),
      lambda m: f"{'European' if m[2] == 'européen' else 'American'} {m[1].lower()} {m[3]} K={m[4]} exp. {m[5]}"),
     (re.compile(r"(Call|Put) (\S+-and-\S+) (\S+) K=(\S+) H=(\S+) éch\. (\S+)"),

@@ -37,6 +37,23 @@ def client(tmp_path_factory):
     path = simulate_ou(0.03, 0.3, 0.03, 0.01, 1 / 252, len(days) - 1, seed=5)[0]
     db.upsert_short_rates([{"series": "USD_3M", "date": d.strftime("%Y-%m-%d"), "rate": float(r)}
                            for d, r in zip(days, path)])
+    # Shiller-like monthly S&P data since 1871: a persistent log dividend yield, returns unrelated to it
+    rng = np.random.default_rng(6)
+    months = pd.period_range("1871-01", "2026-09", freq="M")
+    ldp = np.empty(len(months))
+    ldp[0] = np.log(0.04)
+    for i in range(1, len(months)):
+        ldp[i] = 0.004 * np.log(0.04) + 0.996 * ldp[i - 1] + 0.04 * rng.standard_normal()
+    price = 4.0 * np.exp(np.cumsum(0.005 + 0.04 * rng.standard_normal(len(months))))
+    db.upsert_shiller([{"month": str(m), "price": float(pr), "dividend": float(pr * np.exp(x)), "earnings": None,
+                        "cpi": None, "gs10": None} for m, pr, x in zip(months, price, ldp)])
+    # one scored AAPL headline per session over the last 80 sessions, published before the New York close
+    score = np.tanh(np.cumsum(rng.normal(0, 0.2, 80)) * 0.3)
+    db.insert_news([{"id": f"h{i}", "ticker": "AAPL", "published": f"{d.strftime('%Y-%m-%d')}T15:00:00+00:00",
+                     "title": f"h{i}", "publisher": "p", "url": "u", "summary": "", "source": "s", "fetched_at": utc_now()}
+                    for i, d in enumerate(dates[-81:-1])])
+    db.upsert_sentiment([{"news_id": f"h{i}", "model": "m", "score": float(v), "label": "neutral", "rationale": "r",
+                          "scored_at": utc_now()} for i, v in enumerate(score)])
     services.get_db.cache_clear()
     original = services.get_db
     services.get_db = lambda: db
@@ -300,3 +317,24 @@ def test_vasicek_lab(client):
     assert client.get("/api/theory/vasicek?currency=EUR").status_code == 409   # no EUR history in the fixture
     en = client.get("/api/theory/vasicek?start=1995", headers={"X-Lang": "en"}).json()["detail"]
     assert en.startswith("possible start:")
+
+
+def test_stambaugh_lab(client):
+    sim = client.get("/api/theory/stambaugh/simulate?rho=0.98&corr=-0.9&n=200").json()
+    assert sim["beta_bias"] > 0 and sim["size_ols_one_sided"] > sim["size_ah_one_sided"]
+    assert len(sim["t_hist"]["ols"]["counts"]) == 50 and len(sim["scatter"]["rho_err"]) == 600
+    assert client.get("/api/theory/stambaugh/simulate?rho=1.2").status_code == 422
+
+    dp = client.get("/api/theory/stambaugh/dividend-yield?start=1950").json()
+    e = dp["estimate"]
+    assert e["n"] > 800 and e["rho"] > 0.95 and abs(e["corr_uv"]) < 0.2   # synthetic: shocks unrelated
+    assert dp["first"] == "1950-01" and len(dp["windows"]) == 4 and 0 <= dp["bootstrap"]["p_one_sided"] <= 1
+    assert client.get("/api/theory/stambaugh/dividend-yield?start=1900").status_code == 422
+
+    se = client.get("/api/theory/stambaugh/sentiment?target=AAPL&halflife=3").json()
+    assert se["n_sessions_covered"] == 80 and se["n"] == 79
+    assert se["bootstrap"]["n_boot"] == 2000 and se["first"] < se["last"]
+    raw = client.get("/api/theory/stambaugh/sentiment?target=AAPL&halflife=0").json()
+    assert se["estimate"]["rho"] > raw["estimate"]["rho"]          # smoothing makes the signal more persistent
+    assert client.get("/api/theory/stambaugh/sentiment?target=MSFT").status_code == 409
+    assert client.get("/api/theory/stambaugh/sentiment?target=TSLA", headers={"X-Lang": "en"}).json()["detail"].startswith("possible ticker:")

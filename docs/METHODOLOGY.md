@@ -1123,9 +1123,9 @@ The mean / variance ratio, which sets the optimal exposure $w^* = \mu / (\gamma 
 
 ---
 
-## 19. Applied theory: replication, hedging, stochastic calculus, P and Q, short rate
+## 19. Applied theory: replication, hedging, stochastic calculus, P and Q, short rate, predictive regression
 
-*Files: `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `api/routers/theory.py`*
+*Files: `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `qplat/theory/predictive.py`, `api/routers/theory.py`*
 
 ### 19.1 Replication on the binomial tree
 
@@ -1263,6 +1263,48 @@ In November 2026 on the dollar, the calibration gives $\kappa_Q \approx 0.11$, c
 **Limits.** Two constant parameters do not reproduce the curve exactly (Hull-White makes $\theta$ time-dependent for that). The Gaussian model allows negative rates (Cox-Ingersoll-Ross replaces $\sigma$ with $\sigma\sqrt r$). A single factor moves all rates together: slope and curvature never move independently.
 
 **Tests.** Moments of the exact simulation, parameters recovered by the regression on a long simulated series, no pull-back on a rising series, slope bias in line with Kendall, limits of the zero rate ($r_0$ at 0, $\theta - \sigma^2/2\kappa^2$ at infinity, average of the expected path when $\sigma \to 0$), forward equal to $-\partial_t \ln P$, zero-coupon price equal to the Monte Carlo of $\mathbb E[e^{-\int r}]$, exact calibration round trip, probability of a negative rate.
+
+### 19.8 Predictive regression and the Stambaugh bias
+
+*File: `qplat/theory/predictive.py`*
+
+**The system.** A predictive regression explains the next period's return with a variable known today, which is itself persistent:
+
+$$
+r_{t+1} = \alpha + \beta\, x_t + u_{t+1}, \qquad x_{t+1} = \mu + \rho\, x_t + v_{t+1}, \qquad \gamma = \frac{\text{Cov}(u, v)}{\text{Var}(v)}
+$$
+
+In continuous time, this is a stock whose drift depends on an Ornstein-Uhlenbeck factor: $d\ln X = (a + bY - \tfrac12\sigma_X^2)\,dt + \sigma_X\, dB^X$ and $dY = \theta(\bar Y - Y)\,dt + \sigma_Y\, dB^Y$, with $d\langle B^X, B^Y\rangle = \varrho\, dt$. Sampled every $\Delta t$, this model gives exactly the system above, with $\rho = e^{-\theta\Delta t}$ and $\beta = b\,(1 - e^{-\theta\Delta t})/\theta$. Both shocks share the increments of $B^Y$, hence a non-zero covariance even when $\varrho = 0$ (`continuous_to_discrete`, integrals in closed form, checked against a fine simulation).
+
+**The bias.** In small samples, $\hat\rho$ is biased downwards by about $-(1 + 3\rho)/n$ (Kendall, 1954). Since $u = \gamma v + \eta$ with $\eta$ independent of $v$, the error on $\rho$ carries over to $\beta$ (Stambaugh, 1999):
+
+$$
+\mathbb E[\hat\beta - \beta] = \gamma\, \mathbb E[\hat\rho - \rho] \approx -\gamma\, \frac{1 + 3\rho}{n}
+$$
+
+With a valuation ratio, $\rho$ is close to 1 and the shock correlation close to −1 (a price rise lowers $D/P$ in the same month): $\gamma < 0$, so $\hat\beta$ is biased upwards, towards "predictability". The t-statistic is no longer normal and rejects $\beta = 0$ too often.
+
+**Corrections.**
+- Stambaugh: $\hat\beta - \hat\gamma\,(-(1 + 3\hat\rho)/n)$.
+- Amihud and Hurvich (2004): $\hat\rho^c = \hat\rho + (1 + 3\hat\rho)/n + 3(1 + 3\hat\rho)/n^2$ (capped at 0.9999), corrected residuals $v^c_{t+1} = x_{t+1} - \hat\mu^c - \hat\rho^c x_t$, then a regression of $r_{t+1}$ on $x_t$ and $v^c_{t+1}$. The coefficient on $x_t$ is $\hat\beta^c$, with standard error $\sqrt{\widehat{\text{Var}}(\hat\beta^c) + \hat\phi^2 (1 + 3/n + 9/n^2)^2\, \widehat{\text{Var}}(\hat\rho)}$, where $\hat\phi$ is the coefficient on $v^c$.
+- Bootstrap under the null: 2,000 histories where $x$ follows its corrected AR(1) and the return is its mean plus a residual; the $(u, v)$ pairs are drawn together to keep their correlation. The p-value is the share of histories whose $\hat\beta$ exceeds the observed one.
+
+**Simulator.** The page simulates 4,000 samples (2,000 beyond 600 observations) with $\beta = 0$, unit-variance shocks, and a chosen persistence $\rho$, correlation and size $n$. It shows the $(\hat\rho - \rho, \hat\beta)$ scatter around the line of slope $\gamma$, the distribution of the OLS and Amihud-Hurvich t-statistics, and the actual false-positive rate at the 5% level. With $\rho = 0.98$, a correlation of −0.95 and 240 months, the OLS t exceeds 1.645 in 19% of cases; after correction, 6%.
+
+**Dividend yield (Shiller's data).** Monthly S&P composite index since 1871 (price, 12-month dividends), downloaded once a week from shillerdata.com into the `shiller_monthly` table. Return $r_{t+1} = \ln\big((P_{t+1} + D_{t+1}/12)/P_t\big)$, predictor $x_t = \ln(D_t/P_t)$. Shiller's prices are monthly averages of closes, which adds a little autocorrelation to returns. Results in November 2026:
+
+| Since | n | $\hat\rho$ | corr(u, v) | $\hat\beta$ | t | Estimated bias | $\hat\beta^c$ | Corrected t |
+|---|---|---|---|---|---|---|---|---|
+| 1871 | 1,868 | 0.9978 | −0.97 | −0.0002 | −0.08 | +0.0020 | −0.0021 | −1.07 |
+| 1927 | 1,196 | 0.9974 | −0.97 | +0.0017 | 0.66 | +0.0031 | −0.0006 | −0.24 |
+| 1950 | 920 | 0.9971 | −0.98 | +0.0053 | 2.07 | +0.0042 | +0.0026 | 1.02 |
+| 1990 | 440 | 0.9918 | −0.99 | +0.0074 | 1.22 | +0.0087 | −0.0004 | −0.07 |
+
+Since 1950 the classic regression looks significant (t = 2.07), but the estimated bias is 80% of the coefficient; the bootstrap gives a p-value of 0.18 and an actual 5% t threshold of 2.53. Since 1990 the bias exceeds the coefficient itself.
+
+**Sentiment score.** The same regression with, as $x_t$, the average Claude score (section 23) of the headlines usable before the 4 pm New York close (a headline published later counts for the next session), and as $r_{t+1}$ the next session's log return: SPY for the pooled news on SPY, QQQ, AAPL, MSFT and NVDA, or a single name's own return. The score can be smoothed by an exponential average (3- or 10-session half-life), restarted after every coverage gap; smoothing makes it persistent and therefore exposed to the bias. Only pairs of consecutive sessions that are both covered are used, and the estimation needs at least 10 pairs. In November 2026, scoring interrupted from 21 October to 23 November (credit exhausted, section 22.3) leaves only 7 pairs: the page shows the coverage and points to the simulator.
+
+**Tests.** Simulated bias in line with Stambaugh's formula, slope $\gamma$ of the $(\hat\rho - \rho, \hat\beta)$ scatter, no bias when the shocks are independent (and a 5% test size), over-rejection of the OLS t and correct size for Amihud-Hurvich, corrections on a single sample, bootstrap p-values under the null and under true predictability, exact mapping from continuous time to the discrete system against a fine Euler scheme.
 
 ---
 
@@ -1481,6 +1523,7 @@ The weights $x_i(K)$ solve the $3 \times 3$ system that matches the vega, vanna 
 | EUR rates | ECB data API | every run |
 | EUR/USD exchange rate (conversion of the portfolio into euros) | yfinance (EURUSD=X) | every run |
 | VIX (30-day implied vol of the S&P 500, variance swaps) | yfinance (^VIX) | every run |
+| Monthly S&P composite index since 1871: price, dividends, earnings (predictive regression) | Robert Shiller's data (shillerdata.com, falling back on the Yale copy) | once a week |
 | Daily Fama-French factors since 1926 (market, SMB, HML, RMW, CMA, momentum, risk-free rate) | Kenneth French data library | once a week |
 | News | Yahoo Finance RSS feeds (French edition for Europe), Alpha Vantage optional | every run |
 
@@ -1539,7 +1582,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 
 ## 24. Validation
 
-*Folder: `tests/` — 239 tests*
+*Folder: `tests/` — 247 tests*
 
 | Reference | Check |
 |---|---|
@@ -1561,6 +1604,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 | Stochastic calculus and Girsanov | total variation ≈ √(2N/π), quadratic variation → T with standard deviation √(2/N), Itô and right-point sums (expectations 0 and T), martingales and non-martingales, Girsanov (E_P[Y] = 1, mean θT), unbiased importance sampling with variance divided by more than 100 out of the money, Monte Carlo Greeks with importance sampling |
 | Applied theory | textbook example (put 10.714 then 11.820, Δ and B at each node, Q(S₂ = 96) = 0.46875), self-financing at each node, no arbitrage d < R < u, market maker hedged on every path, tree convergence to Black-Scholes, hedging error in 1/√N (Derman-Kamal), drift independence, P&L with realised ≠ implied vol, synthetic backtest |
 | Real-world P and risk-neutral Q | Breeden-Litzenberger on a flat smile = lognormal (density and distribution function within 1e-5, mean = forward), mode < median < mean, quantiles shifted by e^{(μ−r)T}, skew: fatter left tail with the forward unchanged, decreasing pricing kernel if μ > r, standard error of μ̂ in σ/√years |
+| Predictive regression | simulated bias in line with Stambaugh, slope γ of the scatter, no bias without shock correlation, over-rejection of the OLS t and correct Amihud-Hurvich size, bootstrap p-values, exact mapping from continuous to discrete time |
 | Ornstein-Uhlenbeck and Vasicek | moments of the exact simulation, parameters recovered by AR(1) regression, no pull-back on a rising series, slope bias in line with Kendall, limits of the zero rate, forward = −∂ ln P, zero-coupon = Monte Carlo, calibration round trip, probability of a negative rate |
 | Research (Moreira-Muir) | compounded monthly return and realised variance, Newey-West OLS, same volatility by construction, constant variance → strategy = factor, positive alpha under volatility regimes and zero without, real-time version without look-ahead, leverage cap and costs |
 | Allocation | unconstrained minimum variance and mean-variance equal to the closed forms, constrained frontier above the Markowitz frontier, maximum-Sharpe tangency (including the formula Σ⁻¹(μ − r)), long-only and caps respected, LASSO inactive in long-only and active with shorts, costs that reduce then freeze turnover, Ledoit-Wolf positive definite and less shrunk with more data, conversion into euros, backtest without look-ahead |
@@ -1631,5 +1675,8 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 - Vasicek, O. (1977). *An Equilibrium Characterization of the Term Structure*. Journal of Financial Economics.
 - Kendall, M. (1954). *Note on Bias in the Estimation of Autocorrelation*. Biometrika.
 - Stambaugh, R. (1999). *Predictive Regressions*. Journal of Financial Economics.
+- Amihud, Y. and Hurvich, C. (2004). *Predictive Regressions: A Reduced-Bias Estimation Method*. Journal of Financial and Quantitative Analysis.
+- Goyal, A. and Welch, I. (2008). *A Comprehensive Look at the Empirical Performance of Equity Premium Prediction*. Review of Financial Studies.
+- Shiller, R. (2000). *Irrational Exuberance*. Princeton University Press (monthly S&P data since 1871).
 - Cox, J., Ingersoll, J. & Ross, S. (1985). *A Theory of the Term Structure of Interest Rates*. Econometrica.
 - Hull, J. & White, A. (1990). *Pricing Interest-Rate-Derivative Securities*. Review of Financial Studies.

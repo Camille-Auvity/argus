@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS short_rates (
     rate REAL NOT NULL,           -- fraction
     PRIMARY KEY (series, date)
 );
+CREATE TABLE IF NOT EXISTS shiller_monthly (
+    month TEXT PRIMARY KEY,       -- YYYY-MM (Shiller: monthly average of daily S&P composite closes)
+    price REAL NOT NULL,          -- S&P composite index
+    dividend REAL,                -- dividends per share, trailing twelve months (index units)
+    earnings REAL,                -- earnings per share, trailing twelve months
+    cpi REAL,
+    gs10 REAL                     -- 10-year Treasury yield, fraction
+);
 CREATE INDEX IF NOT EXISTS idx_news_ticker ON news(ticker, published);
 CREATE INDEX IF NOT EXISTS idx_opt_ticker ON option_quotes(ticker, asof);
 """
@@ -231,6 +239,15 @@ class Database:
     def short_rates(self, series: str) -> pd.Series:
         df = self.query("SELECT date, rate FROM short_rates WHERE series=? ORDER BY date", (series,))
         return df.set_index("date")["rate"] if not df.empty else pd.Series(dtype=float)
+
+    # --- Shiller long-run S&P data (predictive-regression lab) ---------------------------
+
+    def upsert_shiller(self, rows: Iterable[dict]) -> int:
+        return self._upsert("shiller_monthly", rows)
+
+    def shiller(self) -> pd.DataFrame:
+        df = self.query("SELECT * FROM shiller_monthly ORDER BY month")
+        return df.set_index("month") if not df.empty else df
 
     def query(self, sql: str, params: tuple = ()) -> pd.DataFrame:
         with self.connect() as con:

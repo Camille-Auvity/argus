@@ -1123,9 +1123,9 @@ Le rapport moyenne / variance, qui fixe l'exposition optimale $w^* = \mu / (\gam
 
 ---
 
-## 19. Théorie appliquée : réplication, couverture, calcul stochastique, P et Q, taux court
+## 19. Théorie appliquée : réplication, couverture, calcul stochastique, P et Q, taux court, régression prédictive
 
-*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `api/routers/theory.py`*
+*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `qplat/theory/predictive.py`, `api/routers/theory.py`*
 
 ### 19.1 Réplication dans l'arbre binomial
 
@@ -1263,6 +1263,48 @@ En novembre 2026 sur le dollar, la calibration donne $\kappa_Q \approx 0{,}11$, 
 **Limites.** Deux paramètres constants ne reproduisent pas exactement la courbe (Hull-White rend $\theta$ dépendant du temps pour cela). Le modèle gaussien autorise les taux négatifs (Cox-Ingersoll-Ross remplace $\sigma$ par $\sigma\sqrt r$). Un seul facteur déplace tous les taux ensemble : pente et courbure ne bougent jamais indépendamment.
 
 **Tests.** Moments de la simulation exacte, paramètres retrouvés par la régression sur une longue série simulée, absence de rappel sur une série croissante, biais de la pente conforme à Kendall, limites du taux zéro ($r_0$ en 0, $\theta - \sigma^2/2\kappa^2$ à l'infini, moyenne du chemin espéré quand $\sigma \to 0$), forward égal à $-\partial_t \ln P$, prix d'un zéro-coupon égal au Monte Carlo de $\mathbb E[e^{-\int r}]$, calibration aller-retour exacte, probabilité d'un taux négatif.
+
+### 19.8 Régression prédictive et biais de Stambaugh
+
+*Fichier : `qplat/theory/predictive.py`*
+
+**Le système.** Une régression prédictive explique le rendement de la période suivante par une variable connue aujourd'hui, elle-même persistante :
+
+$$
+r_{t+1} = \alpha + \beta\, x_t + u_{t+1}, \qquad x_{t+1} = \mu + \rho\, x_t + v_{t+1}, \qquad \gamma = \frac{\text{Cov}(u, v)}{\text{Var}(v)}
+$$
+
+En temps continu, c'est une action dont la dérive dépend d'un facteur d'Ornstein-Uhlenbeck : $d\ln X = (a + bY - \tfrac12\sigma_X^2)\,dt + \sigma_X\, dB^X$ et $dY = \theta(\bar Y - Y)\,dt + \sigma_Y\, dB^Y$, avec $d\langle B^X, B^Y\rangle = \varrho\, dt$. Échantillonné au pas $\Delta t$, ce modèle donne exactement le système ci-dessus, avec $\rho = e^{-\theta\Delta t}$ et $\beta = b\,(1 - e^{-\theta\Delta t})/\theta$. Les deux chocs partagent les accroissements de $B^Y$, d'où une covariance non nulle même si $\varrho = 0$ (`continuous_to_discrete`, intégrales en formule fermée, vérifiées contre une simulation fine).
+
+**Le biais.** En petit échantillon, $\hat\rho$ est biaisé vers le bas d'environ $-(1 + 3\rho)/n$ (Kendall, 1954). Comme $u = \gamma v + \eta$ avec $\eta$ indépendant de $v$, l'erreur sur $\rho$ se reporte sur $\beta$ (Stambaugh, 1999) :
+
+$$
+\mathbb E[\hat\beta - \beta] = \gamma\, \mathbb E[\hat\rho - \rho] \approx -\gamma\, \frac{1 + 3\rho}{n}
+$$
+
+Avec un ratio de valorisation, $\rho$ est proche de 1 et la corrélation des chocs proche de −1 (une hausse du prix fait baisser $D/P$ le même mois) : $\gamma < 0$, donc $\hat\beta$ est biaisé vers le haut, du côté de la « prévisibilité ». Le t de Student n'a plus une loi normale et rejette trop souvent $\beta = 0$.
+
+**Corrections.**
+- Stambaugh : $\hat\beta - \hat\gamma\,(-(1 + 3\hat\rho)/n)$.
+- Amihud et Hurvich (2004) : $\hat\rho^c = \hat\rho + (1 + 3\hat\rho)/n + 3(1 + 3\hat\rho)/n^2$ (plafonné à 0,9999), résidus corrigés $v^c_{t+1} = x_{t+1} - \hat\mu^c - \hat\rho^c x_t$, puis régression de $r_{t+1}$ sur $x_t$ et $v^c_{t+1}$. Le coefficient de $x_t$ est $\hat\beta^c$, d'écart-type $\sqrt{\widehat{\text{Var}}(\hat\beta^c) + \hat\phi^2 (1 + 3/n + 9/n^2)^2\, \widehat{\text{Var}}(\hat\rho)}$, où $\hat\phi$ est le coefficient de $v^c$.
+- Bootstrap sous l'hypothèse nulle : 2 000 historiques où $x$ suit son AR(1) corrigé et où le rendement vaut sa moyenne plus un résidu ; les couples $(u, v)$ sont tirés ensemble pour garder leur corrélation. La p-valeur est la part des historiques dont le $\hat\beta$ dépasse celui observé.
+
+**Simulateur.** La page simule 4 000 échantillons (2 000 au-delà de 600 observations) avec $\beta = 0$, des chocs de variance unité, une persistance $\rho$, une corrélation et une taille $n$ choisies. Elle montre le nuage $(\hat\rho - \rho, \hat\beta)$ autour de la droite de pente $\gamma$, la distribution du t des MCO et d'Amihud-Hurvich, et la vraie fréquence des faux positifs au seuil de 5 %. Avec $\rho = 0{,}98$, une corrélation de −0,95 et 240 mois, le t des MCO dépasse 1,645 dans 19 % des cas ; après correction, 6 %.
+
+**Rendement du dividende (données de Shiller).** Indice composite S&P mensuel depuis 1871 (prix, dividendes sur 12 mois), téléchargé une fois par semaine sur shillerdata.com dans la table `shiller_monthly`. Rendement $r_{t+1} = \ln\big((P_{t+1} + D_{t+1}/12)/P_t\big)$, prédicteur $x_t = \ln(D_t/P_t)$. Les prix de Shiller sont des moyennes mensuelles de clôtures, ce qui ajoute un peu d'autocorrélation aux rendements. Résultats en novembre 2026 :
+
+| Depuis | n | $\hat\rho$ | corr(u, v) | $\hat\beta$ | t | Biais estimé | $\hat\beta^c$ | t corrigé |
+|---|---|---|---|---|---|---|---|---|
+| 1871 | 1 868 | 0,9978 | −0,97 | −0,0002 | −0,08 | +0,0020 | −0,0021 | −1,07 |
+| 1927 | 1 196 | 0,9974 | −0,97 | +0,0017 | 0,66 | +0,0031 | −0,0006 | −0,24 |
+| 1950 | 920 | 0,9971 | −0,98 | +0,0053 | 2,07 | +0,0042 | +0,0026 | 1,02 |
+| 1990 | 440 | 0,9918 | −0,99 | +0,0074 | 1,22 | +0,0087 | −0,0004 | −0,07 |
+
+Depuis 1950, la régression classique paraît significative (t = 2,07), mais le biais estimé représente 80 % du coefficient ; le bootstrap donne une p-valeur de 0,18 et un seuil réel du t à 5 % de 2,53. Depuis 1990, le biais dépasse le coefficient lui-même.
+
+**Score de sentiment.** Même régression avec, pour $x_t$, la moyenne des scores de Claude (section 23) des titres utilisables avant la clôture de 16 h à New York (une news publiée plus tard compte pour la séance suivante), et pour $r_{t+1}$ le rendement logarithmique de la séance suivante : le SPY pour les news de SPY, QQQ, AAPL, MSFT et NVDA réunies, ou le rendement propre d'un titre seul. Le score peut être lissé par une moyenne exponentielle (demi-vie de 3 ou 10 séances), recommencée après chaque trou de couverture ; le lissage le rend persistant et donc exposé au biais. Seuls les couples de séances consécutives toutes deux couvertes sont utilisés, et l'estimation exige au moins 10 couples. En novembre 2026, la notation interrompue du 21 octobre au 23 novembre (crédit épuisé, section 22.3) ne laisse que 7 couples : la page affiche la couverture et renvoie au simulateur.
+
+**Tests.** Biais simulé conforme à la formule de Stambaugh, pente $\gamma$ du nuage $(\hat\rho - \rho, \hat\beta)$, absence de biais quand les chocs sont indépendants (et taille du test à 5 %), sur-rejet du t des MCO et taille correcte d'Amihud-Hurvich, corrections sur un échantillon, p-valeurs du bootstrap sous l'hypothèse nulle et sous une vraie prévisibilité, passage exact du temps continu au système discret contre un schéma d'Euler fin.
 
 ---
 
@@ -1481,6 +1523,7 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 | Taux EUR | API de données de la BCE | chaque passage |
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
 | VIX (vol implicite 30 jours du S&P 500, swaps de variance) | yfinance (^VIX) | chaque passage |
+| Indice composite S&P mensuel depuis 1871 : prix, dividendes, bénéfices (régression prédictive) | données de Robert Shiller (shillerdata.com, repli sur la copie de Yale) | une fois par semaine |
 | Facteurs Fama-French quotidiens depuis 1926 (marché, SMB, HML, RMW, CMA, momentum, taux sans risque) | bibliothèque de Kenneth French | une fois par semaine |
 | News | flux RSS Yahoo Finance (édition FR pour l'Europe), Alpha Vantage en option | chaque passage |
 
@@ -1539,7 +1582,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 239 tests*
+*Dossier : `tests/` — 247 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1561,6 +1604,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Calcul stochastique et Girsanov | variation totale ≈ √(2N/π), variation quadratique → T avec un écart-type √(2/N), sommes d'Itô et au point droit (espérances 0 et T), martingales et non-martingales, Girsanov (E_P[Y] = 1, moyenne θT), échantillonnage préférentiel sans biais avec une variance divisée par plus de 100 hors de la monnaie, grecques Monte Carlo avec échantillonnage préférentiel |
 | Théorie appliquée | exemple du cours (put 10,714 puis 11,820, Δ et B de chaque nœud, Q(S₂ = 96) = 0,46875), autofinancement à chaque nœud, absence d'arbitrage d < R < u, market maker couvert sur tous les chemins, convergence de l'arbre vers Black-Scholes, erreur de couverture en 1/√N (Derman-Kamal), indépendance du drift, P&L à vol réalisée ≠ implicite, backtest synthétique |
 | Monde réel P et risque-neutre Q | Breeden-Litzenberger sur smile plat = lognormale (densité et répartition à 1e-5, moyenne = forward), mode < médiane < moyenne, quantiles décalés de e^{(μ−r)T}, skew : queue gauche plus épaisse à forward inchangé, noyau de prix décroissant si μ > r, erreur standard de μ̂ en σ/√années |
+| Régression prédictive | biais simulé conforme à Stambaugh, pente γ du nuage, absence de biais sans corrélation des chocs, sur-rejet du t des MCO et taille correcte d'Amihud-Hurvich, p-valeurs du bootstrap, passage exact du temps continu au discret |
 | Ornstein-Uhlenbeck et Vasicek | moments de la simulation exacte, paramètres retrouvés par régression AR(1), absence de rappel sur une série croissante, biais de la pente conforme à Kendall, limites du taux zéro, forward = −∂ ln P, zéro-coupon = Monte Carlo, calibration aller-retour, probabilité d'un taux négatif |
 | Recherche (Moreira-Muir) | rendement mensuel composé et variance réalisée, MCO Newey-West, même volatilité par construction, variance constante → stratégie = facteur, alpha positif sous régimes de volatilité et nul sans, version temps réel sans look-ahead, plafond de levier et coûts |
 | Allocation | minimum variance et moyenne-variance sans contrainte égaux aux formules fermées, frontière contrainte au-dessus de la frontière de Markowitz, tangence de Sharpe maximal (y compris la formule Σ⁻¹(μ − r)), long-only et plafonds respectés, LASSO inactif en long-only et actif avec shorts, coûts qui réduisent puis gèlent la rotation, Ledoit-Wolf défini positif et moins rétréci avec plus de données, conversion en euros, backtest sans look-ahead |
@@ -1631,5 +1675,8 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 - Vasicek, O. (1977). *An Equilibrium Characterization of the Term Structure*. Journal of Financial Economics.
 - Kendall, M. (1954). *Note on Bias in the Estimation of Autocorrelation*. Biometrika.
 - Stambaugh, R. (1999). *Predictive Regressions*. Journal of Financial Economics.
+- Amihud, Y. et Hurvich, C. (2004). *Predictive Regressions: A Reduced-Bias Estimation Method*. Journal of Financial and Quantitative Analysis.
+- Goyal, A. et Welch, I. (2008). *A Comprehensive Look at the Empirical Performance of Equity Premium Prediction*. Review of Financial Studies.
+- Shiller, R. (2000). *Irrational Exuberance*. Princeton University Press (données mensuelles du S&P depuis 1871).
 - Cox, J., Ingersoll, J. & Ross, S. (1985). *A Theory of the Term Structure of Interest Rates*. Econometrica.
 - Hull, J. & White, A. (1990). *Pricing Interest-Rate-Derivative Securities*. Review of Financial Studies.

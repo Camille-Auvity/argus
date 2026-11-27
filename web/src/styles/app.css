@@ -1321,3 +1321,6 @@ table.data td.strong {
 .tenor-grid > * {
   min-width: 0;
 }
+
+/* Greek letters inside upper-case labels keep their case (see keepGreek in components/ui.tsx) */
+.keep-case { text-transform: none; }

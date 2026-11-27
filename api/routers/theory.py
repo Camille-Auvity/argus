@@ -380,3 +380,179 @@ def vasicek(currency: Literal["USD", "EUR"] = "USD", start: Optional[int] = None
     q = services.latest_quotes(currency)
     version = f"{s.index[-1]}|{q['asof'].iloc[0] if not q.empty else ''}"
     return _vasicek(currency, start, freq, version)
+
+
+# ----------------------------------------------------------------------------- predictive regression (Stambaugh)
+
+def _hist(samples: np.ndarray, lo: float, hi: float, bins: int = 50) -> dict:
+    counts, edges = np.histogram(np.clip(samples, lo, hi), bins=bins, range=(lo, hi))
+    return {"edges": edges.tolist(), "counts": counts.tolist()}
+
+
+@lru_cache(maxsize=64)
+def _stambaugh_sim(rho: float, corr: float, n: int, n_sims: int) -> dict:
+    from qplat.theory.predictive import estimator_study
+
+    s = estimator_study(rho, corr, n, 0.0, n_sims, seed=11)
+    smp = s.pop("samples")
+    both = np.r_[smp["beta_hat"], smp["beta_ah"]]
+    lo, hi = (float(q) for q in np.quantile(both, [0.005, 0.995]))
+    k = min(600, n_sims)
+    return {**s,
+            "beta_hist": {"ols": _hist(smp["beta_hat"], lo, hi), "ah": _hist(smp["beta_ah"], lo, hi)},
+            "t_hist": {"ols": _hist(smp["t_ols"], -4.5, 5.5), "ah": _hist(smp["t_ah"], -4.5, 5.5)},
+            "scatter": {"rho_err": np.round(smp["rho_err"][:k], 6).tolist(), "beta_hat": np.round(smp["beta_hat"][:k], 6).tolist()}}
+
+
+@router.get("/stambaugh/simulate")
+def stambaugh_simulate(rho: float = 0.98, corr: float = -0.9, n: int = 240):
+    """Monte Carlo of the predictive regression under the null (returns not predictable): bias of beta_hat
+    against Stambaugh's formula, true size of the 5% t-test, and the Amihud-Hurvich reduced-bias estimator."""
+    if not (0.0 <= rho <= 0.999 and -0.99 <= corr <= 0.99 and 20 <= n <= 2000):
+        raise HTTPException(422, "paramètres hors bornes : 0 ≤ ρ ≤ 0,999, −0,99 ≤ corrélation ≤ 0,99, 20 ≤ n ≤ 2000")
+    n_sims = 4000 if n <= 600 else 2000
+    return _stambaugh_sim(round(rho, 4), round(corr, 4), n, n_sims)
+
+
+def _predictive_block(r: np.ndarray, x: np.ndarray, xn: np.ndarray, n_boot: int, seed: int) -> dict:
+    from qplat.theory.predictive import bootstrap_null, predictive_regression
+
+    est = predictive_regression(r, x, xn)
+    boot = bootstrap_null(r, x, xn, n_boot=n_boot, seed=seed)
+    b = boot.pop("beta_samples")
+    boot.pop("t_samples")
+    lo, hi = (float(q) for q in np.quantile(np.r_[b, est["beta"], est["beta_ah"]], [0.002, 0.998]))
+    pad = 0.05 * (hi - lo)
+    return {"estimate": est, "bootstrap": {**boot, "hist": _hist(b, lo - pad, hi + pad)}}
+
+
+# --- dividend yield on Shiller's S&P composite since 1871
+
+DP_STARTS = (1871, 1927, 1950, 1990)
+
+
+def _dp_triples(df: pd.DataFrame, start: int):
+    """Monthly log total return r_{t+1} = ln((P_{t+1} + D_{t+1} / 12) / P_t) and the log dividend yield x_t."""
+    P, D = df["price"].to_numpy(), df["dividend"].to_numpy()
+    x = np.log(D / P)
+    r = np.log((P[1:] + D[1:] / 12.0) / P[:-1])
+    months = df.index.to_numpy()
+    keep = np.array([m >= f"{start}-01" for m in months[:-1]])
+    return r[keep], x[:-1][keep], x[1:][keep], months[:-1][keep]
+
+
+@lru_cache(maxsize=16)
+def _dividend_yield(start: int, version: str) -> dict:
+    df = services.get_db().shiller().dropna(subset=["dividend"])
+    r, x, xn, months = _dp_triples(df, start)
+    block = _predictive_block(r, x, xn, n_boot=2000, seed=21)
+    windows = []
+    from qplat.theory.predictive import predictive_regression
+    for w in DP_STARTS:
+        rw, xw, xnw, mw = _dp_triples(df, w)
+        e = predictive_regression(rw, xw, xnw)
+        windows.append({"start": w, "first": mw[0], "n": e["n"], **{k: e[k] for k in (
+            "beta", "t", "rho", "corr_uv", "beta_bias", "beta_stambaugh", "beta_ah", "t_ah")}})
+    every = max(1, len(df) // 900)
+    hist = df.iloc[::every]
+    return {"start": start, "starts": list(DP_STARTS), "first": months[0], "last": df.index[-1],
+            "history": {"months": hist.index.tolist(), "dividend_yield": (hist["dividend"] / hist["price"]).round(6).tolist()},
+            **block, "windows": windows}
+
+
+@router.get("/stambaugh/dividend-yield")
+def stambaugh_dividend_yield(start: int = 1871):
+    """Does the dividend yield predict S&P returns? Shiller's monthly data since 1871: OLS, Stambaugh's bias,
+    Amihud-Hurvich, a bootstrap under the null, and the same regression from later start dates."""
+    if start not in DP_STARTS:
+        raise HTTPException(422, f"début possible : {', '.join(map(str, DP_STARTS))}")
+    df = services.get_db().shiller()
+    if df.empty:
+        raise HTTPException(409, "données de Shiller indisponibles (lancer scripts/refresh.py --jobs rates --force)")
+    return _dividend_yield(start, f"{df.index[-1]}|{len(df)}")
+
+
+# --- the news sentiment score (daily, own returns)
+
+SENTIMENT_UNIVERSE = ("SPY", "QQQ", "AAPL", "MSFT", "NVDA")
+SENTIMENT_TARGETS = ("US",) + SENTIMENT_UNIVERSE
+SENTIMENT_HALFLIVES = (0, 3, 10)
+
+
+def _sessions_for(published: pd.Series, sessions: pd.DatetimeIndex) -> pd.Series:
+    """Trading session a headline can be acted on: the same day if published before the 16:00 New York close,
+    otherwise the next session (weekends and holidays roll forward to the next stored close)."""
+    from zoneinfo import ZoneInfo
+
+    ts = pd.to_datetime(published, utc=True, errors="coerce").dt.tz_convert(ZoneInfo("America/New_York"))
+    day = ts.dt.tz_localize(None).dt.normalize()
+    after = (ts.dt.hour >= 16).to_numpy()
+    day = day + pd.to_timedelta(after.astype(int), unit="D")
+    pos = sessions.searchsorted(day.to_numpy())
+    out = pd.Series(pd.NaT, index=published.index, dtype="datetime64[ns]")
+    ok = (pos < len(sessions)) & ts.notna().to_numpy()
+    out[ok] = sessions[pos[ok]]
+    return out
+
+
+@lru_cache(maxsize=32)
+def _sentiment_predictive(target: str, halflife: int, version: str) -> dict:
+    db = services.get_db()
+    price_ticker = "SPY" if target == "US" else target
+    closes = daily_closes(db.spot_history(price_ticker))
+    closes.index = pd.to_datetime(closes.index)
+    closes = closes[closes.index.dayofweek < 5].sort_index()
+    sessions = closes.index
+    tickers = SENTIMENT_UNIVERSE if target == "US" else (target,)
+    frames = [db.news_with_sentiment(t, limit=100_000) for t in tickers]
+    news = pd.concat(frames, ignore_index=True).dropna(subset=["score"])
+    if news.empty:
+        raise HTTPException(409, "aucune news notée pour ce titre")
+    news["session"] = _sessions_for(news["published"], sessions)
+    news = news.dropna(subset=["session"])
+    daily = news.groupby("session")["score"].agg(["mean", "count"])
+    daily = daily.reindex(sessions)                           # sessions without any scored headline: NaN
+
+    # smoothing within runs of consecutive covered sessions (a gap in the coverage restarts the average)
+    covered = daily["mean"].notna().to_numpy()
+    run_id = np.cumsum(~covered)
+    x = daily["mean"].copy()
+    if halflife > 0:
+        x = daily["mean"].groupby(run_id).transform(lambda s: s.ewm(halflife=halflife, ignore_na=True).mean())
+    x[~covered] = np.nan
+
+    logp = np.log(closes.to_numpy())
+    r_next = np.r_[np.diff(logp), np.nan]                     # r_{t+1}: from the close of t to the close of t+1
+    xv = x.to_numpy()
+    x_next = np.r_[xv[1:], np.nan]
+    ok = np.isfinite(xv) & np.isfinite(x_next) & np.isfinite(r_next)
+    n_obs = int(ok.sum())
+    covered_sessions = sessions[covered]
+    base = {"target": target, "price_ticker": price_ticker, "tickers": list(tickers), "halflife": halflife,
+            "halflives": list(SENTIMENT_HALFLIVES), "targets": list(SENTIMENT_TARGETS),
+            "n_headlines": int(daily["count"].sum()), "n_sessions_covered": int(covered.sum()),
+            "first": covered_sessions[0].strftime("%Y-%m-%d") if len(covered_sessions) else None,
+            "last": covered_sessions[-1].strftime("%Y-%m-%d") if len(covered_sessions) else None,
+            "n": n_obs,
+            "series": {"dates": sessions.strftime("%Y-%m-%d").tolist(),
+                       "raw": [None if not np.isfinite(v) else round(float(v), 4) for v in daily["mean"].to_numpy()],
+                       "signal": [None if not np.isfinite(v) else round(float(v), 4) for v in xv],
+                       "count": [0 if not np.isfinite(v) else int(v) for v in daily["count"].to_numpy()],
+                       "return_next": [None if not np.isfinite(v) else round(float(v), 6) for v in r_next]}}
+    if n_obs < 10:
+        return {**base, "estimate": None, "bootstrap": None}
+    return {**base, **_predictive_block(r_next[ok], xv[ok], x_next[ok], n_boot=2000, seed=31)}
+
+
+@router.get("/stambaugh/sentiment")
+def stambaugh_sentiment(target: str = "US", halflife: int = 3):
+    """Does the Claude news sentiment score predict the next session's return? Daily score of the headlines
+    usable before each close, optionally smoothed (which makes it persistent, hence exposed to the bias)."""
+    if target not in SENTIMENT_TARGETS:
+        raise HTTPException(422, f"titre possible : {', '.join(SENTIMENT_TARGETS)}")
+    if halflife not in SENTIMENT_HALFLIVES:
+        raise HTTPException(422, f"demi-vie possible : {', '.join(map(str, SENTIMENT_HALFLIVES))}")
+    db = services.get_db()
+    stamp = db.query("SELECT COUNT(*) AS n, MAX(scored_at) AS s FROM sentiment").iloc[0]
+    last_px = db.query("SELECT MAX(date) AS d FROM spot_prices").iloc[0]["d"]
+    return _sentiment_predictive(target, halflife, f"{stamp['n']}|{stamp['s']}|{last_px}")

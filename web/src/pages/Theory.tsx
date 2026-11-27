@@ -1,9 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { measuresApi, stochasticApi, theoryApi, vasicekApi, type VasicekFreq, type MeasureStats, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
+import { measuresApi, stambaughApi, stochasticApi, theoryApi, vasicekApi, type Hist, type VasicekFreq, type MeasureStats, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
 import { EChart } from "../components/EChart";
-import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
+import { Card, Check, ErrorBox, InfoBox, keepGreek, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { num, pct } from "../lib/format";
 import { useDebounced, useTicker } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
@@ -16,6 +16,7 @@ export const THEORY_PAGES = [
   { path: "girsanov", label: ["Girsanov et échantillonnage préférentiel", "Girsanov and importance sampling"] },
   { path: "p-vs-q", label: ["Monde réel et risque-neutre", "Real world and risk-neutral"] },
   { path: "vasicek", label: ["Taux court : Vasicek", "Short rate: Vasicek"] },
+  { path: "stambaugh", label: ["Régression prédictive", "Predictive regression"] },
 ] as const;
 
 export default function Theory() {
@@ -32,8 +33,8 @@ export default function Theory() {
         <div>
           <h1 className="page-title">{tr("Théorie appliquée", "Applied theory")}</h1>
           <div className="page-sub">
-            {tr("Les résultats de la finance en temps continu, recalculés et testés : réplication et probabilité risque-neutre, couverture dynamique, passage au temps continu et modèle de taux court.",
-              "Continuous-time finance results, recomputed and tested: replication and the risk-neutral measure, dynamic hedging, the passage to continuous time and a short-rate model.")}
+            {tr("Les résultats de la finance en temps continu, recalculés et testés : réplication et probabilité risque-neutre, couverture dynamique, passage au temps continu, modèle de taux court et régression prédictive.",
+              "Continuous-time finance results, recomputed and tested: replication and the risk-neutral measure, dynamic hedging, the passage to continuous time, a short-rate model and predictive regression.")}
           </div>
         </div>
       </div>
@@ -1074,7 +1075,7 @@ export function VasicekLab() {
           {fit ? (
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>{tr("Depuis", "Since")}</th><th>n</th><th>{tr("Moyenne", "Mean")}</th><th>b</th><th>κ</th><th>θ</th><th>σ</th><th>{tr("Demi-vie", "Half-life")}</th></tr></thead>
+                <thead><tr>{[tr("Depuis", "Since"), "n", tr("Moyenne", "Mean"), "b", "κ", "θ", "σ", tr("Demi-vie", "Half-life")].map((h) => <th key={h}>{keepGreek(h)}</th>)}</tr></thead>
                 <tbody>
                   {d.windows.map((w) => (
                     <tr key={w.start} className={w.start === d.start ? "strong" : undefined}>
@@ -1152,6 +1153,325 @@ export function VasicekLab() {
           replaces σ with σ√r to rule out negative rates. Finally, a single factor moves all rates together: the slope and curvature of the curve
           never change independently.
           {ts?.prob_negative && <> Under P, the probability of a negative short rate is {pct(ts.prob_negative["1"], 1)} at 1 year and {pct(ts.prob_negative["5"], 1)} at 5 years.</>}
+        </>)}
+      </InfoBox>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------- predictive regression and the Stambaugh bias
+
+const signed = (x: number | null | undefined, d = 4) => (x == null || !Number.isFinite(x) ? "—" : `${x >= 0 ? "+" : ""}${num(x, d)}`);
+const pval = (p: number | null | undefined) => (p == null ? "—" : p < 0.001 ? tr("< 0,001", "< 0.001") : num(p, 3));
+const centers = (h: Hist) => h.counts.map((_, i) => (h.edges[i] + h.edges[i + 1]) / 2);
+
+function nullOption(p: ChartPalette, h: Hist, beta: number, betaAh: number, scale: number, unit: string) {
+  return {
+    grid: { top: 30, right: 24, bottom: 44 },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 0) },
+    xAxis: { type: "value", name: unit, nameLocation: "middle", nameGap: 28, min: h.edges[0] * scale, max: h.edges[h.edges.length - 1] * scale,
+      axisLabel: { formatter: (v: number) => num(v, scale === 1 ? 3 : 0) } },
+    yAxis: { type: "value" },
+    series: [{ type: "bar", name: tr("β̂ quand les rendements sont imprévisibles", "β̂ when returns are unpredictable"), color: p.muted, itemStyle: { opacity: 0.55 }, barWidth: "95%",
+      data: centers(h).map((c, i) => [c * scale, h.counts[i]]),
+      markLine: { symbol: "none", silent: true, label: { color: p.textSecondary, fontSize: 10, position: "end" }, data: [
+        { xAxis: 0, label: { show: false }, lineStyle: { color: p.muted, type: "dotted" } },
+        { xAxis: beta * scale, label: { formatter: tr("β̂ observé", "observed β̂") }, lineStyle: { color: p.series[0], type: "solid", width: 2 } },
+        { xAxis: betaAh * scale, label: { formatter: tr("β corrigé", "corrected β"), position: "insideEndTop" }, lineStyle: { color: p.series[2], type: "dashed", width: 2 } },
+      ] } }],
+  };
+}
+
+export function StambaughLab() {
+  const simRef = useRef<HTMLDivElement>(null);
+  const [start, setStart] = useState(1950);
+  const [target, setTarget] = useState("US");
+  const [halflife, setHalflife] = useState(3);
+  const [sim, setSim] = useState({ rho: 0.98, corr: -0.9, n: 240 });
+  const simQ = useDebounced(sim, 350);
+
+  const dp = useQuery({ queryKey: ["stambaugh-dp", start], queryFn: () => stambaughApi.dividendYield(start), placeholderData: keepPreviousData, retry: false });
+  const mc = useQuery({ queryKey: ["stambaugh-sim", simQ.rho, simQ.corr, simQ.n], queryFn: () => stambaughApi.simulate(simQ.rho, simQ.corr, simQ.n), placeholderData: keepPreviousData, retry: false });
+  const se = useQuery({ queryKey: ["stambaugh-sent", target, halflife], queryFn: () => stambaughApi.sentiment(target, halflife), placeholderData: keepPreviousData, retry: false });
+
+  const d = dp.data, s = mc.data, st = se.data;
+  const e = d?.estimate, b = d?.bootstrap;
+  const loadSim = (rho: number, corr: number, n: number) => {
+    setSim({ rho: Math.min(0.999, Math.max(0, Number(rho.toFixed(4)))), corr: Math.min(0.99, Math.max(-0.99, Number(corr.toFixed(3)))), n: Math.min(2000, Math.max(20, n)) });
+    simRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const dpOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    return {
+      grid: { top: 20, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
+      xAxis: { type: "category", data: d.history.months, axisLabel: { hideOverlap: true } },
+      yAxis: { type: "value", axisLabel: { formatter: (v: number) => pct(v, 0) } },
+      series: [{ type: "line", name: tr("Rendement du dividende D/P", "Dividend yield D/P"), showSymbol: false, color: p.series[0], lineStyle: { width: 1.5 }, data: d.history.dividend_yield,
+        markArea: { silent: true, itemStyle: { color: p.muted, opacity: 0.08 }, data: [[{ xAxis: d.first }, { xAxis: d.history.months[d.history.months.length - 1] }]] } }],
+    };
+  }, [d]);
+
+  const dpNullOption = useCallback((p: ChartPalette) => (d ? nullOption(p, d.bootstrap.hist, d.estimate.beta, d.estimate.beta_ah, 1, "β") : {}), [d]);
+
+  const scatterOption = useCallback((p: ChartPalette) => {
+    if (!s) return {};
+    const xs = s.scatter.rho_err;
+    const lo = Math.min(...xs), hi = Math.max(...xs);
+    return {
+      grid: { top: 30, right: 24, bottom: 44 },
+      tooltip: { trigger: "item", formatter: (q: { value: number[] }) => `ρ̂ − ρ = ${num(q.value[0], 4)}<br/>β̂ = ${num(q.value[1], 4)}` },
+      legend: { top: 0 },
+      xAxis: { type: "value", name: tr("erreur sur la persistance ρ̂ − ρ", "error on the persistence ρ̂ − ρ"), nameLocation: "middle", nameGap: 28, scale: true, axisLabel: { formatter: (v: number) => num(v, 2) } },
+      yAxis: { type: "value", name: "β̂", scale: true, axisLabel: { formatter: (v: number) => num(v, 2) } },
+      series: [
+        { type: "scatter", name: tr("Un échantillon simulé", "One simulated sample"), color: p.series[0], symbolSize: 4, itemStyle: { opacity: 0.45 }, data: xs.map((x, i) => [x, s.scatter.beta_hat[i]]) },
+        { type: "line", name: tr("β̂ − β = γ (ρ̂ − ρ)", "β̂ − β = γ (ρ̂ − ρ)"), showSymbol: false, color: p.series[2], lineStyle: { width: 2 }, data: [[lo, s.gamma * lo], [hi, s.gamma * hi]] },
+      ],
+    };
+  }, [s]);
+
+  const tOption = useCallback((p: ChartPalette) => {
+    if (!s) return {};
+    const c = centers(s.t_hist.ols);
+    const w = s.t_hist.ols.edges[1] - s.t_hist.ols.edges[0];
+    const normal = c.map((x) => [x, (s.n_sims * w * Math.exp(-0.5 * x * x)) / Math.sqrt(2 * Math.PI)]);
+    const crit = s.gamma <= 0 ? 1.645 : -1.645;
+    return {
+      legend: { top: 0 },
+      grid: { top: 40, right: 24, bottom: 44 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 0) },
+      xAxis: { type: "value", name: tr("t de Student de β̂ (vrai β = 0)", "t-statistic of β̂ (true β = 0)"), nameLocation: "middle", nameGap: 28, min: -4.5, max: 5.5 },
+      yAxis: { type: "value" },
+      series: [
+        { type: "bar", name: tr("MCO", "OLS"), color: p.series[0], itemStyle: { opacity: 0.45 }, barGap: "-100%", barWidth: "95%", data: c.map((x, i) => [x, s.t_hist.ols.counts[i]]),
+          markLine: { symbol: "none", silent: true, label: { color: p.textSecondary, fontSize: 10, position: "end", formatter: tr("seuil 5 %", "5% threshold") }, lineStyle: { color: p.muted, type: "dashed" }, data: [{ xAxis: crit }] } },
+        { type: "bar", name: "Amihud-Hurvich", color: p.series[2], itemStyle: { opacity: 0.45 }, barWidth: "95%", data: c.map((x, i) => [x, s.t_hist.ah.counts[i]]) },
+        { type: "line", name: tr("Loi normale supposée", "Assumed normal law"), showSymbol: false, smooth: true, color: p.textSecondary, lineStyle: { width: 1.5, type: "dotted" }, data: normal },
+      ],
+    };
+  }, [s]);
+
+  const sentOption = useCallback((p: ChartPalette) => {
+    if (!st) return {};
+    const idx = st.series.dates.map((_, i) => i).filter((i) => st.series.raw[i] != null || st.series.signal[i] != null);
+    const first = idx.length ? Math.max(0, idx[0] - 2) : 0;
+    const dates = st.series.dates.slice(first);
+    const at = (arr: (number | null)[]) => arr.slice(first);
+    return {
+      legend: { top: 0 },
+      grid: { top: 40, right: 56 },
+      tooltip: { trigger: "axis" },
+      xAxis: { type: "category", data: dates, axisLabel: { hideOverlap: true } },
+      yAxis: [
+        { type: "value", name: tr("score", "score"), axisLabel: { formatter: (v: number) => num(v, 2) } },
+        { type: "value", name: tr("rendement", "return"), axisLabel: { formatter: (v: number) => pct(v, 1) }, splitLine: { show: false } },
+      ],
+      series: [
+        { type: "bar", name: tr("Score du jour", "Day's score"), color: p.muted, itemStyle: { opacity: 0.55 }, data: at(st.series.raw), tooltip: { valueFormatter: (v: number | null) => num(v, 3) } },
+        { type: "line", name: tr("Signal x_t (lissé)", "Signal x_t (smoothed)"), showSymbol: true, symbolSize: 4, connectNulls: false, color: p.series[0], lineStyle: { width: 2 }, data: at(st.series.signal), tooltip: { valueFormatter: (v: number | null) => num(v, 3) } },
+        { type: "line", yAxisIndex: 1, name: tr(`Rendement suivant de ${st.price_ticker}`, `Next ${st.price_ticker} return`), showSymbol: false, color: p.series[2], lineStyle: { width: 1.2, type: "dashed" }, data: at(st.series.return_next), tooltip: { valueFormatter: (v: number | null) => pct(v, 2) } },
+      ],
+    };
+  }, [st]);
+
+  const sentNullOption = useCallback((p: ChartPalette) => (st?.estimate && st.bootstrap ? nullOption(p, st.bootstrap.hist, st.estimate.beta, st.estimate.beta_ah, 1e4, tr("β (bp par point de score)", "β (bp per score point)")) : {}), [st]);
+
+  const sentLabel = (t: string) => (t === "US" ? tr("Marché US (5 titres → SPY)", "US market (5 names → SPY)") : t);
+  const se_ = st?.estimate;
+
+  return (
+    <div className="grid">
+      <ErrorBox error={dp.error ?? mc.error ?? se.error} />
+      <Explainer>
+        {tr(<>
+          Une régression prédictive explique le rendement du mois suivant par une variable connue aujourd'hui : r<sub>t+1</sub> = α + β x<sub>t</sub> + u<sub>t+1</sub>.
+          Le piège vient du prédicteur : un ratio de valorisation comme le rendement du dividende est très persistant, x<sub>t+1</sub> = μ + ρ x<sub>t</sub> + v<sub>t+1</sub> avec ρ proche de 1,
+          et ses chocs sont liés à ceux du rendement (quand le prix monte, D/P baisse le même mois). L'estimateur ρ̂ est biaisé vers le bas en petit échantillon,
+          et cette erreur se reporte sur β̂ : E[β̂ − β] = γ E[ρ̂ − ρ] avec γ = Cov(u, v) / Var(v) (Stambaugh, 1999). Résultat : un prédicteur inutile paraît
+          utile, et le t de Student rejette trop souvent l'absence de prévisibilité.
+        </>, <>
+          A predictive regression explains next month's return with a variable known today: r<sub>t+1</sub> = α + β x<sub>t</sub> + u<sub>t+1</sub>.
+          The trap is the predictor: a valuation ratio like the dividend yield is highly persistent, x<sub>t+1</sub> = μ + ρ x<sub>t</sub> + v<sub>t+1</sub> with ρ close to 1,
+          and its shocks are tied to the return's (when the price rises, D/P falls in the same month). The estimator ρ̂ is biased downwards in small samples,
+          and that error carries over to β̂: E[β̂ − β] = γ E[ρ̂ − ρ] with γ = Cov(u, v) / Var(v) (Stambaugh, 1999). The result: a useless predictor looks
+          useful, and the t-test rejects "no predictability" too often.
+        </>)}
+      </Explainer>
+
+      <Card title={tr("Le rendement du dividende prédit-il le S&P 500 ?", "Does the dividend yield predict the S&P 500?")}>
+        <div className="toolbar-grid">
+          <SelectField label={tr("Début de l'échantillon", "Sample start")} value={start} onChange={setStart} options={(d?.starts ?? [1871, 1927, 1950, 1990]).map((y) => ({ value: y, label: String(y) }))} />
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          {tr(<>Données mensuelles de Robert Shiller sur l'indice composite S&P depuis 1871 : r<sub>t+1</sub> = ln((P<sub>t+1</sub> + D<sub>t+1</sub>/12) / P<sub>t</sub>), x<sub>t</sub> = ln(D<sub>t</sub>/P<sub>t</sub>).</>,
+            <>Robert Shiller's monthly data on the S&P composite since 1871: r<sub>t+1</sub> = ln((P<sub>t+1</sub> + D<sub>t+1</sub>/12) / P<sub>t</sub>), x<sub>t</sub> = ln(D<sub>t</sub>/P<sub>t</sub>).</>)}
+        </p>
+        {d ? <EChart option={dpOption} height={220} ariaLabel={tr("Rendement du dividende du S&P depuis 1871", "S&P dividend yield since 1871")} /> : <Skeleton height={220} />}
+      </Card>
+      <div className="grid cols-4">
+        <Stat label={tr("β̂ par les MCO", "OLS β̂")} value={e ? signed(e.beta) : "—"}
+          foot={e ? tr(`t = ${num(e.t, 2)} · n = ${e.n} mois`, `t = ${num(e.t, 2)} · n = ${e.n} months`) : undefined} busy={dp.isFetching} />
+        <Stat label={tr("Biais de Stambaugh estimé", "Estimated Stambaugh bias")} value={e ? signed(e.beta_bias) : "—"}
+          foot={e ? tr(`${num((100 * e.beta_bias) / Math.abs(e.beta || 1e-12), 0)} % de β̂ · ρ̂ = ${num(e.rho, 4)}, corr(u, v) = ${num(e.corr_uv, 2)}`, `${num((100 * e.beta_bias) / Math.abs(e.beta || 1e-12), 0)}% of β̂ · ρ̂ = ${num(e.rho, 4)}, corr(u, v) = ${num(e.corr_uv, 2)}`) : undefined} busy={dp.isFetching} />
+        <Stat label={tr("β corrigé (Amihud-Hurvich)", "Corrected β (Amihud-Hurvich)")} value={e ? signed(e.beta_ah) : "—"}
+          foot={e ? tr(`t = ${num(e.t_ah, 2)} · Stambaugh : ${signed(e.beta_stambaugh)}`, `t = ${num(e.t_ah, 2)} · Stambaugh: ${signed(e.beta_stambaugh)}`) : undefined} busy={dp.isFetching} />
+        <Stat label={tr("p-valeur par bootstrap", "Bootstrap p-value")} value={b ? pval(b.p_one_sided) : "—"}
+          foot={b ? tr(`Seuil réel du t à 5 % : ${num(b.t_crit_95, 2)} au lieu de 1,65`, `Actual 5% t threshold: ${num(b.t_crit_95, 2)} instead of 1.65`) : undefined} busy={dp.isFetching} />
+      </div>
+      <div className="grid cols-2">
+        <Card title={tr("β̂ quand rien n'est prévisible", "β̂ when nothing is predictable")}>
+          {d ? <EChart option={dpNullOption} height={260} ariaLabel={tr("Distribution de β̂ sous l'hypothèse nulle, par bootstrap", "Bootstrap distribution of β̂ under the null")} /> : <Skeleton height={260} />}
+          {b && e && (
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              {tr(<>
+                {b.n_boot} historiques simulés où les rendements sont leur moyenne plus des chocs tirés parmi les résidus, D/P gardant sa persistance
+                et sa corrélation avec les rendements. Sans aucune prévisibilité, β̂ vaut en moyenne {signed(b.beta_null_mean)}, pas 0 : {pct(b.p_one_sided, 1)} des
+                historiques donnent un β̂ au moins aussi grand que celui observé.
+              </>, <>
+                {b.n_boot} simulated histories where returns are their mean plus shocks drawn from the residuals, with D/P keeping its persistence
+                and its correlation with returns. With no predictability at all, β̂ averages {signed(b.beta_null_mean)}, not 0: {pct(b.p_one_sided, 1)} of the
+                histories give a β̂ at least as large as the one observed.
+              </>)}
+            </p>
+          )}
+        </Card>
+        <Card title={tr("Selon la date de départ", "By start date")}
+          actions={e && <button type="button" className="btn" onClick={() => loadSim(e.rho, e.corr_uv, e.n)}>{tr("Simuler ce cas", "Simulate this case")}</button>}>
+          {d ? (
+            <div className="table-wrap">
+              <table className="data">
+                <thead><tr>{[tr("Depuis", "Since"), "n", "ρ̂", "corr(u, v)", "β̂", "t", tr("Biais", "Bias"), tr("β corrigé", "Corrected β"), tr("t corrigé", "Corrected t")].map((h) => <th key={h}>{keepGreek(h)}</th>)}</tr></thead>
+                <tbody>
+                  {d.windows.map((w) => (
+                    <tr key={w.start} className={w.start === d.start ? "strong" : undefined}>
+                      <td>{w.first}</td><td>{w.n}</td><td>{num(w.rho, 4)}</td><td>{num(w.corr_uv, 2)}</td><td>{signed(w.beta)}</td>
+                      <td>{num(w.t, 2)}</td><td>{signed(w.beta_bias)}</td><td>{signed(w.beta_ah)}</td><td>{num(w.t_ah, 2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <Skeleton height={180} />}
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            {tr("Plus l'échantillon est court, plus le biais pèse : depuis 1950, la régression classique paraît significative au seuil usuel, mais le biais estimé en absorbe l'essentiel ; depuis 1990, il dépasse même le coefficient. Une fois corrigé, aucun échantillon ne montre de prévisibilité mensuelle significative. Les prix de Shiller sont des moyennes mensuelles des clôtures, ce qui ajoute un peu d'autocorrélation aux rendements.",
+              "The shorter the sample, the more the bias weighs: since 1950 the classic regression looks significant at the usual level, but the estimated bias absorbs most of it; since 1990 it even exceeds the coefficient. Once corrected, no sample shows significant monthly predictability. Shiller's prices are monthly averages of closes, which adds a little autocorrelation to returns.")}
+          </p>
+        </Card>
+      </div>
+
+      <div ref={simRef} style={{ scrollMarginTop: 80 }}>
+        <Card title={tr("Le mécanisme, simulé : des rendements imprévisibles par construction", "The mechanism, simulated: returns unpredictable by construction")}>
+          <div className="toolbar-grid">
+            <NumberField label={tr("Persistance ρ du prédicteur", "Predictor persistence ρ")} value={sim.rho} step={0.005} min={0} max={0.999} digits={4} onChange={(v) => setSim({ ...sim, rho: Math.min(0.999, Math.max(0, v)) })} />
+            <NumberField label={tr("Corrélation des chocs corr(u, v)", "Shock correlation corr(u, v)")} value={sim.corr} step={0.05} min={-0.99} max={0.99} digits={3} onChange={(v) => setSim({ ...sim, corr: Math.min(0.99, Math.max(-0.99, v)) })} />
+            <NumberField label={tr("Taille d'échantillon n", "Sample size n")} value={sim.n} step={20} min={20} max={2000} digits={0} onChange={(v) => setSim({ ...sim, n: Math.round(Math.min(2000, Math.max(20, v))) })} />
+          </div>
+        </Card>
+      </div>
+      <div className="grid cols-4">
+        <Stat label={tr("Biais moyen de β̂", "Mean bias of β̂")} value={s ? signed(s.beta_bias, 4) : "—"}
+          foot={s ? tr(`Formule de Stambaugh : ${signed(s.beta_bias_stambaugh, 4)} · en unités σ_u / σ_v`, `Stambaugh's formula: ${signed(s.beta_bias_stambaugh, 4)} · in σ_u / σ_v units`) : undefined} busy={mc.isFetching} />
+        <Stat label={tr("Biais de ρ̂", "Bias of ρ̂")} value={s ? signed(s.rho_bias, 4) : "—"}
+          foot={s ? tr(`Kendall, −(1 + 3ρ) / n : ${signed(s.rho_bias_kendall, 4)}`, `Kendall, −(1 + 3ρ) / n: ${signed(s.rho_bias_kendall, 4)}`) : undefined} busy={mc.isFetching} />
+        <Stat label={tr("Faux positifs du t des MCO", "False positives of the OLS t-test")} value={s ? pct(s.size_ols_one_sided, 1) : "—"}
+          foot={s ? tr(`au lieu de 5 % (test unilatéral) · bilatéral ${pct(s.size_ols_two_sided, 1)}`, `instead of 5% (one-sided) · two-sided ${pct(s.size_ols_two_sided, 1)}`) : undefined} busy={mc.isFetching} />
+        <Stat label={tr("Faux positifs après correction", "False positives after correction")} value={s ? pct(s.size_ah_one_sided, 1) : "—"}
+          foot={s ? tr(`Amihud-Hurvich · β moyen ${signed(s.beta_ah_mean, 4)}`, `Amihud-Hurvich · mean β ${signed(s.beta_ah_mean, 4)}`) : undefined} busy={mc.isFetching} />
+      </div>
+      <div className="grid cols-2">
+        <Card title={tr("L'erreur sur ρ se reporte sur β", "The error on ρ carries over to β")}>
+          {s ? <EChart option={scatterOption} height={280} ariaLabel={tr("Nuage des erreurs de ρ̂ et de β̂ simulées", "Scatter of simulated errors in ρ̂ and β̂")} /> : <Skeleton height={280} />}
+          {s && (
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              {tr(<>
+                Chaque point est un échantillon de {s.n} observations ({s.scatter.rho_err.length} tracés sur {s.n_sims}). Comme u = γ v + bruit, β̂ − β = γ (ρ̂ − ρ) + bruit :
+                ρ̂ sous-estime la persistance en moyenne, donc β̂ est poussé du côté opposé au signe de γ = {num(s.gamma, 2)}.
+              </>, <>
+                Each point is one sample of {s.n} observations ({s.scatter.rho_err.length} plotted out of {s.n_sims}). Since u = γ v + noise, β̂ − β = γ (ρ̂ − ρ) + noise:
+                ρ̂ underestimates the persistence on average, so β̂ is pushed away from the sign of γ = {num(s.gamma, 2)}.
+              </>)}
+            </p>
+          )}
+        </Card>
+        <Card title={tr("Le t de Student n'est plus normal", "The t-statistic is no longer normal")}>
+          {s ? <EChart option={tOption} height={280} ariaLabel={tr("Distribution simulée du t de Student, MCO et Amihud-Hurvich", "Simulated distribution of the t-statistic, OLS and Amihud-Hurvich")} /> : <Skeleton height={280} />}
+          {s && (
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              {tr(<>
+                Le vrai β est nul. Le t des MCO est décalé (moyenne {num(s.t_ols_mean, 2)}) et son quantile à 95 % vaut {num(s.t_ols_q95, 2)} au lieu de 1,65.
+                La régression augmentée d'Amihud et Hurvich (2004) ajoute les résidus corrigés du prédicteur comme second régresseur : elle retire le biais et donne
+                un écart-type utilisable.
+              </>, <>
+                The true β is zero. The OLS t is shifted (mean {num(s.t_ols_mean, 2)}) and its 95% quantile is {num(s.t_ols_q95, 2)} instead of 1.65.
+                The augmented regression of Amihud and Hurvich (2004) adds the predictor's corrected residuals as a second regressor: it removes the bias and gives
+                a usable standard error.
+              </>)}
+            </p>
+          )}
+        </Card>
+      </div>
+
+      <Card title={tr("Le score de sentiment des news prédit-il le rendement du lendemain ?", "Does the news sentiment score predict the next day's return?")}>
+        <div className="toolbar-grid">
+          <SelectField label={tr("Score et rendement", "Score and return")} value={target} onChange={setTarget}
+            options={(st?.targets ?? ["US", "SPY", "QQQ", "AAPL", "MSFT", "NVDA"]).map((t) => ({ value: t, label: sentLabel(t) }))} />
+          <SelectField label={tr("Lissage du score", "Score smoothing")} value={halflife} onChange={setHalflife}
+            options={[{ value: 0, label: tr("Aucun", "None") }, { value: 3, label: tr("Demi-vie 3 séances", "3-session half-life") }, { value: 10, label: tr("Demi-vie 10 séances", "10-session half-life") }]} />
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>
+          {tr("x_t est la moyenne des scores de Claude (−1 à +1) des titres publiés avant la clôture de 16 h à New York ; une news publiée après compte pour la séance suivante. « Marché US » regroupe les news de SPY, QQQ, AAPL, MSFT et NVDA face au rendement du SPY ; un titre seul est confronté à son propre rendement. Lisser le score (moyenne exponentielle) le rend persistant : c'est précisément ce qui l'expose au biais de Stambaugh.",
+            "x_t is the average Claude score (−1 to +1) of the headlines published before the 4 pm New York close; a headline published later counts for the next session. \"US market\" pools the news on SPY, QQQ, AAPL, MSFT and NVDA against the SPY return; a single name faces its own return. Smoothing the score (exponential average) makes it persistent: that is exactly what exposes it to the Stambaugh bias.")}
+        </p>
+        {st ? <EChart option={sentOption} height={260} ariaLabel={tr("Score de sentiment quotidien et rendement du lendemain", "Daily sentiment score and next-day return")} /> : <Skeleton height={260} />}
+      </Card>
+      {st && !se_ && (
+        <InfoBox>
+          {tr(<>
+            Pas encore assez de données : {st.n_headlines} titres notés couvrent {st.n_sessions_covered} séances ({st.first} → {st.last}), soit seulement {st.n} couples
+            de séances consécutives exploitables (il en faut au moins 10 pour estimer quoi que ce soit, et plusieurs centaines pour conclure). La notation a été
+            interrompue du 21 octobre au 23 novembre ; la série s'allonge à chaque séance. Le simulateur ci-dessus montre ce qu'on peut attendre d'un si petit
+            échantillon.
+          </>, <>
+            Not enough data yet: {st.n_headlines} scored headlines cover {st.n_sessions_covered} sessions ({st.first} → {st.last}), only {st.n} usable pairs of
+            consecutive sessions (at least 10 are needed to estimate anything, and several hundred to conclude). Scoring was interrupted from 21 October to
+            23 November; the series grows with every session. The simulator above shows what to expect from such a small sample.
+          </>)}
+        </InfoBox>
+      )}
+      {st && se_ && st.bootstrap && (
+        <>
+          <div className="grid cols-4">
+            <Stat label={tr("β̂ par les MCO", "OLS β̂")} value={`${signed(se_.beta * 1e4, 1)} bp`}
+              foot={tr(`par point de score · t = ${num(se_.t, 2)} · n = ${se_.n} séances`, `per score point · t = ${num(se_.t, 2)} · n = ${se_.n} sessions`)} busy={se.isFetching} />
+            <Stat label={tr("Persistance du signal ρ̂", "Signal persistence ρ̂")} value={num(se_.rho, 3)}
+              foot={tr(`corr(u, v) = ${num(se_.corr_uv, 2)} · biais estimé ${signed(se_.beta_bias * 1e4, 1)} bp`, `corr(u, v) = ${num(se_.corr_uv, 2)} · estimated bias ${signed(se_.beta_bias * 1e4, 1)} bp`)} busy={se.isFetching} />
+            <Stat label={tr("β corrigé (Amihud-Hurvich)", "Corrected β (Amihud-Hurvich)")} value={`${signed(se_.beta_ah * 1e4, 1)} bp`}
+              foot={`t = ${num(se_.t_ah, 2)}`} busy={se.isFetching} />
+            <Stat label={tr("p-valeur par bootstrap", "Bootstrap p-value")} value={pval(st.bootstrap.p_two_sided)}
+              foot={tr("bilatérale : le signe attendu n'est pas connu d'avance", "two-sided: the expected sign is not known in advance")} busy={se.isFetching} />
+          </div>
+          <Card title={tr("β̂ du sentiment quand rien n'est prévisible", "Sentiment β̂ when nothing is predictable")}
+            actions={<button type="button" className="btn" onClick={() => loadSim(se_.rho, se_.corr_uv, se_.n)}>{tr("Simuler ce cas", "Simulate this case")}</button>}>
+            <EChart option={sentNullOption} height={240} ariaLabel={tr("Distribution de β̂ du sentiment sous l'hypothèse nulle", "Null distribution of the sentiment β̂")} />
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              {tr(`${st.n} couples de séances seulement (${st.first} → ${st.last}) : l'intervalle à 90 % de β̂ sous l'hypothèse nulle va de ${signed(st.bootstrap.beta_null_q05 * 1e4, 0)} à ${signed(st.bootstrap.beta_null_q95 * 1e4, 0)} bp. Avec si peu de données, aucun effet réaliste ne peut être distingué du bruit.`,
+                `Only ${st.n} pairs of sessions (${st.first} → ${st.last}): the 90% interval of β̂ under the null runs from ${signed(st.bootstrap.beta_null_q05 * 1e4, 0)} to ${signed(st.bootstrap.beta_null_q95 * 1e4, 0)} bp. With so little data, no realistic effect can be told apart from noise.`)}
+            </p>
+          </Card>
+        </>
+      )}
+      <InfoBox>
+        {tr(<>
+          Le même biais touche tout prédicteur persistant dont les chocs sont corrélés au rendement : rendement du dividende, PER, taux courts, écarts de crédit,
+          volatilité réalisée. C'est l'une des raisons pour lesquelles la prévisibilité des rendements boursiers, si nette dans les régressions classiques,
+          résiste mal aux corrections et aux tests hors échantillon (Goyal et Welch, 2008). La volatilité, à l'inverse, se prévoit très bien : c'est l'idée
+          des portefeuilles gérés par la volatilité.
+        </>, <>
+          The same bias hits any persistent predictor whose shocks are correlated with the return: dividend yield, P/E, short rates, credit spreads, realised
+          volatility. It is one of the reasons why stock-return predictability, so clear in classic regressions, holds up poorly against corrections and
+          out-of-sample tests (Goyal and Welch, 2008). Volatility, by contrast, is highly predictable: that is the idea behind volatility-managed portfolios.
         </>)}
       </InfoBox>
     </div>

@@ -3,6 +3,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import { signed } from "../lib/format";
 import { tr } from "../lib/i18n";
 
+// Greek letters (with their combining accents, e.g. β̂) survive the upper-case labels: σ must not turn into Σ
+const GREEK = /([\u0370-\u03FF\u1F00-\u1FFF][\u0300-\u036F]*)/;
+
+/** Wraps the Greek letters of a label so that `text-transform: uppercase` leaves them as written. */
+export function keepGreek(text: ReactNode): ReactNode {
+  if (typeof text !== "string" || !GREEK.test(text)) return text;
+  return text.split(GREEK).map((part, i) => (i % 2 ? <span key={i} className="keep-case">{part}</span> : part));
+}
+
 export function Card({ title, actions, children, flush, className = "" }: {
   title?: ReactNode; actions?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
 }) {
@@ -10,7 +19,7 @@ export function Card({ title, actions, children, flush, className = "" }: {
     <section className={`card ${className}`}>
       {(title || actions) && (
         <header className="card-head">
-          {title ? <h2 className="card-title">{title}</h2> : <span />}
+          {title ? <h2 className="card-title">{keepGreek(title)}</h2> : <span />}
           {actions}
         </header>
       )}
@@ -22,7 +31,7 @@ export function Card({ title, actions, children, flush, className = "" }: {
 export function Stat({ label, value, foot, busy }: { label: string; value: ReactNode; foot?: ReactNode; busy?: boolean }) {
   return (
     <div className={`card stat${busy ? " busy" : ""}`}>
-      <div className="stat-label">{label}</div>
+      <div className="stat-label">{keepGreek(label)}</div>
       <div className="stat-value num">{value}</div>
       {foot !== undefined && <div className="stat-foot num">{foot}</div>}
     </div>

@@ -5,6 +5,7 @@ zero-coupon curve (ECB data API) and long short-rate histories (Ornstein-Uhlenbe
 from __future__ import annotations
 
 import io
+import math
 import logging
 import urllib.request
 from datetime import datetime, timezone
@@ -395,3 +396,61 @@ def fetch_short_rates(db: Database, force: bool = False) -> str:
         log.warning("ECB short-rate history failed (%s)", exc)
         report.append("EUR failed")
     return ", ".join(report)
+
+
+# --- Shiller long-run S&P composite (predictive-regression lab) ---------------------
+
+SHILLER_PAGE = "https://shillerdata.com/"
+SHILLER_FALLBACK = "http://www.econ.yale.edu/~shiller/data/ie_data.xls"  # frozen in mid-2023
+SHILLER_MAX_AGE_DAYS = 7
+
+
+def _shiller_url() -> str:
+    """The workbook on shillerdata.com sits behind a versioned link: read it from the page."""
+    import re
+
+    html = _http_get(SHILLER_PAGE, timeout=30).decode("utf-8", "ignore")
+    m = re.search(r'href="([^"]*ie_data\.xls[^"]*)"', html)
+    if not m:
+        raise ValueError("lien ie_data.xls introuvable sur shillerdata.com")
+    url = m.group(1)
+    return "https:" + url if url.startswith("//") else url
+
+
+def parse_shiller(raw: bytes) -> pd.DataFrame:
+    """Monthly rows of Shiller's ie_data.xls (sheet Data). The date is written as a decimal year.month
+    (1871.01 ... 1871.1 for October), so the month is rebuilt from the decimal part."""
+    df = pd.read_excel(io.BytesIO(raw), sheet_name="Data", header=7, usecols=["Date", "P", "D", "E", "CPI", "Rate GS10"])
+    df = df[pd.to_numeric(df["Date"], errors="coerce").notna() & pd.to_numeric(df["P"], errors="coerce").notna()]
+    keys = [shiller_month(float(d)) for d in df["Date"]]
+    num = lambda c: pd.to_numeric(df[c], errors="coerce").to_numpy()
+    out = pd.DataFrame({"month": keys, "price": num("P"), "dividend": num("D"), "earnings": num("E"),
+                        "cpi": num("CPI"), "gs10": num("Rate GS10") / 100.0})
+    return out.dropna(subset=["month"]).drop_duplicates("month", keep="last").reset_index(drop=True)
+
+
+def shiller_month(d: float) -> str | None:
+    """Shiller's decimal date year.month -> 'YYYY-MM' (1871.1 is October 1871, 1871.01 January)."""
+    year = int(math.floor(d + 1e-9))
+    month = int(round((d - year) * 100))
+    return f"{year:04d}-{month:02d}" if 1 <= month <= 12 else None
+
+
+def fetch_shiller(db: Database, force: bool = False) -> str:
+    """S&P composite price, dividends and earnings since 1871 (Robert Shiller, monthly). Refreshed once a week."""
+    last = db.query("SELECT MAX(ts) AS d FROM refresh_log WHERE job='shiller' AND status='ok'") if not force else None
+    if last is not None and last["d"].iloc[0]:
+        ts = datetime.fromisoformat(last["d"].iloc[0])
+        age = datetime.now(timezone.utc) - (ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc))
+        if age.days < SHILLER_MAX_AGE_DAYS and not db.shiller().empty:
+            return "fresh"
+    try:
+        raw = _http_get(_shiller_url(), timeout=90)
+    except Exception as exc:
+        log.warning("shillerdata.com failed (%s), using the Yale copy", exc)
+        raw = _http_get(SHILLER_FALLBACK, timeout=90)
+    df = parse_shiller(raw)
+    rows = [{k: (None if isinstance(v, float) and not np.isfinite(v) else v) for k, v in r.items()}
+            for r in df.to_dict("records")]
+    n = db.upsert_shiller(rows)
+    return f"{n} months, last dividend {df.dropna(subset=['dividend'])['month'].iloc[-1]}"

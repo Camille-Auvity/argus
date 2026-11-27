@@ -3,6 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -199,3 +200,14 @@ def test_option_snapshot_retention(db):
     spy_old = left[(left.ticker == "SPY") & (left["asof"] < (now - timedelta(days=7)).isoformat())]
     assert spy_old["asof"].tolist() == [(old_day + timedelta(hours=2)).isoformat()]  # last of the day kept
     assert db.prune_option_snapshots(keep_days=7) == 0          # idempotent
+
+
+def test_shiller_dates_and_round_trip(db):
+    from qplat.data.market import shiller_month
+
+    assert shiller_month(1871.01) == "1871-01" and shiller_month(1871.1) == "1871-10" and shiller_month(2026.12) == "2026-12"
+    assert shiller_month(2026.0) is None
+    db.upsert_shiller([{"month": "2026-09", "price": 7669.4, "dividend": 81.99, "earnings": 295.5, "cpi": 337.5, "gs10": 0.0499},
+                       {"month": "2026-10", "price": 7726.7, "dividend": None, "earnings": None, "cpi": 338.8, "gs10": 0.0513}])
+    df = db.shiller()
+    assert list(df.index) == ["2026-09", "2026-10"] and np.isnan(df.loc["2026-10", "dividend"])

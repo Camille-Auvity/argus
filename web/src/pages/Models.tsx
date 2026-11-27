@@ -249,7 +249,7 @@ export function SurfacePage() {
             <Card title={tr("Paramètres SVI par échéance", "SVI parameters by expiry")} flush>
               <div className="table-wrap">
                 <table className="data">
-                  <thead><tr><th>{tr("Échéance", "Expiry")}</th><th>a</th><th>b</th><th>ρ</th><th>m</th><th>s</th><th>RMSE</th></tr></thead>
+                  <thead><tr><th>{tr("Échéance", "Expiry")}</th><th>a</th><th>b</th><th><span className="keep-case">ρ</span></th><th>m</th><th>s</th><th>RMSE</th></tr></thead>
                   <tbody>
                     {data.slices.map((s) => (
                       <tr key={s.T}>

@@ -1069,3 +1069,54 @@ export const vasicekApi = {
   get: (currency: string, start: number | null, freq: VasicekFreq) =>
     request<VasicekResponse>(`/api/theory/vasicek?currency=${currency}&freq=${freq}${start ? `&start=${start}` : ""}`),
 };
+
+// ----------------------------------------------------------------------------- predictive regression (Stambaugh)
+
+export interface Hist { edges: number[]; counts: number[] }
+
+export interface PredictiveEstimate {
+  n: number; alpha: number; beta: number; se_beta: number; t: number; r2: number; mu: number; rho: number; se_rho: number;
+  half_life: number | null; sigma_u: number; sigma_v: number; corr_uv: number; gamma: number; rho_bias: number;
+  beta_bias: number; beta_stambaugh: number; rho_ah: number; beta_ah: number; se_ah: number; t_ah: number; phi_ah: number;
+}
+
+export interface PredictiveBootstrap {
+  n_boot: number; beta: number; t: number; p_one_sided: number; p_two_sided: number; beta_null_mean: number;
+  beta_null_q05: number; beta_null_q95: number; t_crit_95: number; hist: Hist;
+}
+
+export interface StambaughSimulation {
+  rho: number; corr: number; n: number; beta: number; n_sims: number; gamma: number;
+  rho_hat_mean: number; rho_bias: number; rho_bias_kendall: number; beta_hat_mean: number; beta_bias: number; beta_bias_stambaugh: number;
+  beta_hat_sd: number; beta_ah_mean: number; beta_ah_sd: number;
+  size_ols_one_sided: number; size_ols_two_sided: number; size_ah_one_sided: number; size_ah_two_sided: number;
+  t_ols_mean: number; t_ols_q95: number;
+  beta_hist: { ols: Hist; ah: Hist }; t_hist: { ols: Hist; ah: Hist };
+  scatter: { rho_err: number[]; beta_hat: number[] };
+}
+
+export interface DividendYieldWindow {
+  start: number; first: string; n: number; beta: number; t: number; rho: number; corr_uv: number;
+  beta_bias: number; beta_stambaugh: number; beta_ah: number; t_ah: number;
+}
+
+export interface DividendYieldResponse {
+  start: number; starts: number[]; first: string; last: string;
+  history: { months: string[]; dividend_yield: number[] };
+  estimate: PredictiveEstimate; bootstrap: PredictiveBootstrap; windows: DividendYieldWindow[];
+}
+
+export interface SentimentPredictiveResponse {
+  target: string; price_ticker: string; tickers: string[]; halflife: number; halflives: number[]; targets: string[];
+  n_headlines: number; n_sessions_covered: number; first: string | null; last: string | null; n: number;
+  series: { dates: string[]; raw: (number | null)[]; signal: (number | null)[]; count: number[]; return_next: (number | null)[] };
+  estimate: PredictiveEstimate | null; bootstrap: PredictiveBootstrap | null;
+}
+
+export const stambaughApi = {
+  simulate: (rho: number, corr: number, n: number) =>
+    request<StambaughSimulation>(`/api/theory/stambaugh/simulate?rho=${rho}&corr=${corr}&n=${n}`),
+  dividendYield: (start: number) => request<DividendYieldResponse>(`/api/theory/stambaugh/dividend-yield?start=${start}`),
+  sentiment: (target: string, halflife: number) =>
+    request<SentimentPredictiveResponse>(`/api/theory/stambaugh/sentiment?target=${encodeURIComponent(target)}&halflife=${halflife}`),
+};
