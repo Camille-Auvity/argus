@@ -1276,7 +1276,7 @@ export function StambaughLab() {
     };
   }, [st]);
 
-  const sentNullOption = useCallback((p: ChartPalette) => (st?.estimate && st.bootstrap ? nullOption(p, st.bootstrap.hist, st.estimate.beta, st.estimate.beta_ah, 1e4, tr("β (bp par point de score)", "β (bp per score point)")) : {}), [st]);
+  const sentNullOption = useCallback((p: ChartPalette) => (st?.estimate && st.bootstrap ? nullOption(p, st.bootstrap.hist, st.estimate.beta, st.estimate.beta_ah, 1e3, tr("β (bp pour +0,1 de score)", "β (bp per +0.1 of score)")) : {}), [st]);
 
   const sentLabel = (t: string) => (t === "US" ? tr("Marché US (5 titres → SPY)", "US market (5 names → SPY)") : t);
   const se_ = st?.estimate;
@@ -1443,11 +1443,11 @@ export function StambaughLab() {
       {st && se_ && st.bootstrap && (
         <>
           <div className="grid cols-4">
-            <Stat label={tr("β̂ par les MCO", "OLS β̂")} value={`${signed(se_.beta * 1e4, 1)} bp`}
-              foot={tr(`par point de score · t = ${num(se_.t, 2)} · n = ${se_.n} séances`, `per score point · t = ${num(se_.t, 2)} · n = ${se_.n} sessions`)} busy={se.isFetching} />
+            <Stat label={tr("β̂ par les MCO", "OLS β̂")} value={`${signed(se_.beta * 1e3, 0)} bp`}
+              foot={tr(`pour +0,1 de score · t = ${num(se_.t, 2)} · n = ${se_.n} séances`, `per +0.1 of score · t = ${num(se_.t, 2)} · n = ${se_.n} sessions`)} busy={se.isFetching} />
             <Stat label={tr("Persistance du signal ρ̂", "Signal persistence ρ̂")} value={num(se_.rho, 3)}
-              foot={tr(`corr(u, v) = ${num(se_.corr_uv, 2)} · biais estimé ${signed(se_.beta_bias * 1e4, 1)} bp`, `corr(u, v) = ${num(se_.corr_uv, 2)} · estimated bias ${signed(se_.beta_bias * 1e4, 1)} bp`)} busy={se.isFetching} />
-            <Stat label={tr("β corrigé (Amihud-Hurvich)", "Corrected β (Amihud-Hurvich)")} value={`${signed(se_.beta_ah * 1e4, 1)} bp`}
+              foot={tr(`corr(u, v) = ${num(se_.corr_uv, 2)} · biais estimé ${signed(se_.beta_bias * 1e3, 0)} bp`, `corr(u, v) = ${num(se_.corr_uv, 2)} · estimated bias ${signed(se_.beta_bias * 1e3, 0)} bp`)} busy={se.isFetching} />
+            <Stat label={tr("β corrigé (Amihud-Hurvich)", "Corrected β (Amihud-Hurvich)")} value={`${signed(se_.beta_ah * 1e3, 0)} bp`}
               foot={`t = ${num(se_.t_ah, 2)}`} busy={se.isFetching} />
             <Stat label={tr("p-valeur par bootstrap", "Bootstrap p-value")} value={pval(st.bootstrap.p_two_sided)}
               foot={tr("bilatérale : le signe attendu n'est pas connu d'avance", "two-sided: the expected sign is not known in advance")} busy={se.isFetching} />
@@ -1456,8 +1456,13 @@ export function StambaughLab() {
             actions={<button type="button" className="btn" onClick={() => loadSim(se_.rho, se_.corr_uv, se_.n)}>{tr("Simuler ce cas", "Simulate this case")}</button>}>
             <EChart option={sentNullOption} height={240} ariaLabel={tr("Distribution de β̂ du sentiment sous l'hypothèse nulle", "Null distribution of the sentiment β̂")} />
             <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-              {tr(`${st.n} couples de séances seulement (${st.first} → ${st.last}) : l'intervalle à 90 % de β̂ sous l'hypothèse nulle va de ${signed(st.bootstrap.beta_null_q05 * 1e4, 0)} à ${signed(st.bootstrap.beta_null_q95 * 1e4, 0)} bp. Avec si peu de données, aucun effet réaliste ne peut être distingué du bruit.`,
-                `Only ${st.n} pairs of sessions (${st.first} → ${st.last}): the 90% interval of β̂ under the null runs from ${signed(st.bootstrap.beta_null_q05 * 1e4, 0)} to ${signed(st.bootstrap.beta_null_q95 * 1e4, 0)} bp. With so little data, no realistic effect can be told apart from noise.`)}
+              {tr(`${st.n} couples de séances seulement (${st.first} → ${st.last}) : sous l'hypothèse nulle, 90 % des β̂ tombent entre ${signed(st.bootstrap.beta_null_q05 * 1e3, 0)} et ${signed(st.bootstrap.beta_null_q95 * 1e3, 0)} bp (pour +0,1 de score).`,
+                `Only ${st.n} pairs of sessions (${st.first} → ${st.last}): under the null, 90% of the β̂ fall between ${signed(st.bootstrap.beta_null_q05 * 1e3, 0)} and ${signed(st.bootstrap.beta_null_q95 * 1e3, 0)} bp (per +0.1 of score).`)}{" "}
+              {st.bootstrap.p_two_sided < 0.05
+                ? tr("Le coefficient sort de cet intervalle, mais sur quelques semaines, avec quelques journées extrêmes qui pèsent lourd, et après avoir essayé six séries et trois lissages : un tel résultat doit être confirmé sur de nouvelles données avant d'y croire. Un β négatif signifierait que les bonnes nouvelles du jour précèdent un repli le lendemain (surréaction puis retour).",
+                  "The coefficient falls outside that interval, but over a few weeks, with a few extreme days weighing heavily, and after trying six series and three smoothings: such a result must be confirmed on new data before it is believed. A negative β would mean that the day's good news precedes a pull-back the next day (overreaction, then reversal).")
+                : tr("Le coefficient reste dans l'intervalle : rien ne distingue ce signal du bruit sur si peu de données.",
+                  "The coefficient stays within that interval: nothing tells this signal apart from noise with so little data.")}
             </p>
           </Card>
         </>
