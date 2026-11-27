@@ -31,6 +31,12 @@ def client(tmp_path_factory):
                      "url": "u", "summary": "", "source": "s", "fetched_at": utc_now()}])
     db.upsert_sentiment([{"news_id": "n1", "model": "m", "score": 0.5, "label": "positive", "rationale": "r",
                           "scored_at": utc_now()}])
+    # 30 years of a synthetic mean-reverting 3-month rate for the Vasicek lab
+    from qplat.theory.vasicek import simulate_ou
+    days = pd.bdate_range("1996-01-01", "2026-10-08")
+    path = simulate_ou(0.03, 0.3, 0.03, 0.01, 1 / 252, len(days) - 1, seed=5)[0]
+    db.upsert_short_rates([{"series": "USD_3M", "date": d.strftime("%Y-%m-%d"), "rate": float(r)}
+                           for d, r in zip(days, path)])
     services.get_db.cache_clear()
     original = services.get_db
     services.get_db = lambda: db
@@ -277,3 +283,20 @@ def test_translation_templates():
     assert translate_text("Cliquet ^STOXX50E 2 ans (floor local -5 %, cap local 5 %)") == "Cliquet ^STOXX50E 2 years (local floor -5%, local cap 5%)"
     assert translate_text("texte inconnu") == "texte inconnu"           # unknown text is left as is
     assert translate({"Taux": "Taux", "n": 3, "rows": ["Prix"]}) == {"Taux": "Rates", "n": 3, "rows": ["Price"]}   # keys untouched
+
+
+def test_vasicek_lab(client):
+    r = client.get("/api/theory/vasicek?start=2000")
+    assert r.status_code == 200
+    d = r.json()
+    e = d["estimate"]
+    assert e["mean_reverting"] and 0.05 < e["kappa"] < 1.5 and abs(e["theta"] - 0.03) < 0.02
+    assert d["history"]["dates"][0] >= "2000-01-01" and len(d["windows"]) == 4
+    assert d["simulation"]["kappa_mean"] > 0
+    ts = d["term_structure"]
+    assert len(ts["grid"]) == len(ts["market"]) == len(ts["vasicek_q"])
+    assert ts["calibration"]["rmse"] < 0.005
+    assert client.get("/api/theory/vasicek?start=1995").status_code == 422
+    assert client.get("/api/theory/vasicek?currency=EUR").status_code == 409   # no EUR history in the fixture
+    en = client.get("/api/theory/vasicek?start=1995", headers={"X-Lang": "en"}).json()["detail"]
+    assert en.startswith("possible start:")

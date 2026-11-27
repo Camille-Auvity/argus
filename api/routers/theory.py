@@ -256,3 +256,127 @@ def measures(ticker: str, days: int = 91, mu_source: Literal["history", "capm", 
     if not 7 <= days <= 730 or not -1 <= mu <= 1:
         raise HTTPException(422, "horizon 7-730 jours, μ dans [-100 %, 100 %]")
     return _measures(ticker, days, mu_source, round(mu, 4), _chain_version(ticker))
+
+
+# ----------------------------------------------------------------------------- Ornstein-Uhlenbeck and Vasicek
+
+VASICEK_SERIES = {"USD": "USD_3M", "EUR": "EUR_3M"}
+VASICEK_STARTS = {"USD": (1990, 2000, 2009, 2016), "EUR": (2004, 2009, 2016)}
+VASICEK_FREQ = {"monthly": ("ME", 1 / 12), "weekly": ("W-FRI", 1 / 52), "daily": (None, 1 / 252)}
+VASICEK_TENORS = np.array([0.25, 0.5, 1, 2, 3, 5, 7, 10, 15, 20, 30], dtype=float)
+
+
+def _short_rate_series(currency: str) -> pd.Series:
+    """Continuously compounded 3-month rate: Treasury bills are quoted as simple yields (ACT/365F accrual,
+    like the deposits of the curve bootstrap), the ECB rate is already continuous."""
+    s = services.get_db().short_rates(VASICEK_SERIES[currency])
+    if s.empty:
+        return s
+    s.index = pd.to_datetime(s.index)
+    return np.log1p(s * 0.25) / 0.25 if currency == "USD" else s
+
+
+def _sample(s: pd.Series, freq: str) -> pd.Series:
+    """Last observation of each month / week, kept at its actual date (daily: every observation)."""
+    s = s.dropna()
+    period = {"monthly": "M", "weekly": "W-FRI"}.get(freq)
+    return s.groupby(s.index.to_period(period)).tail(1) if period else s
+
+
+@lru_cache(maxsize=32)
+def _vasicek(currency: str, start: int, freq: str, version: str) -> dict:
+    from qplat.theory.vasicek import (calibrate_vasicek, estimate_ou, estimator_distribution, long_yield, ou_mean,
+                                      ou_var, prob_negative, stationary_sd, vasicek_forward, vasicek_yield)
+
+    raw = _short_rate_series(currency)
+    dt = VASICEK_FREQ[freq][1]
+    s = _sample(raw[raw.index.year >= start], freq)
+    try:
+        est = estimate_ou(s.to_numpy(), dt)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    e = est.to_dict()
+    if est.mean_reverting:
+        e["stationary_sd"] = stationary_sd(est.kappa, est.sigma)
+        e["prob_negative_stationary"] = prob_negative(est.kappa, est.theta, est.sigma)
+
+    windows = []
+    for w in VASICEK_STARTS[currency]:
+        sw = _sample(raw[raw.index.year >= w], freq)
+        ew = estimate_ou(sw.to_numpy(), dt)
+        windows.append({"start": w, "first": sw.index[0].strftime("%Y-%m-%d"), "n": ew.n, "mean": float(sw.mean()),
+                        "mean_reverting": ew.mean_reverting, "b": ew.b, "se_b": ew.se_b,
+                        **{k: (v if ew.mean_reverting else None) for k, v in
+                           (("kappa", ew.kappa), ("theta", ew.theta), ("sigma", ew.sigma), ("half_life", ew.half_life))},
+                        "half_life_high": None if not ew.mean_reverting or not math.isfinite(ew.half_life_high) else ew.half_life_high})
+
+    # Monte Carlo of the estimator, the estimated parameters taken as the truth
+    sims = None
+    if est.mean_reverting:
+        dist = estimator_distribution(float(s.iloc[0]), est.kappa, est.theta, est.sigma, dt, est.n, n_sims=400, seed=7)
+        samples = np.asarray(dist.pop("kappa_samples"))
+        hi = float(np.quantile(samples, 0.98)) if len(samples) else 1.0
+        counts, edges = np.histogram(samples, bins=40, range=(0, hi))  # the top 2% are left off the chart
+        sims = {**dist, "hist": {"edges": edges.tolist(), "counts": counts.tolist(),
+                                 "beyond": int((samples > hi).sum())}}
+
+    # today's curve: market zero rates vs Vasicek under P (expectations only) and under Q (calibrated)
+    curve = services.market_curve(currency)
+    term = None
+    if curve is not None:
+        grid = np.round(np.linspace(0.25, 30, 120), 4)
+        z_mkt = np.asarray(curve.zero_rate(VASICEK_TENORS), dtype=float)
+        r0 = float(z_mkt[0])
+        sigma = est.sigma if est.mean_reverting else float(np.std(np.diff(s.to_numpy()), ddof=1) / math.sqrt(dt))
+        cal = calibrate_vasicek(VASICEK_TENORS, z_mkt, r0, sigma, kappa0=est.kappa if est.mean_reverting else 0.2)
+        yq = vasicek_yield(r0, cal["kappa"], cal["theta"], sigma, grid)
+        yp = vasicek_yield(r0, est.kappa, est.theta, est.sigma, grid) if est.mean_reverting else None
+        t_fan = np.round(np.linspace(0, 10 - 1 / 12, 120), 4)  # one-month forwards f(t, t + 1/12) up to 10 years
+        fwd_mkt = [float(curve.forward_rate(t, t + 1 / 12)) for t in t_fan]
+        fan = {"t": t_fan.tolist(), "market_forward": fwd_mkt,
+               "q_forward": vasicek_forward(r0, cal["kappa"], cal["theta"], sigma, t_fan).tolist(),
+               "q_mean": ou_mean(r0, cal["kappa"], cal["theta"], t_fan).tolist()}
+        if est.mean_reverting:
+            m, sd = ou_mean(r0, est.kappa, est.theta, t_fan), np.sqrt(ou_var(est.kappa, est.sigma, t_fan))
+            fan.update({"p_mean": m.tolist(), "p_low": (m - 1.645 * sd).tolist(), "p_high": (m + 1.645 * sd).tolist()})
+        y10q = float(vasicek_yield(r0, cal["kappa"], cal["theta"], sigma, 10.0))
+        y10p = float(vasicek_yield(r0, est.kappa, est.theta, est.sigma, 10.0)) if est.mean_reverting else None
+        term = {
+            "r0": r0, "sigma": sigma, "asof": str(services.latest_quotes(currency)["asof"].iloc[0]),
+            "pillars": VASICEK_TENORS.tolist(), "market_pillars": z_mkt.tolist(),
+            "grid": grid.tolist(), "market": np.asarray(curve.zero_rate(grid), dtype=float).tolist(),
+            "vasicek_q": yq.tolist(), "vasicek_p": None if yp is None else yp.tolist(),
+            "calibration": {**cal, "residuals": cal["residuals"],
+                            "long_yield": long_yield(cal["kappa"], cal["theta"], sigma),
+                            "half_life": math.log(2) / cal["kappa"]},
+            "theta_gap": cal["theta"] - est.theta if est.mean_reverting else None,
+            "term_premium_10y": None if y10p is None else y10q - y10p,
+            "p_rmse": None if yp is None else float(np.sqrt(np.mean(
+                (vasicek_yield(r0, est.kappa, est.theta, est.sigma, VASICEK_TENORS) - z_mkt) ** 2))),
+            "prob_negative": {f"{h:g}": prob_negative(est.kappa, est.theta, est.sigma, r0, h) for h in (1, 5)}
+            if est.mean_reverting else None,
+            "fan": fan,
+        }
+
+    return {"currency": currency, "series": VASICEK_SERIES[currency], "start": start, "freq": freq, "dt": dt,
+            "starts": list(VASICEK_STARTS[currency]),
+            "first": s.index[0].strftime("%Y-%m-%d"), "last": s.index[-1].strftime("%Y-%m-%d"),
+            "history": {"dates": s.index.strftime("%Y-%m-%d").tolist(), "rates": s.round(6).tolist()},
+            "estimate": e, "windows": windows, "simulation": sims, "term_structure": term}
+
+
+@router.get("/vasicek")
+def vasicek(currency: Literal["USD", "EUR"] = "USD", start: Optional[int] = None,
+            freq: Literal["monthly", "weekly", "daily"] = "monthly"):
+    """Ornstein-Uhlenbeck short rate estimated by AR(1) regression on decades of 3-month rates (real-world P),
+    the estimator's small-sample bias by Monte Carlo, and the Vasicek zero curve against today's market curve
+    (risk-neutral Q calibrated with the same sigma)."""
+    start = start or VASICEK_STARTS[currency][0]
+    if start not in VASICEK_STARTS[currency]:
+        raise HTTPException(422, f"début possible : {', '.join(map(str, VASICEK_STARTS[currency]))}")
+    s = services.get_db().short_rates(VASICEK_SERIES[currency])
+    if s.empty:
+        raise HTTPException(409, "historique des taux courts indisponible (lancer scripts/refresh.py --jobs rates --force)")
+    q = services.latest_quotes(currency)
+    version = f"{s.index[-1]}|{q['asof'].iloc[0] if not q.empty else ''}"
+    return _vasicek(currency, start, freq, version)

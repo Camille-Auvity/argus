@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS factor_returns (
     date TEXT PRIMARY KEY,        -- YYYY-MM-DD
     mkt_rf REAL, smb REAL, hml REAL, rmw REAL, cma REAL, mom REAL, rf REAL   -- daily simple returns, fractions
 );
+CREATE TABLE IF NOT EXISTS short_rates (
+    series TEXT NOT NULL,         -- USD_3M (Treasury bill, bond-equivalent) or EUR_3M (ECB AAA zero, continuous)
+    date TEXT NOT NULL,           -- YYYY-MM-DD
+    rate REAL NOT NULL,           -- fraction
+    PRIMARY KEY (series, date)
+);
 CREATE INDEX IF NOT EXISTS idx_news_ticker ON news(ticker, published);
 CREATE INDEX IF NOT EXISTS idx_opt_ticker ON option_quotes(ticker, asof);
 """
@@ -217,6 +223,15 @@ class Database:
         df = self.query("SELECT * FROM factor_returns ORDER BY date")
         return df.set_index("date") if not df.empty else df
 
+    # --- short-rate histories (Vasicek lab) ---------------------------------------------
+
+    def upsert_short_rates(self, rows: Iterable[dict]) -> int:
+        return self._upsert("short_rates", rows)
+
+    def short_rates(self, series: str) -> pd.Series:
+        df = self.query("SELECT date, rate FROM short_rates WHERE series=? ORDER BY date", (series,))
+        return df.set_index("date")["rate"] if not df.empty else pd.Series(dtype=float)
+
     def query(self, sql: str, params: tuple = ()) -> pd.DataFrame:
         with self.connect() as con:
             return pd.read_sql_query(sql, con, params=params)
@@ -233,23 +248,37 @@ class Database:
         df = self.query("SELECT close FROM spot_prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (ticker,))
         return None if df.empty else float(df.iloc[0, 0])
 
-    # preferred source first; a fallback source is used only if the preferred one has no data
-    RATE_SOURCES = {"USD": ("FRED", "yfinance"), "EUR": ("ECB",)}
+    # preferred source first; a lower-ranked source is used only if the preferred ones have no data
+    # or are more than STALE_DAYS older than it (a source that silently stopped updating)
+    RATE_SOURCES = {"USD": ("Treasury", "FRED", "yfinance"), "EUR": ("ECB",)}
+    STALE_DAYS = 5
+
+    def rate_source(self, currency: str = "USD") -> str | None:
+        last = {}
+        for source in self.RATE_SOURCES.get(currency, ()):
+            d = self.query("SELECT MAX(asof) AS d FROM rate_quotes WHERE source=? AND currency=?",
+                           (source, currency))["d"].iloc[0]
+            if d:
+                last[source] = pd.Timestamp(d)
+        if not last:
+            return None
+        newest = max(last.values())
+        return next(s for s in self.RATE_SOURCES[currency]
+                    if s in last and (newest - last[s]).days <= self.STALE_DAYS)
 
     def latest_rates(self, currency: str = "USD") -> pd.DataFrame:
-        for source in self.RATE_SOURCES.get(currency, ()):
-            df = self.query(
-                """SELECT * FROM rate_quotes WHERE source=? AND currency=?
-                   AND asof=(SELECT MAX(asof) FROM rate_quotes WHERE source=? AND currency=?)
-                   ORDER BY tenor_years""",
-                (source, currency, source, currency),
-            )
-            if not df.empty:
-                return df
-        return self.query("SELECT * FROM rate_quotes WHERE 0")
+        source = self.rate_source(currency)
+        if source is None:
+            return self.query("SELECT * FROM rate_quotes WHERE 0")
+        return self.query(
+            """SELECT * FROM rate_quotes WHERE source=? AND currency=?
+               AND asof=(SELECT MAX(asof) FROM rate_quotes WHERE source=? AND currency=?)
+               ORDER BY tenor_years""",
+            (source, currency, source, currency),
+        )
 
     def rate_history(self, currency: str = "USD") -> pd.DataFrame:
-        source = self.RATE_SOURCES.get(currency, ("",))[0]
+        source = self.rate_source(currency) or ""
         return self.query("SELECT * FROM rate_quotes WHERE currency=? AND source=? ORDER BY asof, tenor_years",
                           (currency, source))
 

@@ -44,6 +44,24 @@ def test_usd_fallback_source_used_only_without_fred(db):
     assert db.latest_rates("USD").source.tolist() == ["FRED"]
 
 
+def test_stale_preferred_source_is_skipped(db):
+    # a source that stopped updating (FRED timing out) gives way to a fresher one after a few days
+    db.upsert_rates([{"asof": "2026-11-04", "tenor_years": 10.0, "rate": 0.04, "source": "FRED"},
+                     {"asof": "2026-11-25", "tenor_years": 10.0, "rate": 0.05, "source": "yfinance"}])
+    assert db.latest_rates("USD").source.tolist() == ["yfinance"]
+    db.upsert_rates([{"asof": "2026-11-24", "tenor_years": 10.0, "rate": 0.048, "source": "Treasury"}])
+    assert db.latest_rates("USD").source.tolist() == ["Treasury"]
+    assert set(db.rate_history("USD").source) == {"Treasury"}
+
+
+def test_short_rates_round_trip(db):
+    db.upsert_short_rates([{"series": "USD_3M", "date": "2026-01-02", "rate": 0.04},
+                           {"series": "USD_3M", "date": "2026-01-05", "rate": 0.041}])
+    s = db.short_rates("USD_3M")
+    assert s.index.tolist() == ["2026-01-02", "2026-01-05"] and s.iloc[-1] == 0.041
+    assert db.short_rates("EUR_3M").empty
+
+
 def test_migration_adds_columns_to_old_database(tmp_path):
     import sqlite3
 

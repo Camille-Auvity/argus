@@ -127,7 +127,7 @@ This is the condition for a bond with coupon $c$ to be worth exactly 100%.
 
 ### 3.4 USD curve (Treasury)
 
-The data are the Federal Reserve's constant-maturity *par yields*, published by FRED: 1M, 3M, 6M, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y. If FRED is unavailable, the platform falls back on yfinance (^IRX, ^FVX, ^TNX, ^TYX).
+The data are the constant-maturity *par yields* published daily by the US Treasury (CSV file of the current year, the same series as FRED): 1M, 3M, 6M, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y. If the Treasury is unavailable, the platform tries FRED, then yfinance (^IRX, ^FVX, ^TNX, ^TYX). A source more than 5 days behind another one is ignored, so the platform never stays stuck on a frozen curve.
 
 - Maturities ≤ 6 months (bills): treated as simple-rate deposits on ACT/365F (basis = 1).
 - Maturities ≥ 1 year: par bonds with a semi-annual coupon ($m = 2$).
@@ -1123,9 +1123,9 @@ The mean / variance ratio, which sets the optimal exposure $w^* = \mu / (\gamma 
 
 ---
 
-## 19. Applied theory: replication, hedging, stochastic calculus, P and Q
+## 19. Applied theory: replication, hedging, stochastic calculus, P and Q, short rate
 
-*Files: `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `api/routers/theory.py`*
+*Files: `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `api/routers/theory.py`*
 
 ### 19.1 Replication on the binomial tree
 
@@ -1214,6 +1214,55 @@ The page also overlays the empirical law: the historical returns over the horizo
 **Fan and pricing kernel.** The 5%, 50% and 95% quantiles are plotted by horizon under $P$, under lognormal $Q$ and under the market's $Q$. The ratio $q/p$ is the state-price density up to the discount factor. For two lognormals it equals $\exp(-\lambda W_T - \tfrac12\lambda^2 T)$, decreasing in $S_T$ when $\mu > r$. With the smile it is much steeper on the left, and its non-monotonic shape around the spot is the *pricing kernel puzzle* (Jackwerth, 2000).
 
 **Tests.** On a flat smile, Breeden-Litzenberger gives back the lognormal (density within $10^{-5}$, distribution function within $10^{-5}$, mean equal to the forward). Also tested: the mode < median < mean order and the closed forms, a shift of every quantile by $e^{(\mu - r)T}$ between $P$ and $Q$, the fatter left tail under a skew with the mean unchanged, the decreasing kernel when $\mu > r$, and the standard error of $\hat\mu$ on 40 simulated years.
+
+
+### 19.7 Short rate: Ornstein-Uhlenbeck and Vasicek
+
+*File: `qplat/theory/vasicek.py`*
+
+**The process.** The short rate follows $dr = \kappa(\theta - r)\,dt + \sigma\, dW$: it is pulled back towards $\theta$ at speed $\kappa$. Its law is Gaussian:
+
+$$
+\mathbb E[r_t] = \theta + (r_0 - \theta)e^{-\kappa t}, \qquad \text{Var}(r_t) = \frac{\sigma^2}{2\kappa}\left(1 - e^{-2\kappa t}\right)
+$$
+
+The stationary law is $N(\theta, \sigma^2/2\kappa)$ and the half-life of a deviation from the mean is $\ln 2 / \kappa$.
+
+**Data.** 3-month rates over decades, downloaded once a week into the `short_rates` table:
+- USD: 3-month Treasury bills since 1990, published by the US Treasury (simple yield, converted to a continuous rate $\ln(1 + 0.25\,y)/0.25$);
+- EUR: 3-month zero rate of the ECB AAA curve since 2004 (already continuous).
+
+The sample is the last observation of each month (default), of each week, or every day.
+
+**Estimation by regression.** Sampled at step $\Delta t$, the process is exactly an AR(1):
+
+$$
+r_{t+\Delta t} = a + b\, r_t + \varepsilon, \qquad b = e^{-\kappa \Delta t}, \quad a = \theta(1 - b), \quad \text{Var}(\varepsilon) = \frac{\sigma^2 (1 - b^2)}{2\kappa}
+$$
+
+Ordinary least squares give $\hat a$, $\hat b$ and the residual standard deviation, hence $\hat\kappa = -\ln \hat b / \Delta t$, $\hat\theta = \hat a / (1 - \hat b)$ and $\hat\sigma$. The standard errors of $\hat\kappa$ and $\hat\theta$ come from the delta method; the half-life interval is the image of the 95% interval on $b$. If $\hat b \ge 1$, no pull-back is detected and the process is not estimated.
+
+**Small-sample bias.** The slope $\hat b$ is biased downwards, by about $-(1 + 3b)/n$ (Kendall, 1954), so $\hat\kappa$ overstates the pull-back. The page shows it by Monte Carlo: 400 paths of the same length are simulated exactly with the estimated parameters taken as the truth, and $\kappa$ is re-estimated on each one. On monthly US rates since 1990, $\hat\kappa \approx 0.12$ (a 6-year half-life), but the 95% interval of the half-life runs from 3 to 52 years and the simulated mean of $\hat\kappa$ exceeds the true value by almost half. Corrected for the Kendall bias, the slope is almost exactly 1: the mean reversion of rates is barely identifiable. This is the same bias as Stambaugh's (1999) for predictive regressions on a persistent variable.
+
+**Instability.** The parameters are re-estimated from several start dates. Since 2009, rates start at zero and end around 4 to 5%: the slope exceeds 1 and no pull-back appears. $\theta$ and the half-life change completely from one monetary-policy regime to the next.
+
+**Vasicek curve (1977).** Under the risk-neutral measure, the price of a zero-coupon bond is affine in $r$:
+
+$$
+P(t, t+\tau) = A(\tau)\, e^{-B(\tau)\, r_t}, \qquad B(\tau) = \frac{1 - e^{-\kappa\tau}}{\kappa}, \qquad \ln A(\tau) = \left(\theta - \frac{\sigma^2}{2\kappa^2}\right)(B - \tau) - \frac{\sigma^2 B^2}{4\kappa}
+$$
+
+The zero rate $-\ln P/\tau$ starts at $r$ and tends to $\theta - \sigma^2/(2\kappa^2)$; the instantaneous forward is $f(0,t) = \mathbb E_Q[r_t] - \tfrac12 \sigma^2 B(t)^2$ (convexity).
+
+**P against Q.** Girsanov changes the drift, not the volatility: $\sigma$ is the one from the time series. Two curves are compared with today's market zero curve (section 3), with $r_0$ equal to the 3-month zero rate:
+- **under P**, with the historical $\kappa$ and $\theta$: the curve that rate expectations alone would give, with no risk premium;
+- **under Q**, with $(\kappa_Q, \theta_Q)$ calibrated by least squares on 11 pillars from 3 months to 30 years (several starting points, because a small $\kappa$ and a large $\theta$ offset each other).
+
+In November 2026 on the dollar, the calibration gives $\kappa_Q \approx 0.11$, close to the historical $\kappa$, but $\theta_Q \approx 6\%$ against $\theta \approx 2\%$; the fit error is 9 bp. The difference between the 10-year yields under Q and under P, about 160 bp, is the model's term premium. The page also plots the market's one-month forwards, Vasicek's, and the law of the short rate under P (expectation and 5% and 95% quantiles), as well as the probability of a negative rate.
+
+**Limits.** Two constant parameters do not reproduce the curve exactly (Hull-White makes $\theta$ time-dependent for that). The Gaussian model allows negative rates (Cox-Ingersoll-Ross replaces $\sigma$ with $\sigma\sqrt r$). A single factor moves all rates together: slope and curvature never move independently.
+
+**Tests.** Moments of the exact simulation, parameters recovered by the regression on a long simulated series, no pull-back on a rising series, slope bias in line with Kendall, limits of the zero rate ($r_0$ at 0, $\theta - \sigma^2/2\kappa^2$ at infinity, average of the expected path when $\sigma \to 0$), forward equal to $-\partial_t \ln P$, zero-coupon price equal to the Monte Carlo of $\mathbb E[e^{-\int r}]$, exact calibration round trip, probability of a negative rate.
 
 ---
 
@@ -1427,7 +1476,8 @@ The weights $x_i(K)$ solve the $3 \times 3$ system that matches the vega, vanna 
 | Name, sector, currency, dividend ($q$ = trailing 12-month yield) | yfinance | every run |
 | Option chains (US) | yfinance | every run |
 | Balance sheet: share count, short- and long-term debt, reporting currency (Merton model) | yfinance | once a week |
-| USD rates | FRED (public CSV), yfinance fallback | every run |
+| USD rates | US Treasury (daily CSV), FRED then yfinance fallback | every run |
+| 3-month rates since 1990 (USD) and 2004 (EUR), Vasicek model | US Treasury, ECB | once a week |
 | EUR rates | ECB data API | every run |
 | EUR/USD exchange rate (conversion of the portfolio into euros) | yfinance (EURUSD=X) | every run |
 | VIX (30-day implied vol of the S&P 500, variance swaps) | yfinance (^VIX) | every run |
@@ -1489,7 +1539,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 
 ## 24. Validation
 
-*Folder: `tests/` — 227 tests*
+*Folder: `tests/` — 239 tests*
 
 | Reference | Check |
 |---|---|
@@ -1511,6 +1561,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 | Stochastic calculus and Girsanov | total variation ≈ √(2N/π), quadratic variation → T with standard deviation √(2/N), Itô and right-point sums (expectations 0 and T), martingales and non-martingales, Girsanov (E_P[Y] = 1, mean θT), unbiased importance sampling with variance divided by more than 100 out of the money, Monte Carlo Greeks with importance sampling |
 | Applied theory | textbook example (put 10.714 then 11.820, Δ and B at each node, Q(S₂ = 96) = 0.46875), self-financing at each node, no arbitrage d < R < u, market maker hedged on every path, tree convergence to Black-Scholes, hedging error in 1/√N (Derman-Kamal), drift independence, P&L with realised ≠ implied vol, synthetic backtest |
 | Real-world P and risk-neutral Q | Breeden-Litzenberger on a flat smile = lognormal (density and distribution function within 1e-5, mean = forward), mode < median < mean, quantiles shifted by e^{(μ−r)T}, skew: fatter left tail with the forward unchanged, decreasing pricing kernel if μ > r, standard error of μ̂ in σ/√years |
+| Ornstein-Uhlenbeck and Vasicek | moments of the exact simulation, parameters recovered by AR(1) regression, no pull-back on a rising series, slope bias in line with Kendall, limits of the zero rate, forward = −∂ ln P, zero-coupon = Monte Carlo, calibration round trip, probability of a negative rate |
 | Research (Moreira-Muir) | compounded monthly return and realised variance, Newey-West OLS, same volatility by construction, constant variance → strategy = factor, positive alpha under volatility regimes and zero without, real-time version without look-ahead, leverage cap and costs |
 | Allocation | unconstrained minimum variance and mean-variance equal to the closed forms, constrained frontier above the Markowitz frontier, maximum-Sharpe tangency (including the formula Σ⁻¹(μ − r)), long-only and caps respected, LASSO inactive in long-only and active with shorts, costs that reduce then freeze turnover, Ledoit-Wolf positive definite and less shrunk with more data, conversion into euros, backtest without look-ahead |
 | Variance swaps | realised variance (no-mean convention), flat smile → σ², replication of the Heston smile = Heston expected variance, vol swap convexity (Jensen and approximation), VIX formula on a Black-Scholes chain, band truncation, 30-day interpolation, value of a seasoned swap and vega |
@@ -1528,7 +1579,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 - **Calendar**: no holidays (NYSE, Euronext); regular bond schedule computed backwards.
 - **Bond future**: no *cheapest-to-deliver* option or convexity adjustment.
 - **European options**: Yahoo does not publish option chains for Europe, so there is no EUR smile.
-- **Rates**: deterministic. A short-rate model (Hull-White) would allow pricing rate-sensitive products.
+- **Rates**: deterministic for pricing. The Vasicek model (section 19.7) is estimated and calibrated but not yet wired into the pricers; Hull-White, which fits the curve exactly, would allow pricing rate-sensitive products.
 
 ---
 
@@ -1577,3 +1628,8 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 - Glasserman, P. (2003). *Monte Carlo Methods in Financial Engineering*. Springer.
 - Haug, E. G. (2007). *The Complete Guide to Option Pricing Formulas*. McGraw-Hill.
 - Hull, J. (2022). *Options, Futures, and Other Derivatives*. Pearson.
+- Vasicek, O. (1977). *An Equilibrium Characterization of the Term Structure*. Journal of Financial Economics.
+- Kendall, M. (1954). *Note on Bias in the Estimation of Autocorrelation*. Biometrika.
+- Stambaugh, R. (1999). *Predictive Regressions*. Journal of Financial Economics.
+- Cox, J., Ingersoll, J. & Ross, S. (1985). *A Theory of the Term Structure of Interest Rates*. Econometrica.
+- Hull, J. & White, A. (1990). *Pricing Interest-Rate-Derivative Securities*. Review of Financial Studies.

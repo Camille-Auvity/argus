@@ -56,6 +56,7 @@ const HedgingLab = lazy(() => import("./pages/Theory").then((m) => ({ default: m
 const StochasticLab = lazy(() => import("./pages/Theory").then((m) => ({ default: m.StochasticLab })));
 const GirsanovLab = lazy(() => import("./pages/Theory").then((m) => ({ default: m.GirsanovLab })));
 const MeasuresLab = lazy(() => import("./pages/Theory").then((m) => ({ default: m.MeasuresLab })));
+const VasicekLab = lazy(() => import("./pages/Theory").then((m) => ({ default: m.VasicekLab })));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PositionsPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PositionsPage })));
 const RiskPage = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.RiskPage })));
@@ -141,6 +142,7 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="calcul-stochastique" element={<StochasticLab />} />
                     <Route path="girsanov" element={<GirsanovLab />} />
                     <Route path="p-vs-q" element={<MeasuresLab />} />
+                    <Route path="vasicek" element={<VasicekLab />} />
                   </Route>
                   <Route path="/research/vol-managed" element={<Research />} />
                   <Route path="/research" element={<Navigate to="/research/vol-managed" replace />} />

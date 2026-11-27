@@ -1027,3 +1027,45 @@ export const stochasticApi = {
   girsanov: (theta: number, T: number) => request<GirsanovResponse>(`/api/theory/girsanov?theta=${theta}&T=${T}`),
   importance: (req: ImportanceRequest) => post<ImportanceResponse>("/api/theory/importance", req),
 };
+
+// ----------------------------------------------------------------------------- Ornstein-Uhlenbeck and Vasicek
+
+export type VasicekFreq = "monthly" | "weekly" | "daily";
+
+export interface VasicekEstimate {
+  n: number; dt: number; a: number; b: number; se_a: number; se_b: number; resid_sd: number; r2: number; mean_reverting: boolean;
+  kappa: number | null; theta: number | null; sigma: number | null; se_kappa: number | null; se_theta: number | null;
+  half_life: number | null; half_life_low: number | null; half_life_high: number | null;
+  b_corrected: number; kappa_corrected: number | null; half_life_corrected: number | null;
+  stationary_sd?: number; prob_negative_stationary?: number;
+}
+
+export interface VasicekWindow {
+  start: number; first: string; n: number; mean: number; mean_reverting: boolean; b: number; se_b: number;
+  kappa: number | null; theta: number | null; sigma: number | null; half_life: number | null; half_life_high: number | null;
+}
+
+export interface VasicekResponse {
+  currency: "USD" | "EUR"; series: string; start: number; freq: VasicekFreq; dt: number; starts: number[]; first: string; last: string;
+  history: { dates: string[]; rates: number[] };
+  estimate: VasicekEstimate;
+  windows: VasicekWindow[];
+  simulation: null | {
+    kappa_true: number; b_true: number; n: number; n_sims: number; b_mean: number; b_bias: number; b_bias_kendall: number;
+    kappa_mean: number | null; kappa_median: number | null; kappa_q05: number | null; kappa_q95: number | null; share_no_reversion: number;
+    hist: { edges: number[]; counts: number[]; beyond: number };
+  };
+  term_structure: null | {
+    r0: number; sigma: number; asof: string; pillars: number[]; market_pillars: number[]; grid: number[]; market: number[];
+    vasicek_q: number[]; vasicek_p: number[] | null;
+    calibration: { kappa: number; theta: number; sigma: number; r0: number; rmse: number; max_abs_error: number; residuals: number[]; long_yield: number; half_life: number };
+    theta_gap: number | null; term_premium_10y: number | null; p_rmse: number | null;
+    prob_negative: Record<string, number> | null;
+    fan: { t: number[]; market_forward: number[]; q_forward: number[]; q_mean: number[]; p_mean?: number[]; p_low?: number[]; p_high?: number[] };
+  };
+}
+
+export const vasicekApi = {
+  get: (currency: string, start: number | null, freq: VasicekFreq) =>
+    request<VasicekResponse>(`/api/theory/vasicek?currency=${currency}&freq=${freq}${start ? `&start=${start}` : ""}`),
+};

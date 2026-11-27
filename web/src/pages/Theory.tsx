@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useCallback, useState, type ReactNode } from "react";
-import { NavLink, Outlet } from "react-router-dom";
-import { measuresApi, stochasticApi, theoryApi, type MeasureStats, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { measuresApi, stochasticApi, theoryApi, vasicekApi, type VasicekFreq, type MeasureStats, type HedgeRequest, type ImportanceRequest, type TreeRequest } from "../api/client";
 import { EChart } from "../components/EChart";
 import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton, Stat } from "../components/ui";
 import { num, pct } from "../lib/format";
@@ -15,21 +15,29 @@ export const THEORY_PAGES = [
   { path: "calcul-stochastique", label: ["Calcul stochastique", "Stochastic calculus"] },
   { path: "girsanov", label: ["Girsanov et échantillonnage préférentiel", "Girsanov and importance sampling"] },
   { path: "p-vs-q", label: ["Monde réel et risque-neutre", "Real world and risk-neutral"] },
+  { path: "vasicek", label: ["Taux court : Vasicek", "Short rate: Vasicek"] },
 ] as const;
 
 export default function Theory() {
+  const nav = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+  // the tab bar scrolls sideways on narrow screens: keep the active tab in view
+  useEffect(() => {
+    const bar = nav.current, link = bar?.querySelector<HTMLElement>("a.on");
+    if (bar && link) bar.scrollLeft = Math.max(0, link.offsetLeft - bar.offsetLeft - (bar.clientWidth - link.offsetWidth) / 2);
+  }, [pathname]);
   return (
     <>
       <div className="page-head">
         <div>
           <h1 className="page-title">{tr("Théorie appliquée", "Applied theory")}</h1>
           <div className="page-sub">
-            {tr("Les résultats du cours de finance en temps continu, recalculés et testés : réplication et probabilité risque-neutre, couverture dynamique et passage au temps continu.",
-              "Continuous-time finance results, recomputed and tested: replication and the risk-neutral measure, dynamic hedging and the passage to continuous time.")}
+            {tr("Les résultats de la finance en temps continu, recalculés et testés : réplication et probabilité risque-neutre, couverture dynamique, passage au temps continu et modèle de taux court.",
+              "Continuous-time finance results, recomputed and tested: replication and the risk-neutral measure, dynamic hedging, the passage to continuous time and a short-rate model.")}
           </div>
         </div>
       </div>
-      <nav className="tabs subnav" aria-label={tr("Théorie appliquée", "Applied theory")}>
+      <nav ref={nav} className="tabs subnav" aria-label={tr("Théorie appliquée", "Applied theory")}>
         {THEORY_PAGES.map((m) => (
           <NavLink key={m.path} to={`/theory/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{tr(m.label[0], m.label[1])}</NavLink>
         ))}
@@ -889,3 +897,263 @@ export function MeasuresLab() {
 }
 
 type MeasuresResponseStats = { P: MeasureStats; Q: MeasureStats; Q_smile: MeasureStats; P_empirical?: MeasureStats };
+
+// ----------------------------------------------------------------------------- Ornstein-Uhlenbeck and Vasicek
+
+const years = (x: number | null | undefined, d = 1) => (x == null ? "∞" : tr(`${num(x, d)} ans`, `${num(x, d)} years`));
+const bp = (x: number | null | undefined, d = 0) => (x == null ? "—" : `${x >= 0 ? "+" : ""}${num(x * 1e4, d)} bp`);
+
+export function VasicekLab() {
+  const [currency, setCurrency] = useState<"USD" | "EUR">("USD");
+  const [start, setStart] = useState<number | null>(null);
+  const [freq, setFreq] = useState<VasicekFreq>("monthly");
+  const { data: d, error, isFetching } = useQuery({
+    queryKey: ["vasicek", currency, start, freq],
+    queryFn: () => vasicekApi.get(currency, start, freq), placeholderData: keepPreviousData, retry: false,
+  });
+  const fit = d && d.currency === currency;
+  const e = fit ? d.estimate : undefined;
+  const ts = fit ? d.term_structure : undefined;
+  const freqLabel = { monthly: tr("mensuelles", "monthly"), weekly: tr("hebdomadaires", "weekly"), daily: tr("quotidiennes", "daily") }[freq];
+
+  const historyOption = useCallback((p: ChartPalette) => {
+    if (!d) return {};
+    const est = d.estimate;
+    const series: object[] = [
+      { type: "line", name: tr("Taux 3 mois", "3-month rate"), showSymbol: false, color: p.series[0], lineStyle: { width: 1.5 }, data: d.history.rates,
+        markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" }, label: { show: false }, data: [{ yAxis: 0 }] } },
+    ];
+    if (est.mean_reverting && est.theta != null && est.stationary_sd != null) {
+      const lo = est.theta - 1.645 * est.stationary_sd, hi = est.theta + 1.645 * est.stationary_sd;
+      series.push(
+        { type: "line", name: tr("θ, moyenne de long terme", "θ, long-run mean"), showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: d.history.rates.map(() => est.theta) },
+        { type: "line", name: tr("Loi stationnaire : 5 % et 95 %", "Stationary law: 5% and 95%"), showSymbol: false, color: p.series[1], lineStyle: { width: 1, type: "dotted" }, data: d.history.rates.map(() => lo) },
+        { type: "line", showSymbol: false, color: p.series[1], lineStyle: { width: 1, type: "dotted" }, data: d.history.rates.map(() => hi) },
+      );
+    }
+    return {
+      legend: { top: 0 },
+      grid: { top: 40, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
+      xAxis: { type: "category", data: d.history.dates, axisLabel: { hideOverlap: true } },
+      yAxis: { type: "value", axisLabel: { formatter: (v: number) => pct(v, 0) } },
+      series,
+    };
+  }, [d]);
+
+  const estimatorOption = useCallback((p: ChartPalette) => {
+    const s = d?.simulation;
+    if (!s) return {};
+    const centers = s.hist.counts.map((_, i) => (s.hist.edges[i] + s.hist.edges[i + 1]) / 2);
+    const marks = [{ xAxis: s.kappa_true, label: { formatter: tr("κ vrai", "true κ") }, lineStyle: { color: p.series[0], type: "solid", width: 2 } }];
+    if (s.kappa_mean != null) marks.push({ xAxis: s.kappa_mean, label: { formatter: tr("moyenne de κ̂", "mean of κ̂") }, lineStyle: { color: p.series[2], type: "dashed", width: 2 } });
+    return {
+      grid: { top: 30, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 0) },
+      xAxis: { type: "value", name: "κ̂", nameLocation: "middle", nameGap: 26, min: 0, max: s.hist.edges[s.hist.edges.length - 1], axisLabel: { formatter: (v: number) => num(v, 2) } },
+      yAxis: { type: "value", name: tr("simulations", "simulations") },
+      series: [{ type: "bar", name: tr("Estimations de κ", "Estimates of κ"), color: p.muted, itemStyle: { opacity: 0.55 }, barWidth: "95%",
+        data: centers.map((c, i) => [c, s.hist.counts[i]]),
+        markLine: { symbol: "none", silent: true, label: { color: p.textSecondary, fontSize: 10, position: "end" }, data: marks } }],
+    };
+  }, [d]);
+
+  const curveOption = useCallback((p: ChartPalette) => {
+    if (!ts) return {};
+    const line = (arr: number[]) => ts.grid.map((t, i) => [t, arr[i]]);
+    const series: object[] = [
+      { type: "line", name: tr("Courbe zéro du marché", "Market zero curve"), showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: line(ts.market) },
+      { type: "scatter", name: tr("Piliers ajustés", "Fitted pillars"), color: p.series[0], symbolSize: 7, data: ts.pillars.map((t, i) => [t, ts.market_pillars[i]]) },
+      { type: "line", name: tr("Vasicek sous Q (calibré)", "Vasicek under Q (calibrated)"), showSymbol: false, color: p.series[2], lineStyle: { width: 2 }, data: line(ts.vasicek_q) },
+    ];
+    if (ts.vasicek_p) series.push({ type: "line", name: tr("Vasicek sous P (historique)", "Vasicek under P (history)"), showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: line(ts.vasicek_p) });
+    return {
+      legend: { top: 0 },
+      grid: { top: 60, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
+      xAxis: { type: "value", name: tr("maturité (ans)", "maturity (years)"), nameLocation: "middle", nameGap: 26, min: 0, max: 30 },
+      yAxis: { type: "value", scale: true, axisLabel: { formatter: (v: number) => pct(v, 1) } },
+      series,
+    };
+  }, [ts]);
+
+  const fanOption = useCallback((p: ChartPalette) => {
+    if (!ts) return {};
+    const f = ts.fan;
+    const line = (arr: number[]) => f.t.map((t, i) => [t, arr[i]]);
+    const series: object[] = [
+      { type: "line", name: tr("Forwards du marché", "Market forwards"), showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: line(f.market_forward) },
+      { type: "line", name: tr("Forwards de Vasicek (Q)", "Vasicek forwards (Q)"), showSymbol: false, color: p.series[2], lineStyle: { width: 2 }, data: line(f.q_forward) },
+    ];
+    if (f.p_mean && f.p_low && f.p_high) {
+      series.push(
+        { type: "line", name: tr("E_P[r_t] : taux attendu", "E_P[r_t]: expected rate"), showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: line(f.p_mean) },
+        { type: "line", name: tr("Sous P : quantiles 5 % et 95 %", "Under P: 5% and 95% quantiles"), showSymbol: false, color: p.series[1], lineStyle: { width: 1, type: "dotted" }, data: line(f.p_low) },
+        { type: "line", showSymbol: false, color: p.series[1], lineStyle: { width: 1, type: "dotted" }, data: line(f.p_high),
+          markLine: { symbol: "none", silent: true, lineStyle: { color: p.muted, type: "dotted" }, label: { show: false }, data: [{ yAxis: 0 }] } },
+      );
+    }
+    return {
+      legend: { top: 0 },
+      grid: { top: 60, right: 24 },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
+      xAxis: { type: "value", name: tr("horizon (ans)", "horizon (years)"), nameLocation: "middle", nameGap: 26, min: 0, max: 10 },
+      yAxis: { type: "value", scale: true, axisLabel: { formatter: (v: number) => pct(v, 1) } },
+      series,
+    };
+  }, [ts]);
+
+  const sim = fit ? d.simulation : null;
+  return (
+    <div className="grid">
+      <ErrorBox error={error} />
+      <Explainer>
+        {tr(<>
+          Le taux court suit un processus d'Ornstein-Uhlenbeck, dr = κ(θ − r)dt + σ dW : il est rappelé vers θ à la vitesse κ. Échantillonné
+          à pas fixe, ce processus est exactement un AR(1), r<sub>t+Δt</sub> = a + b r<sub>t</sub> + ε avec b = e<sup>−κΔt</sup> : une simple
+          régression sur des décennies de taux 3 mois donne κ, θ et σ. Le modèle de Vasicek (1977) en déduit toute la courbe des taux, en
+          formule fermée. Sous la probabilité risque-neutre, Girsanov change θ (et éventuellement κ) mais pas σ.
+        </>, <>
+          The short rate follows an Ornstein-Uhlenbeck process, dr = κ(θ − r)dt + σ dW: it is pulled back towards θ at speed κ. Sampled
+          on a fixed step, this process is exactly an AR(1), r<sub>t+Δt</sub> = a + b r<sub>t</sub> + ε with b = e<sup>−κΔt</sup>: a plain
+          regression on decades of 3-month rates gives κ, θ and σ. The Vasicek (1977) model derives the whole yield curve from it in
+          closed form. Under the risk-neutral measure, Girsanov changes θ (and possibly κ) but not σ.
+        </>)}
+      </Explainer>
+      <Card title={tr("Paramètres", "Parameters")}>
+        <div className="toolbar-grid">
+          <SelectField label={tr("Taux 3 mois", "3-month rate")} value={currency} onChange={(c) => { setCurrency(c); setStart(null); }}
+            options={[{ value: "USD", label: tr("USD : bons du Trésor (depuis 1990)", "USD: Treasury bills (since 1990)") }, { value: "EUR", label: tr("EUR : courbe AAA de la BCE (depuis 2004)", "EUR: ECB AAA curve (since 2004)") }]} />
+          <SelectField label={tr("Début de l'échantillon", "Sample start")} value={start ?? (fit ? d.start : 0)} onChange={(v) => setStart(v)}
+            options={(fit ? d.starts : []).map((y) => ({ value: y, label: String(y) }))} />
+          <SelectField label={tr("Observations", "Observations")} value={freq} onChange={setFreq}
+            options={[{ value: "monthly", label: tr("Mensuelles", "Monthly") }, { value: "weekly", label: tr("Hebdomadaires", "Weekly") }, { value: "daily", label: tr("Quotidiennes", "Daily") }]} />
+        </div>
+      </Card>
+      {fit && !d.estimate.mean_reverting && (
+        <InfoBox>
+          {tr(<>
+            Sur cet échantillon, la pente estimée b = {num(d.estimate.b, 4)} est supérieure ou égale à 1 : les taux ont surtout monté (ou baissé)
+            sans revenir vers une moyenne, et la régression ne détecte aucun rappel. Le processus n'est pas un Ornstein-Uhlenbeck sur cette période ;
+            la courbe sous Q reste calibrée, avec la volatilité des variations de taux.
+          </>, <>
+            On this sample the estimated slope b = {num(d.estimate.b, 4)} is greater than or equal to 1: rates mostly trended up (or down)
+            without returning to a mean, and the regression detects no pull-back. The process is not Ornstein-Uhlenbeck over this period;
+            the curve under Q is still calibrated, with the volatility of rate changes.
+          </>)}
+        </InfoBox>
+      )}
+      <div className="grid cols-4">
+        <Stat label={tr("Vitesse de rappel κ", "Mean-reversion speed κ")} value={e?.kappa != null ? num(e.kappa, 3) : "—"}
+          foot={e?.kappa != null && e.se_kappa != null ? tr(`± ${num(1.96 * e.se_kappa, 3)} à 95 % · b = ${num(e.b, 4)}`, `± ${num(1.96 * e.se_kappa, 3)} at 95% · b = ${num(e.b, 4)}`) : undefined} busy={isFetching} />
+        <Stat label={tr("Demi-vie ln 2 / κ", "Half-life ln 2 / κ")} value={e?.half_life != null ? years(e.half_life) : "—"}
+          foot={e?.half_life != null ? tr(`Intervalle à 95 % : ${years(e.half_life_low)} à ${years(e.half_life_high)}`, `95% interval: ${years(e.half_life_low)} to ${years(e.half_life_high)}`) : undefined} busy={isFetching} />
+        <Stat label={tr("Moyenne de long terme θ", "Long-run mean θ")} value={e?.theta != null ? pct(e.theta, 2) : "—"}
+          foot={e?.theta != null && e.se_theta != null ? tr(`± ${pct(1.96 * e.se_theta, 2)} à 95 %`, `± ${pct(1.96 * e.se_theta, 2)} at 95%`) : undefined} busy={isFetching} />
+        <Stat label={tr("Volatilité σ", "Volatility σ")} value={e?.sigma != null ? bp(e.sigma).replace("+", "") : "—"}
+          foot={e?.stationary_sd != null ? tr(`par an · écart-type stationnaire ${pct(e.stationary_sd, 2)}`, `per year · stationary sd ${pct(e.stationary_sd, 2)}`) : undefined} busy={isFetching} />
+      </div>
+      <Card title={fit ? tr(`Taux 3 mois ${currency}, observations ${freqLabel} (${d.first} → ${d.last})`, `${currency} 3-month rate, ${freqLabel} observations (${d.first} → ${d.last})`) : tr("Taux 3 mois", "3-month rate")}>
+        {fit ? <EChart option={historyOption} height={320} ariaLabel={tr("Historique du taux 3 mois, moyenne de long terme et bande stationnaire", "3-month rate history, long-run mean and stationary band")} /> : <Skeleton height={300} />}
+        {fit && e && (
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            {tr(<>
+              Régression sur {e.n} variations : a = {num(e.a * 1e4, 2)} bp, b = {num(e.b, 4)} (écart-type {num(e.se_b, 4)}), R² = {num(e.r2, 3)},
+              écart-type des résidus {num(e.resid_sd * 1e4, 1)} bp. σ découle de la variance exacte des résidus, σ²(1 − b²) / (2κ).
+              {e.prob_negative_stationary != null && <> Sous la loi stationnaire, P(r &lt; 0) = {pct(e.prob_negative_stationary, 1)} : le modèle gaussien autorise des taux négatifs.</>}
+            </>, <>
+              Regression on {e.n} changes: a = {num(e.a * 1e4, 2)} bp, b = {num(e.b, 4)} (standard error {num(e.se_b, 4)}), R² = {num(e.r2, 3)},
+              residual standard deviation {num(e.resid_sd * 1e4, 1)} bp. σ follows from the exact variance of the residuals, σ²(1 − b²) / (2κ).
+              {e.prob_negative_stationary != null && <> Under the stationary law, P(r &lt; 0) = {pct(e.prob_negative_stationary, 1)}: the Gaussian model allows negative rates.</>}
+            </>)}
+          </p>
+        )}
+      </Card>
+      <div className="grid cols-2">
+        <Card title={tr("Les paramètres dépendent de la période", "The parameters depend on the period")}>
+          {fit ? (
+            <div className="table-wrap">
+              <table className="data">
+                <thead><tr><th>{tr("Depuis", "Since")}</th><th>n</th><th>{tr("Moyenne", "Mean")}</th><th>b</th><th>κ</th><th>θ</th><th>σ</th><th>{tr("Demi-vie", "Half-life")}</th></tr></thead>
+                <tbody>
+                  {d.windows.map((w) => (
+                    <tr key={w.start} className={w.start === d.start ? "strong" : undefined}>
+                      <td>{w.first.slice(0, 7)}</td><td>{w.n}</td><td>{pct(w.mean, 2)}</td><td>{num(w.b, 4)}</td>
+                      <td>{w.kappa != null ? num(w.kappa, 3) : "—"}</td><td>{w.theta != null ? pct(w.theta, 2) : "—"}</td>
+                      <td>{w.sigma != null ? `${num(w.sigma * 1e4, 0)} bp` : "—"}</td>
+                      <td>{w.half_life != null ? years(w.half_life) : tr("pas de rappel", "no reversion")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <Skeleton height={200} />}
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            {currency === "USD"
+              ? tr("Depuis 2009, les taux sont partis de zéro pour finir vers 4 à 5 % : en échantillon, la série monte au lieu de revenir vers une moyenne.",
+                "Since 2009 rates started at zero and ended around 4 to 5%: in sample, the series trends instead of returning to a mean.")
+              : tr("Depuis 2009, les taux de l'euro sont passés sous zéro jusqu'en 2022, puis sont remontés d'un coup : en échantillon, aucune moyenne n'attire la série.",
+                "Since 2009, euro rates went below zero until 2022, then rose abruptly: in sample, no mean pulls the series back.")}
+            {" "}{tr("θ et la demi-vie changent du tout au tout d'une période à l'autre : un modèle à paramètres constants résume mal plusieurs régimes de politique monétaire.",
+              "θ and the half-life change completely from one period to the next: a constant-parameter model summarises several monetary-policy regimes poorly.")}
+          </p>
+        </Card>
+        <Card title={tr("Le biais de l'estimateur : κ̂ surestime le rappel", "The estimator's bias: κ̂ overstates the pull-back")}>
+          {sim ? <EChart option={estimatorOption} height={260} ariaLabel={tr("Distribution simulée de l'estimateur de κ", "Simulated distribution of the κ estimator")} /> : <Skeleton height={240} />}
+          {sim && e && (
+            <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+              {tr(<>
+                {sim.n_sims} trajectoires simulées de {sim.n} pas, avec κ = {num(sim.kappa_true, 3)} pris comme vrai : la moyenne de κ̂ vaut {sim.kappa_mean != null ? num(sim.kappa_mean, 3) : "—"},
+                et 90 % des estimations tombent entre {sim.kappa_q05 != null ? num(sim.kappa_q05, 3) : "—"} et {sim.kappa_q95 != null ? num(sim.kappa_q95, 3) : "—"}.
+                La pente b̂ est biaisée vers le bas d'environ (1 + 3b) / n (Kendall, 1954) : simulé {num(sim.b_bias, 5)}, formule {num(sim.b_bias_kendall, 5)}.
+                Corrigée, la demi-vie passe à {years(e.half_life_corrected)}. ({sim.hist.beyond} estimations au-delà de {num(sim.hist.edges[sim.hist.edges.length - 1], 2)} ne sont pas tracées.)
+              </>, <>
+                {sim.n_sims} simulated paths of {sim.n} steps, with κ = {num(sim.kappa_true, 3)} taken as the truth: the mean of κ̂ is {sim.kappa_mean != null ? num(sim.kappa_mean, 3) : "—"},
+                and 90% of the estimates fall between {sim.kappa_q05 != null ? num(sim.kappa_q05, 3) : "—"} and {sim.kappa_q95 != null ? num(sim.kappa_q95, 3) : "—"}.
+                The slope b̂ is biased downwards by about (1 + 3b) / n (Kendall, 1954): simulated {num(sim.b_bias, 5)}, formula {num(sim.b_bias_kendall, 5)}.
+                Corrected, the half-life becomes {years(e.half_life_corrected)}. ({sim.hist.beyond} estimates above {num(sim.hist.edges[sim.hist.edges.length - 1], 2)} are not plotted.)
+              </>)}
+            </p>
+          )}
+          {fit && !sim && <p className="muted" style={{ fontSize: 12 }}>{tr("Pas de simulation sans retour à la moyenne estimé.", "No simulation without an estimated mean reversion.")}</p>}
+        </Card>
+      </div>
+      <div className="grid cols-4">
+        <Stat label={tr("κ sous Q (calibré)", "κ under Q (calibrated)")} value={ts ? num(ts.calibration.kappa, 3) : "—"}
+          foot={ts ? tr(`Demi-vie ${years(ts.calibration.half_life)} · σ fixé à ${num(ts.sigma * 1e4, 0)} bp`, `Half-life ${years(ts.calibration.half_life)} · σ fixed at ${num(ts.sigma * 1e4, 0)} bp`) : undefined} busy={isFetching} />
+        <Stat label={tr("θ sous Q (calibré)", "θ under Q (calibrated)")} value={ts ? pct(ts.calibration.theta, 2) : "—"}
+          foot={ts?.theta_gap != null ? tr(`${bp(ts.theta_gap)} par rapport au θ historique`, `${bp(ts.theta_gap)} against the historical θ`) : undefined} busy={isFetching} />
+        <Stat label={tr("Écart d'ajustement", "Fit error")} value={ts ? `${num(ts.calibration.rmse * 1e4, 1)} bp` : "—"}
+          foot={ts ? tr(`Moyenne quadratique sur ${ts.pillars.length} piliers · max ${num(ts.calibration.max_abs_error * 1e4, 1)} bp${ts.p_rmse != null ? ` · sous P ${num(ts.p_rmse * 1e4, 0)} bp` : ""}`,
+            `Root mean square over ${ts.pillars.length} pillars · max ${num(ts.calibration.max_abs_error * 1e4, 1)} bp${ts.p_rmse != null ? ` · under P ${num(ts.p_rmse * 1e4, 0)} bp` : ""}`) : undefined} busy={isFetching} />
+        <Stat label={tr("Prime de terme à 10 ans", "10-year term premium")} value={ts?.term_premium_10y != null ? bp(ts.term_premium_10y) : "—"}
+          foot={tr("Taux 10 ans sous Q moins taux 10 ans sous P", "10-year yield under Q minus 10-year yield under P")} busy={isFetching} />
+      </div>
+      <div className="grid cols-2">
+        <Card title={ts ? tr(`Courbe zéro-coupon du ${ts.asof} : marché et Vasicek`, `Zero-coupon curve of ${ts.asof}: market and Vasicek`) : tr("Courbe zéro-coupon", "Zero-coupon curve")}>
+          {ts ? <EChart option={curveOption} height={320} ariaLabel={tr("Courbe zéro du marché, Vasicek sous Q et sous P", "Market zero curve, Vasicek under Q and under P")} /> : <Skeleton height={300} />}
+        </Card>
+        <Card title={tr("Où le marché attend-il les taux ?", "Where does the market expect rates?")}>
+          {ts ? <EChart option={fanOption} height={320} ariaLabel={tr("Forwards du marché, forwards de Vasicek et loi du taux court sous P", "Market forwards, Vasicek forwards and the law of the short rate under P")} /> : <Skeleton height={300} />}
+        </Card>
+      </div>
+      <InfoBox>
+        {tr(<>
+          Avec le même σ, la courbe sous P (les anticipations seules, sans prime de risque) reste sous la courbe du marché : l'écart est la prime
+          de terme, que l'investisseur exige pour porter une obligation longue. Sous Q, il suffit de relever θ pour ajuster la courbe à quelques
+          points de base près, mais pas exactement : avec deux paramètres constants, Vasicek ne peut pas reproduire toutes les bosses. Hull-White
+          rend θ dépendant du temps pour coller exactement à la courbe ; CIR remplace σ par σ√r pour interdire les taux négatifs. Enfin, un seul
+          facteur fait bouger tous les taux ensemble : la pente et la courbure de la courbe ne varient jamais indépendamment.
+          {ts?.prob_negative && <> Sous P, la probabilité d'un taux court négatif vaut {pct(ts.prob_negative["1"], 1)} à 1 an et {pct(ts.prob_negative["5"], 1)} à 5 ans.</>}
+        </>, <>
+          With the same σ, the curve under P (expectations alone, no risk premium) stays below the market curve: the gap is the term premium
+          that investors demand to hold a long bond. Under Q, raising θ is enough to fit the curve to within a few basis points, but not exactly:
+          with two constant parameters, Vasicek cannot reproduce every hump. Hull-White makes θ time-dependent to fit the curve exactly; CIR
+          replaces σ with σ√r to rule out negative rates. Finally, a single factor moves all rates together: the slope and curvature of the curve
+          never change independently.
+          {ts?.prob_negative && <> Under P, the probability of a negative short rate is {pct(ts.prob_negative["1"], 1)} at 1 year and {pct(ts.prob_negative["5"], 1)} at 5 years.</>}
+        </>)}
+      </InfoBox>
+    </div>
+  );
+}

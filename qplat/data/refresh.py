@@ -56,6 +56,7 @@ def run_jobs(db: Database, tickers: list[str], jobs: tuple[str, ...] = JOBS) -> 
     if "rates" in jobs:
         run("rates", lambda: market.fetch_all_curves(db))
         run("factors", lambda: market.fetch_ff_factors(db))
+        run("short_rates", lambda: market.fetch_short_rates(db))
     if "sentiment" in jobs:
         from qplat.data.sentiment import SentimentScorer
 

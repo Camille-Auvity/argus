@@ -127,7 +127,7 @@ C'est la condition pour qu'une obligation de coupon $c$ vaille exactement 100 %.
 
 ### 3.4 Courbe USD (Treasury)
 
-Les données sont les *par yields* « constant maturity » de la Réserve fédérale, publiés par FRED : 1M, 3M, 6M, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y. Si FRED est indisponible, la plateforme se rabat sur yfinance (^IRX, ^FVX, ^TNX, ^TYX).
+Les données sont les *par yields* « constant maturity » publiés chaque jour par le Trésor américain (fichier CSV de l'année en cours, les mêmes séries que FRED) : 1M, 3M, 6M, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y. Si le Trésor est indisponible, la plateforme essaie FRED, puis yfinance (^IRX, ^FVX, ^TNX, ^TYX). Une source qui a plus de 5 jours de retard sur une autre est ignorée, pour ne jamais rester bloqué sur une courbe figée.
 
 - Maturités ≤ 6 mois (bills) : traitées comme des dépôts à taux simple sur ACT/365F (base = 1).
 - Maturités ≥ 1 an : obligations au pair à coupon semestriel ($m = 2$).
@@ -1123,9 +1123,9 @@ Le rapport moyenne / variance, qui fixe l'exposition optimale $w^* = \mu / (\gam
 
 ---
 
-## 19. Théorie appliquée : réplication, couverture, calcul stochastique, P et Q
+## 19. Théorie appliquée : réplication, couverture, calcul stochastique, P et Q, taux court
 
-*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `api/routers/theory.py` — cours de finance en temps continu, lectures 2 et 3*
+*Fichiers : `qplat/theory/replication.py`, `qplat/theory/hedging.py`, `qplat/theory/stochastic.py`, `qplat/theory/measures.py`, `qplat/theory/vasicek.py`, `api/routers/theory.py`*
 
 ### 19.1 Réplication dans l'arbre binomial
 
@@ -1214,6 +1214,55 @@ La page superpose aussi la loi empirique : les rendements historiques sur l'hori
 **Éventail et noyau de prix.** Les quantiles à 5, 50 et 95 % sont tracés selon l'horizon sous $P$, sous $Q$ lognormale et sous le $Q$ du marché. Le rapport $q/p$ est la densité des prix d'état au facteur d'actualisation près. Pour deux lognormales, il vaut $\exp(-\lambda W_T - \tfrac12\lambda^2 T)$, décroissant en $S_T$ quand $\mu > r$. Avec le smile, il est beaucoup plus pentu à gauche, et sa forme non monotone autour du spot est le *pricing kernel puzzle* (Jackwerth, 2000).
 
 **Tests.** Sur un smile plat, Breeden-Litzenberger redonne la lognormale (densité à $10^{-5}$ près, fonction de répartition à $10^{-5}$ près, moyenne égale au forward). Sont aussi testés : l'ordre mode < médiane < moyenne et les formules fermées, un décalage de tous les quantiles de $e^{(\mu - r)T}$ entre $P$ et $Q$, la queue gauche plus épaisse sous un skew avec la moyenne inchangée, la décroissance du noyau quand $\mu > r$, et l'erreur standard de $\hat\mu$ sur 40 ans simulés.
+
+
+### 19.7 Taux court : Ornstein-Uhlenbeck et Vasicek
+
+*Fichier : `qplat/theory/vasicek.py`*
+
+**Le processus.** Le taux court suit $dr = \kappa(\theta - r)\,dt + \sigma\, dW$ : il est rappelé vers $\theta$ à la vitesse $\kappa$. Sa loi est gaussienne :
+
+$$
+\mathbb E[r_t] = \theta + (r_0 - \theta)e^{-\kappa t}, \qquad \text{Var}(r_t) = \frac{\sigma^2}{2\kappa}\left(1 - e^{-2\kappa t}\right)
+$$
+
+La loi stationnaire est $N(\theta, \sigma^2/2\kappa)$ et la demi-vie d'un écart à la moyenne vaut $\ln 2 / \kappa$.
+
+**Données.** Taux 3 mois sur des décennies, téléchargés une fois par semaine dans la table `short_rates` :
+- USD : bons du Trésor à 3 mois depuis 1990, publiés par le Trésor américain (rendement simple, converti en taux continu $\ln(1 + 0{,}25\,y)/0{,}25$) ;
+- EUR : taux zéro 3 mois de la courbe AAA de la BCE depuis 2004 (déjà continu).
+
+L'échantillon est la dernière observation de chaque mois (par défaut), de chaque semaine, ou chaque jour.
+
+**Estimation par régression.** Échantillonné au pas $\Delta t$, le processus est exactement un AR(1) :
+
+$$
+r_{t+\Delta t} = a + b\, r_t + \varepsilon, \qquad b = e^{-\kappa \Delta t}, \quad a = \theta(1 - b), \quad \text{Var}(\varepsilon) = \frac{\sigma^2 (1 - b^2)}{2\kappa}
+$$
+
+Les moindres carrés ordinaires donnent $\hat a$, $\hat b$ et l'écart-type des résidus, d'où $\hat\kappa = -\ln \hat b / \Delta t$, $\hat\theta = \hat a / (1 - \hat b)$ et $\hat\sigma$. Les écarts-types de $\hat\kappa$ et $\hat\theta$ viennent de la méthode delta ; l'intervalle de la demi-vie est l'image de l'intervalle à 95 % sur $b$. Si $\hat b \ge 1$, aucun rappel n'est détecté et le processus n'est pas estimé.
+
+**Biais de petit échantillon.** La pente $\hat b$ est biaisée vers le bas, d'environ $-(1 + 3b)/n$ (Kendall, 1954), donc $\hat\kappa$ surestime le rappel. La page le montre par Monte Carlo : 400 trajectoires de même longueur sont simulées exactement avec les paramètres estimés pris comme vrais, et $\kappa$ est réestimé sur chacune. Sur les taux américains mensuels depuis 1990, $\hat\kappa \approx 0{,}12$ (demi-vie de 6 ans), mais l'intervalle à 95 % de la demi-vie va de 3 à 52 ans et la moyenne simulée de $\hat\kappa$ dépasse la vraie valeur de près de moitié. Corrigée du biais de Kendall, la pente est presque égale à 1 : le retour à la moyenne des taux est à peine identifiable. C'est le même biais que celui de Stambaugh (1999) pour les régressions prédictives sur une variable persistante.
+
+**Instabilité.** Les paramètres sont réestimés depuis plusieurs dates de début. Depuis 2009, les taux partent de zéro pour finir vers 4 à 5 % : la pente dépasse 1 et aucun rappel n'apparaît. $\theta$ et la demi-vie changent du tout au tout d'un régime de politique monétaire à l'autre.
+
+**Courbe de Vasicek (1977).** Sous la probabilité risque-neutre, le prix d'un zéro-coupon est affine en $r$ :
+
+$$
+P(t, t+\tau) = A(\tau)\, e^{-B(\tau)\, r_t}, \qquad B(\tau) = \frac{1 - e^{-\kappa\tau}}{\kappa}, \qquad \ln A(\tau) = \left(\theta - \frac{\sigma^2}{2\kappa^2}\right)(B - \tau) - \frac{\sigma^2 B^2}{4\kappa}
+$$
+
+Le taux zéro $-\ln P/\tau$ part de $r$ et tend vers $\theta - \sigma^2/(2\kappa^2)$ ; le forward instantané vaut $f(0,t) = \mathbb E_Q[r_t] - \tfrac12 \sigma^2 B(t)^2$ (convexité).
+
+**P contre Q.** Girsanov change la dérive, pas la volatilité : $\sigma$ est celui de la série temporelle. Deux courbes sont comparées à la courbe zéro du marché du jour (section 3), avec $r_0$ égal au taux zéro 3 mois :
+- **sous P**, avec $\kappa$ et $\theta$ historiques : la courbe que donneraient les seules anticipations de taux, sans prime de risque ;
+- **sous Q**, avec $(\kappa_Q, \theta_Q)$ calibrés par moindres carrés sur 11 piliers de 3 mois à 30 ans (plusieurs points de départ, car $\kappa$ petit et $\theta$ grand se compensent).
+
+En novembre 2026 sur le dollar, la calibration donne $\kappa_Q \approx 0{,}11$, proche du $\kappa$ historique, mais $\theta_Q \approx 6\,\%$ contre $\theta \approx 2\,\%$ ; l'écart d'ajustement est de 9 bp. La différence entre les taux 10 ans sous Q et sous P, environ 160 bp, est la prime de terme du modèle. La page trace aussi les forwards à un mois du marché, ceux de Vasicek et la loi du taux court sous P (espérance et quantiles à 5 et 95 %), ainsi que la probabilité d'un taux négatif.
+
+**Limites.** Deux paramètres constants ne reproduisent pas exactement la courbe (Hull-White rend $\theta$ dépendant du temps pour cela). Le modèle gaussien autorise les taux négatifs (Cox-Ingersoll-Ross remplace $\sigma$ par $\sigma\sqrt r$). Un seul facteur déplace tous les taux ensemble : pente et courbure ne bougent jamais indépendamment.
+
+**Tests.** Moments de la simulation exacte, paramètres retrouvés par la régression sur une longue série simulée, absence de rappel sur une série croissante, biais de la pente conforme à Kendall, limites du taux zéro ($r_0$ en 0, $\theta - \sigma^2/2\kappa^2$ à l'infini, moyenne du chemin espéré quand $\sigma \to 0$), forward égal à $-\partial_t \ln P$, prix d'un zéro-coupon égal au Monte Carlo de $\mathbb E[e^{-\int r}]$, calibration aller-retour exacte, probabilité d'un taux négatif.
 
 ---
 
@@ -1427,7 +1476,8 @@ Les poids $x_i(K)$ résolvent le système $3 \times 3$ qui égalise le vega, la 
 | Nom, secteur, devise, dividende ($q$ = rendement sur 12 mois glissants) | yfinance | chaque passage |
 | Chaînes d'options (US) | yfinance | chaque passage |
 | Bilan : nombre d'actions, dettes court et long terme, devise des comptes (modèle de Merton) | yfinance | une fois par semaine |
-| Taux USD | FRED (CSV public), repli yfinance | chaque passage |
+| Taux USD | Trésor américain (CSV quotidien), repli FRED puis yfinance | chaque passage |
+| Taux 3 mois depuis 1990 (USD) et 2004 (EUR), modèle de Vasicek | Trésor américain, BCE | une fois par semaine |
 | Taux EUR | API de données de la BCE | chaque passage |
 | Taux de change EUR/USD (conversion du portefeuille en euros) | yfinance (EURUSD=X) | chaque passage |
 | VIX (vol implicite 30 jours du S&P 500, swaps de variance) | yfinance (^VIX) | chaque passage |
@@ -1489,7 +1539,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 227 tests*
+*Dossier : `tests/` — 239 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1511,6 +1561,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Calcul stochastique et Girsanov | variation totale ≈ √(2N/π), variation quadratique → T avec un écart-type √(2/N), sommes d'Itô et au point droit (espérances 0 et T), martingales et non-martingales, Girsanov (E_P[Y] = 1, moyenne θT), échantillonnage préférentiel sans biais avec une variance divisée par plus de 100 hors de la monnaie, grecques Monte Carlo avec échantillonnage préférentiel |
 | Théorie appliquée | exemple du cours (put 10,714 puis 11,820, Δ et B de chaque nœud, Q(S₂ = 96) = 0,46875), autofinancement à chaque nœud, absence d'arbitrage d < R < u, market maker couvert sur tous les chemins, convergence de l'arbre vers Black-Scholes, erreur de couverture en 1/√N (Derman-Kamal), indépendance du drift, P&L à vol réalisée ≠ implicite, backtest synthétique |
 | Monde réel P et risque-neutre Q | Breeden-Litzenberger sur smile plat = lognormale (densité et répartition à 1e-5, moyenne = forward), mode < médiane < moyenne, quantiles décalés de e^{(μ−r)T}, skew : queue gauche plus épaisse à forward inchangé, noyau de prix décroissant si μ > r, erreur standard de μ̂ en σ/√années |
+| Ornstein-Uhlenbeck et Vasicek | moments de la simulation exacte, paramètres retrouvés par régression AR(1), absence de rappel sur une série croissante, biais de la pente conforme à Kendall, limites du taux zéro, forward = −∂ ln P, zéro-coupon = Monte Carlo, calibration aller-retour, probabilité d'un taux négatif |
 | Recherche (Moreira-Muir) | rendement mensuel composé et variance réalisée, MCO Newey-West, même volatilité par construction, variance constante → stratégie = facteur, alpha positif sous régimes de volatilité et nul sans, version temps réel sans look-ahead, plafond de levier et coûts |
 | Allocation | minimum variance et moyenne-variance sans contrainte égaux aux formules fermées, frontière contrainte au-dessus de la frontière de Markowitz, tangence de Sharpe maximal (y compris la formule Σ⁻¹(μ − r)), long-only et plafonds respectés, LASSO inactif en long-only et actif avec shorts, coûts qui réduisent puis gèlent la rotation, Ledoit-Wolf défini positif et moins rétréci avec plus de données, conversion en euros, backtest sans look-ahead |
 | Swaps de variance | variance réalisée (convention sans moyenne), smile plat → σ², réplication du smile de Heston = variance espérée de Heston, convexité du swap de vol (Jensen et approximation), formule du VIX sur une chaîne Black-Scholes, troncature de la bande, interpolation à 30 jours, valeur d'un swap en cours de vie et vega |
@@ -1528,7 +1579,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 - **Calendrier** : pas de jours fériés (NYSE, Euronext) ; échéancier obligataire régulier calculé à rebours.
 - **Future obligataire** : sans option *cheapest-to-deliver* ni ajustement de convexité.
 - **Options européennes** : Yahoo ne diffuse pas de chaînes d'options pour l'Europe, donc pas de smile EUR.
-- **Taux** : déterministes. Un modèle de taux court (Hull-White) permettrait de pricer des produits sensibles aux taux.
+- **Taux** : déterministes pour le pricing. Le modèle de Vasicek (section 19.7) est estimé et calibré, mais n'est pas encore branché sur les pricers ; Hull-White, qui colle exactement à la courbe, permettrait de pricer des produits sensibles aux taux.
 
 ---
 
@@ -1577,3 +1628,8 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 - Glasserman, P. (2003). *Monte Carlo Methods in Financial Engineering*. Springer.
 - Haug, E. G. (2007). *The Complete Guide to Option Pricing Formulas*. McGraw-Hill.
 - Hull, J. (2022). *Options, Futures, and Other Derivatives*. Pearson.
+- Vasicek, O. (1977). *An Equilibrium Characterization of the Term Structure*. Journal of Financial Economics.
+- Kendall, M. (1954). *Note on Bias in the Estimation of Autocorrelation*. Biometrika.
+- Stambaugh, R. (1999). *Predictive Regressions*. Journal of Financial Economics.
+- Cox, J., Ingersoll, J. & Ross, S. (1985). *A Theory of the Term Structure of Interest Rates*. Econometrica.
+- Hull, J. & White, A. (1990). *Pricing Interest-Rate-Derivative Securities*. Review of Financial Studies.

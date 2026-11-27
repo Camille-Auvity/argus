@@ -1,6 +1,6 @@
 """Market data fetchers: spots, ticker metadata, option chains (yfinance),
-US Treasury par yields (FRED public CSV, yfinance fallback) and euro-area AAA
-zero-coupon curve (ECB data API)."""
+US Treasury par yields (US Treasury daily CSV, then FRED, then yfinance), euro-area AAA
+zero-coupon curve (ECB data API) and long short-rate histories (Ornstein-Uhlenbeck / Vasicek lab)."""
 
 from __future__ import annotations
 
@@ -189,6 +189,39 @@ def fetch_treasury_fred(db: Database, lookback_days: int = 30) -> int:
     return db.upsert_rates([r for r in rows if r["asof"] in full_dates])
 
 
+# US Treasury daily par yield curve, one CSV per calendar year since 1990 (the same yields FRED republishes)
+TREASURY_URL = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/"
+                "{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv")
+TREASURY_COLUMNS = {"1 Mo": 1 / 12, "3 Mo": 0.25, "6 Mo": 0.5, "1 Yr": 1.0, "2 Yr": 2.0, "3 Yr": 3.0,
+                    "5 Yr": 5.0, "7 Yr": 7.0, "10 Yr": 10.0, "20 Yr": 20.0, "30 Yr": 30.0}
+TREASURY_FIRST_YEAR = 1990
+
+
+def treasury_year(year: int) -> pd.DataFrame:
+    """Par yields (fractions) of one calendar year, indexed by ISO date, columns = tenors in years."""
+    raw = _http_get(TREASURY_URL.format(year=year), timeout=60)
+    df = pd.read_csv(io.BytesIO(raw))
+    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y").dt.strftime("%Y-%m-%d")
+    keep = {c: t for c, t in TREASURY_COLUMNS.items() if c in df.columns}
+    out = df.set_index("Date")[list(keep)].rename(columns=keep).apply(pd.to_numeric, errors="coerce") / 100.0
+    return out.sort_index()
+
+
+def fetch_treasury_official(db: Database, lookback_days: int = 30) -> int:
+    """Today's curve from the Treasury itself: one request, full curve (FRED often times out)."""
+    year = datetime.now(timezone.utc).year
+    df = treasury_year(year)
+    if len(df) < lookback_days:  # early January: add the end of last year
+        df = pd.concat([treasury_year(year - 1), df])
+    df = df.dropna().tail(lookback_days)  # complete curves only
+    rows = [{"asof": d, "tenor_years": float(t), "rate": float(v), "source": "Treasury",
+             "currency": "USD", "quote_type": "par"}
+            for d, vals in df.iterrows() for t, v in vals.items()]
+    if not rows:
+        raise ValueError("no complete Treasury curve")
+    return db.upsert_rates(rows)
+
+
 def fetch_treasury_yfinance(db: Database) -> int:
     import yfinance as yf
 
@@ -204,11 +237,13 @@ def fetch_treasury_yfinance(db: Database) -> int:
 
 
 def fetch_treasury_curve(db: Database) -> int:
-    try:
-        return fetch_treasury_fred(db)
-    except Exception as exc:  # network / format issue -> degrade gracefully
-        log.warning("FRED fetch failed (%s), falling back to yfinance", exc)
-        return fetch_treasury_yfinance(db)
+    """US Treasury first, then FRED, then yfinance: each failure degrades to the next source."""
+    for name, fn in (("Treasury", fetch_treasury_official), ("FRED", fetch_treasury_fred)):
+        try:
+            return fn(db)
+        except Exception as exc:  # network / format issue -> degrade gracefully
+            log.warning("%s fetch failed (%s), trying the next source", name, exc)
+    return fetch_treasury_yfinance(db)
 
 
 def fetch_ecb_curve(db: Database, lookback_days: int = 30) -> int:
@@ -327,3 +362,36 @@ def fetch_ff_factors(db: Database, force: bool = False) -> str:
         with urllib.request.urlopen(req, timeout=60) as resp:
             n = max(n, db.upsert_factors(_read_french_csv(resp.read(), cols)))
     return f"{n} days"
+
+
+# --- short-rate histories (Ornstein-Uhlenbeck / Vasicek lab) -------------------------
+
+SHORT_RATES_MAX_AGE_DAYS = 7
+ECB_SHORT_URL = "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_3M?format=csvdata"
+
+
+def fetch_short_rates(db: Database, force: bool = False) -> str:
+    """3-month rates over decades: US Treasury bills since 1990 (bond-equivalent yield, as published) and the
+    euro-area AAA 3-month zero rate since 2004 (ECB). Refreshed once a week, only the years still missing."""
+    last = db.query("SELECT MAX(ts) AS d FROM refresh_log WHERE job='short_rates' AND status='ok'") if not force else None
+    if last is not None and last["d"].iloc[0]:
+        ts = datetime.fromisoformat(last["d"].iloc[0])
+        age = datetime.now(timezone.utc) - (ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc))
+        if age.days < SHORT_RATES_MAX_AGE_DAYS and not db.short_rates("USD_3M").empty:
+            return "fresh"
+    report = []
+    stored = db.short_rates("USD_3M")
+    first = TREASURY_FIRST_YEAR if stored.empty else int(stored.index[-1][:4])
+    rows = []
+    for year in range(first, datetime.now(timezone.utc).year + 1):
+        col = treasury_year(year).get(0.25)
+        if col is not None:
+            rows += [{"series": "USD_3M", "date": d, "rate": float(v)} for d, v in col.dropna().items()]
+    report.append(f"USD {db.upsert_short_rates(rows)}")
+    try:
+        df = pd.read_csv(io.BytesIO(_http_get(ECB_SHORT_URL, timeout=90)), usecols=["TIME_PERIOD", "OBS_VALUE"]).dropna()
+        report.append(f"EUR {db.upsert_short_rates([{'series': 'EUR_3M', 'date': r.TIME_PERIOD, 'rate': r.OBS_VALUE / 100.0} for r in df.itertuples(index=False)])}")
+    except Exception as exc:  # the USD history is still usable
+        log.warning("ECB short-rate history failed (%s)", exc)
+        report.append("EUR failed")
+    return ", ".join(report)
