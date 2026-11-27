@@ -45,6 +45,11 @@ jobs:
           curl -fsSL "https://camille-auvity.github.io/argus/engine/qplat.db" -o data/qplat.db \
             || echo "No published database yet: building one from scratch."
 
+      - name: Merge the sentiment history scored locally
+        # seed/news_sentiment.json.gz is written by `scripts/sentiment_seed.py export`;
+        # existing rows are kept, so this only fills gaps (and saves re-scoring them)
+        run: python scripts/sentiment_seed.py import
+
       - name: Refresh market data, news and sentiment
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

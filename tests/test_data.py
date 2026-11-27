@@ -211,3 +211,25 @@ def test_shiller_dates_and_round_trip(db):
                        {"month": "2026-10", "price": 7726.7, "dividend": None, "earnings": None, "cpi": 338.8, "gs10": 0.0513}])
     df = db.shiller()
     assert list(df.index) == ["2026-09", "2026-10"] and np.isnan(df.loc["2026-10", "dividend"])
+
+
+def test_sentiment_seed_round_trip_keeps_existing_rows(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("sentiment_seed", config.ROOT / "scripts" / "sentiment_seed.py")
+    seed_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seed_mod)
+    local, site, seed = Database(tmp_path / "local.db"), Database(tmp_path / "site.db"), tmp_path / "seed.json.gz"
+    news = [{"id": f"n{i}", "ticker": "AAPL", "published": f"2026-11-0{i}T15:00:00+00:00", "title": f"t{i}"}
+            for i in range(1, 4)]
+    local.insert_news(news)
+    local.upsert_sentiment([{"news_id": f"n{i}", "model": "m", "score": 0.1 * i, "label": "positive",
+                             "rationale": "", "scored_at": utc_now()} for i in range(1, 3)])
+    assert seed_mod.export(local.path, seed) == {"news": 2, "sentiment": 2, "bytes": seed.stat().st_size}
+    site.insert_news([news[0]])
+    site.upsert_sentiment([{"news_id": "n1", "model": "m", "score": -0.9, "label": "negative",
+                            "rationale": "", "scored_at": utc_now()}])
+    assert seed_mod.load(site.path, seed) == {"news": 1, "sentiment": 1}
+    assert seed_mod.load(site.path, seed) == {"news": 0, "sentiment": 0}
+    with site.connect() as con:
+        scores = dict(con.execute("SELECT news_id, score FROM sentiment").fetchall())
+    assert scores == {"n1": -0.9, "n2": pytest.approx(0.2)}     # the site's own score is kept

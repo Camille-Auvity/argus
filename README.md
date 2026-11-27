@@ -41,6 +41,7 @@ Le site public fonctionne **sans serveur** : l'application FastAPI et tout le mo
 | Élément | Rôle |
 |---|---|
 | `.github/workflows/pages.yml` | Chaque heure en semaine : récupère la base déjà publiée, rafraîchit marchés, taux et news, score le sentiment avec Claude (clé dans le secret `ANTHROPIC_API_KEY`), exporte, construit et déploie le site. |
+| `scripts/sentiment_seed.py` | `export` écrit dans `seed/news_sentiment.json.gz` les news notées en local (par exemple après un rattrapage) ; `import`, lancé par le workflow, les ajoute à la base publiée sans rien remplacer. |
 | `scripts/export_static.py` | Copie allégée de la base (dernier snapshot d'options, 90 jours de news, aucune position personnelle) et archive du code Python, dans `web/public/engine/`. |
 | `web/src/engine/` | Web worker qui charge Pyodide, numpy, scipy, pandas et FastAPI, puis sert les appels de l'interface. |
 | `api/browser.py` | Passe chaque requête à l'application FastAPI sans réseau ni threads. |

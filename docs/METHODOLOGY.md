@@ -1552,6 +1552,8 @@ For the online version, GitHub Actions runs the same job every hour on weekdays 
 
 Sentiment scoring only covers news less than 7 days old, at most 100 per run. An interruption, such as exhausted credit, therefore never turns into a large catch-up bill.
 
+A backfill run locally over a longer period reaches the site through the versioned file `seed/news_sentiment.json.gz`: `scripts/sentiment_seed.py export` writes it from the local database, and the workflow merges it before each refresh. The merge never replaces an existing row; it only fills gaps.
+
 ---
 
 ## 23. AI news sentiment
@@ -1582,7 +1584,7 @@ A sector's sentiment is the average of its underlyings' sentiments, weighted by 
 
 ## 24. Validation
 
-*Folder: `tests/` — 247 tests*
+*Folder: `tests/` — 248 tests*
 
 | Reference | Check |
 |---|---|

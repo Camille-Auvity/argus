@@ -1552,6 +1552,8 @@ Pour la version en ligne, GitHub Actions exécute la même tâche toutes les heu
 
 Le scoring du sentiment ne porte que sur les news de moins de 7 jours, au plus 100 par passage. Ainsi, une interruption, comme un crédit épuisé, ne se transforme jamais en grosse facture de rattrapage.
 
+Un rattrapage fait en local, sur une période plus longue, rejoint le site par le fichier versionné `seed/news_sentiment.json.gz` : `scripts/sentiment_seed.py export` l'écrit depuis la base locale, et le workflow le fusionne avant chaque rafraîchissement. La fusion ne remplace jamais une ligne existante, elle comble seulement les trous.
+
 ---
 
 ## 23. Sentiment des news par IA
@@ -1582,7 +1584,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 247 tests*
+*Dossier : `tests/` — 248 tests*
 
 | Référence | Vérification |
 |---|---|
