@@ -259,3 +259,21 @@ def test_explain_endpoints(client):
     g = client.post("/api/explain/greeks", json={**VANILLA, "method": "tree"}).json()
     delta = next(r for r in g["rows"] if r["greek"] == "delta")
     assert delta["value"] == pytest.approx(g["closed_form"]["delta"], abs=0.01)
+
+
+def test_english_responses(client):
+    """X-Lang: en (or ?_lang=en in the static build) translates the API's French texts, errors included."""
+    fr = client.delete("/api/portfolio/positions/999999")
+    en = client.delete("/api/portfolio/positions/999999", headers={"X-Lang": "en"})
+    assert fr.status_code == en.status_code == 404
+    assert fr.json()["detail"] == "position introuvable" and en.json()["detail"] == "position not found"
+    assert client.delete("/api/portfolio/positions/999999?_lang=en").json()["detail"] == "position not found"
+
+
+def test_translation_templates():
+    from api.i18n import translate, translate_text
+
+    assert translate_text("Put européen SPY K=740 éch. 2027-01-12") == "European put SPY K=740 exp. 2027-01-12"
+    assert translate_text("Cliquet ^STOXX50E 2 ans (floor local -5 %, cap local 5 %)") == "Cliquet ^STOXX50E 2 years (local floor -5%, local cap 5%)"
+    assert translate_text("texte inconnu") == "texte inconnu"           # unknown text is left as is
+    assert translate({"Taux": "Taux", "n": 3, "rows": ["Prix"]}) == {"Taux": "Rates", "n": 3, "rows": ["Price"]}   # keys untouched

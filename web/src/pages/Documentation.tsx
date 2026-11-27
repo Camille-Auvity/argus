@@ -5,7 +5,9 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 // single source of truth: the same file is versioned in the repo (docs/) and rendered here
-import source from "../../../docs/METHODOLOGIE.md?raw";
+import sourceFr from "../../../docs/METHODOLOGIE.md?raw";
+import sourceEn from "../../../docs/METHODOLOGY.md?raw";
+import { tr } from "../lib/i18n";
 
 function slugify(text: string): string {
   return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -25,6 +27,8 @@ interface TocEntry {
 }
 
 export default function Documentation() {
+  // the page is remounted on a language change (LangKeyed), so picking the source once is enough
+  const source = tr(sourceFr, sourceEn);
   const toc = useMemo<TocEntry[]>(() => {
     const entries: TocEntry[] = [];
     let inCode = false;
@@ -37,7 +41,7 @@ export default function Documentation() {
       }
     }
     return entries;
-  }, []);
+  }, [source]);
   const [active, setActive] = useState(toc[0]?.id);
 
   useEffect(() => {
@@ -61,8 +65,8 @@ export default function Documentation() {
 
   return (
     <div className="doc-layout">
-      <nav className="doc-toc" aria-label="Sommaire">
-        <div className="form-group-title" style={{ marginBottom: 8 }}>Sommaire</div>
+      <nav className="doc-toc" aria-label={tr("Sommaire", "Contents")}>
+        <div className="form-group-title" style={{ marginBottom: 8 }}>{tr("Sommaire", "Contents")}</div>
         {toc.map((t) => (
           <a key={t.id} href={`#${t.id}`} className={`${t.level === 3 ? "sub" : ""}${active === t.id ? " on" : ""}`}
             onClick={(e) => {
@@ -78,7 +82,7 @@ export default function Documentation() {
             {t.title}
           </a>
         ))}
-        <span className="doc-source">Source : docs/METHODOLOGIE.md</span>
+        <span className="doc-source">{tr("Source : docs/METHODOLOGIE.md", "Source: docs/METHODOLOGY.md")}</span>
       </nav>
       <article className="card doc">
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}

@@ -1489,7 +1489,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 
 ## 24. Validation
 
-*Dossier : `tests/` — 225 tests*
+*Dossier : `tests/` — 227 tests*
 
 | Référence | Vérification |
 |---|---|
@@ -1518,7 +1518,7 @@ Le sentiment d'un secteur est la moyenne des sentiments de ses sous-jacents, pon
 | Options de change | Garman-Kohlhagen = Black-Scholes avec dividende étranger, parité, grecques par différences finies, aller-retour delta ↔ strike, straddle delta-neutre, Vanna-Volga reprice les piliers, smile plat, strangle de marché repricé, densité positive |
 | CDS | survie d'une courbe par morceaux, jambe de protection en formule fermée, triangle du crédit, bootstrap exact, rejet d'une courbe inversée, CDS au pair de valeur nulle, CS01 ≈ RPV01 × nominal × 1 bp, jump-to-default |
 | Merton | aller-retour de la calibration, dette = sans risque − put (Black-Scholes), monotonie en levier et en vol, courbe de survie, vol implicite d'un spread |
-| API | routes testées sur une base de test synthétique, dont une chaîne d'options générée par Heston |
+| API | routes testées sur une base de test synthétique, dont une chaîne d'options générée par Heston ; réponses en anglais |
 
 ---
 

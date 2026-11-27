@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-26T22:26:42+00:00",
+  "generatedAt": "2026-11-27T03:05:58+00:00",
   "title": "Design System: Argus",
   "extensions": {
     "colorMeta": {
@@ -1297,6 +1297,34 @@
       "paper-chrome": {
         "displayName": "Paper chrome",
         "purpose": "Sans for sidebar, top bar and controls in the serif world."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Code paths and identifiers (documentation, methodology references)."
+      },
+      "eyes-body": {
+        "displayName": "Body (Les cent yeux)",
+        "purpose": "Running text and tables in the default world."
+      },
+      "metro-body": {
+        "displayName": "Body (Plan de métro)",
+        "purpose": "Running text and tables in the metro world."
+      },
+      "billets-body": {
+        "displayName": "Body (Série de billets)",
+        "purpose": "Running text and tables in the banknote world."
+      },
+      "billets-stat-value": {
+        "displayName": "Stat value (Série de billets)",
+        "purpose": "KPI tiles in the banknote world, heavier and tighter."
+      },
+      "paper-body": {
+        "displayName": "Body (Working paper)",
+        "purpose": "Serif running text of the working-paper world."
+      },
+      "paper-card-title": {
+        "displayName": "Card title (Working paper)",
+        "purpose": "Small-caps serif panel names, numbered as exhibits."
       }
     },
     "shadows": [
@@ -1396,35 +1424,40 @@
         "label": "Classique",
         "scheme": "dark default + light toggle",
         "source": "web/src/styles/tokens.css, app.css",
-        "signature": "none (original quotes grid)"
+        "signature": "none (original quotes grid)",
+        "default": false
       },
       {
         "id": "eyes",
         "label": "Les cent yeux",
         "scheme": "light",
         "source": "web/src/styles/designs.css",
-        "signature": "web/src/components/Ocelli.tsx"
+        "signature": "web/src/components/Ocelli.tsx",
+        "default": true
       },
       {
         "id": "metro",
         "label": "Plan de métro",
         "scheme": "dark",
         "source": "web/src/styles/designs.css",
-        "signature": "web/src/components/TransitMap.tsx"
+        "signature": "web/src/components/TransitMap.tsx",
+        "default": false
       },
       {
         "id": "billets",
         "label": "Série de billets",
         "scheme": "light",
         "source": "web/src/styles/designs.css",
-        "signature": "web/src/components/FaceValue.tsx"
+        "signature": "web/src/components/FaceValue.tsx",
+        "default": false
       },
       {
         "id": "paper",
         "label": "Working paper",
         "scheme": "light",
         "source": "web/src/styles/designs.css",
-        "signature": "web/src/components/ReplicatedResults.tsx + exhibit counters"
+        "signature": "web/src/components/ReplicatedResults.tsx + exhibit counters",
+        "default": false
       }
     ],
     "sectionHues": {
@@ -1530,13 +1563,14 @@
   ],
   "narrative": {
     "northStar": "One Instrument, Five Dials",
-    "overview": "Argus is a single operating shell, a 232px sidebar, a 56px top bar and a scrolling main column of cards, tables and charts. Five visual worlds can dress that shell. **Classique** is the original dark/light trading-desk theme in `tokens.css` + `app.css`. The four alternatives live in `designs.css` and are switched by `<html data-design=\"eyes|metro|billets|paper\">`: **Les cent yeux**, **Plan de métro**, **Série de billets**, **Working paper**. A world may only change type, palette, density and one signature move. Every control, number and page stays where it is, so a practitioner who switches worlds loses nothing and an evaluator sees a different face of the same engine.\n\nThe density is that of a working tool: 13.5px body, 9px table cell padding, a 14px card grid, tabular numerals everywhere numbers appear. Hierarchy comes from weight and a handful of small uppercase labels, never from big type. The one exception is the signature move each world places on the overview, directly under the page title: the surveillance map, the network map, the face value, the replicated-results table. Each is drawn from live data or from facts stated in the methodology document. None is decoration.\n\nWorlds are selected in the top-bar \"Design\" select. The choice is persisted in `localStorage[\"argus-design\"]` and can be forced by a `?design=` URL parameter that an inline script in `index.html` reads before first paint. Classique alone keeps the dark/light toggle (`localStorage[\"qplat-theme\"]`). Each other world has one fixed scheme, declared in `DESIGNS` in `web/src/lib/theme.tsx`.",
+    "overview": "Argus is a single operating shell, a 232px sidebar, a 56px top bar and a scrolling main column of cards, tables and charts. Five visual worlds can dress that shell. **Classique** is the original dark/light trading-desk theme in `tokens.css` + `app.css`. The four alternatives live in `designs.css` and are switched by `<html data-design=\"eyes|metro|billets|paper\">`: **Les cent yeux**, **Plan de métro**, **Série de billets**, **Working paper**. A world may only change type, palette, density and one signature move. Every control, number and page stays where it is, so a practitioner who switches worlds loses nothing and an evaluator sees a different face of the same engine.\n\nThe density is that of a working tool: 13.5px body, 9px table cell padding, a 14px card grid, tabular numerals everywhere numbers appear. Hierarchy comes from weight and a handful of small uppercase labels, never from big type. The one exception is the signature move each world places on the overview, directly under the page title: the surveillance map, the network map, the face value, the replicated-results table. Each is drawn from live data or from facts stated in the methodology document. None is decoration.\n\n**Les cent yeux** is the default world for a first visit (`DEFAULT_DESIGN` in `web/src/lib/theme.tsx`, mirrored by the inline script in `index.html`). Switching worlds is an easter egg with no permanent control on screen: three quick clicks on the logo, or typing \"argus\" outside a text field, opens a transient menu (`.design-menu`, `DesignMenu` in `Layout.tsx`) next to the logo, listing the five worlds with a three-colour swatch each. It closes as soon as a world is picked, on Escape, or on a click outside; arrow keys move between items. The choice is persisted in `localStorage[\"argus-design\"]` and can be forced by a `?design=` URL parameter that an inline script in `index.html` reads before first paint. Classique alone keeps the dark/light toggle (`localStorage[\"qplat-theme\"]`). Each other world has one fixed scheme, declared in `DESIGNS` in `web/src/lib/theme.tsx`.\n\nThe same menu carries a second section, **Language**: English (default for a first visit) or Français, stored in `localStorage[\"argus-lang\"]`, forced by `?lang=en|fr`, and stamped on `<html lang>` before first paint. Interface copy is written as inline pairs `tr(\"français\", \"English\")` (`web/src/lib/i18n.tsx`); a language change remounts the routed tree and drops the query cache, since API texts come back translated (`api/i18n.py`). Numbers follow the locale (`195.08`, `2.67%` in English; `195,08`, `2,67 %` in French). The working-paper table caption reads \"Table n.\" by default and \"Tableau n.\" under `:lang(fr)`.",
     "keyCharacteristics": [
       "One shell, one component contract (`.card`, `.card-head`, `.card-title`, `table.data`, `.btn`, `.input-wrap`, `.segmented`, `.tabs`, `.badge`, `.chip`). Worlds override tokens first and selectors second.",
       "A world is a token block on `:root[data-design=\"…\"]` plus a matching chart palette in `DESIGN_PALETTES`. The CSS and the JS must agree hex for hex.",
       "Navigation groups carry `data-group` (`marches`, `portefeuille`, `pricing`, `taux`, `recherche`, `reference`) on section labels, nav links and `.main`. Worlds that colour by section key off `--line`.",
       "Tabular numerals on every figure; up and down colours are always the `--good-ink` and `--critical-ink` pair plus an arrow glyph from the icon set, never colour alone.",
-      "Every motion respects `prefers-reduced-motion`."
+      "Every motion respects `prefers-reduced-motion`.",
+      "Bilingual: English by default, French on demand. Copy is written as inline `tr(\"français\", \"English\")` pairs next to its use; API texts are translated on the way out by `api/i18n.py`. Numbers follow the locale."
     ],
     "rules": [
       {
@@ -1584,7 +1618,8 @@
       "**Don't** add a dark/light toggle to a non-Classique world. Each has one fixed scheme.",
       "**Don't** let paper grow boxes or drop shadows. Its structure is rules, ink and numbering.",
       "**Don't** show the metro line swatch or the billets band on `.nav-section` used inside `.main`. Those labels are reset to plain muted text.",
-      "**Don't** invent figures for the paper results table or any signature; nothing there may claim outside use."
+      "**Don't** invent figures for the paper results table or any signature; nothing there may claim outside use.",
+      "Don't leave a design or language control permanently on screen: both live only in the transient easter-egg menu (three clicks on the logo, or typing \"argus\")."
     ]
   }
 }

@@ -7,11 +7,12 @@ import { Card, Check, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Sk
 import { num, pct } from "../lib/format";
 import { useDebounced } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
 export const ALLOCATION_PAGES = [
-  { path: "optimisation", label: "Optimisation et frontière" },
-  { path: "lasso", label: "Régularisation (LASSO)" },
-  { path: "backtest", label: "Backtest hors échantillon" },
+  { path: "optimisation", label: ["Optimisation et frontière", "Optimisation and frontier"] },
+  { path: "lasso", label: ["Régularisation (LASSO)", "Regularisation (LASSO)"] },
+  { path: "backtest", label: ["Backtest hors échantillon", "Out-of-sample backtest"] },
 ] as const;
 
 export default function Allocation() {
@@ -19,16 +20,16 @@ export default function Allocation() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Allocation de portefeuille</h1>
+          <h1 className="page-title">{tr("Allocation de portefeuille", "Portfolio allocation")}</h1>
           <div className="page-sub">
-            Moyenne-variance sous contraintes sur l'univers de la plateforme (rendements en euros) : shrinkage des estimateurs,
-            vente à découvert, LASSO / elastic-net, coûts de transaction et test hors échantillon.
+            {tr("Moyenne-variance sous contraintes sur l'univers de la plateforme (rendements en euros) : shrinkage des estimateurs, vente à découvert, LASSO / elastic-net, coûts de transaction et test hors échantillon.",
+              "Constrained mean-variance on the platform's universe (returns in euros): estimator shrinkage, short selling, LASSO / elastic-net, transaction costs and an out-of-sample test.")}
           </div>
         </div>
       </div>
       <nav className="tabs subnav" aria-label="Allocation">
         {ALLOCATION_PAGES.map((m) => (
-          <NavLink key={m.path} to={`/allocation/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{m.label}</NavLink>
+          <NavLink key={m.path} to={`/allocation/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{tr(m.label[0], m.label[1])}</NavLink>
         ))}
       </nav>
       <Outlet />
@@ -50,7 +51,7 @@ function UniversePicker({ value, onChange }: { value: string[]; onChange: (v: st
   };
   return (
     <div>
-      <div className="form-group-title">Univers ({value.length} actifs, en {data.base_currency})</div>
+      <div className="form-group-title">{tr(`Univers (${value.length} actifs, en ${data.base_currency})`, `Universe (${value.length} assets, in ${data.base_currency})`)}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {data.assets.map((a) => (
           <button key={a.ticker} type="button" title={`${a.name} · ${a.currency}`} onClick={() => toggle(a.ticker)}
@@ -88,23 +89,23 @@ export function OptimisationPage() {
       legend: { top: 0, type: "scroll" },
       grid: { top: 50 },
       tooltip: { trigger: "item", formatter: (it: { seriesName: string; value: number[]; name?: string }) =>
-        `${it.name || it.seriesName}<br/>vol ${pct(it.value[0], 1)} · rendement ${pct(it.value[1], 1)}` },
-      xAxis: { type: "value", name: "volatilité annuelle", nameLocation: "middle", nameGap: 26, min: 0, axisLabel: { formatter: (v: number) => pct(v, 0) } },
-      yAxis: { type: "value", name: "rendement espéré", axisLabel: { formatter: (v: number) => pct(v, 0) } },
+        `${it.name || it.seriesName}<br/>vol ${pct(it.value[0], 1)} · ${tr("rendement", "return")} ${pct(it.value[1], 1)}` },
+      xAxis: { type: "value", name: tr("volatilité annuelle", "annual volatility"), nameLocation: "middle", nameGap: 26, min: 0, axisLabel: { formatter: (v: number) => pct(v, 0) } },
+      yAxis: { type: "value", name: tr("rendement espéré", "expected return"), axisLabel: { formatter: (v: number) => pct(v, 0) } },
       series: [
-        { type: "line", name: "Frontière sans contrainte (formule fermée)", showSymbol: false, color: p.muted, lineStyle: { width: 1.5, type: "dotted" },
+        { type: "line", name: tr("Frontière sans contrainte (formule fermée)", "Unconstrained frontier (closed form)"), showSymbol: false, color: p.muted, lineStyle: { width: 1.5, type: "dotted" },
           data: data.frontier.unconstrained.map((x) => [x.vol, x.ret]) },
-        { type: "line", name: `Frontière avec shorts ≤ ${pct(req.short_max, 0)}`, showSymbol: false, color: p.series[2], lineStyle: { width: 2, type: "dashed" },
+        { type: "line", name: tr(`Frontière avec shorts ≤ ${pct(req.short_max, 0)}`, `Frontier with shorts ≤ ${pct(req.short_max, 0)}`), showSymbol: false, color: p.series[2], lineStyle: { width: 2, type: "dashed" },
           data: data.frontier.with_shorts.map((x) => [x.vol, x.ret]) },
-        { type: "line", name: "Frontière long-only", showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 },
+        { type: "line", name: tr("Frontière long-only", "Long-only frontier"), showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 },
           data: data.frontier.long_only.map((x) => [x.vol, x.ret]) },
-        { type: "scatter", name: "Actifs", symbolSize: 8, color: p.textSecondary,
+        { type: "scatter", name: tr("Actifs", "Assets"), symbolSize: 8, color: p.textSecondary,
           label: { show: true, position: "right", fontSize: 10, color: p.textSecondary, formatter: (it: { name: string }) => it.name },
           data: tickers.map((t, i) => ({ name: t, value: [data.estimates.vol[i], data.estimates.mu[i]] })) },
         pt("1/N", data.equal_weight, p.series[3], "diamond"),
-        pt("Minimum variance", data.min_variance, p.series[4], "triangle"),
-        pt("Tangence (Sharpe max, long-only)", data.tangency, p.series[5], "rect"),
-        pt("Portefeuille optimisé", data.optimal, p.series[1], "pin"),
+        pt(tr("Minimum variance", "Minimum variance"), data.min_variance, p.series[4], "triangle"),
+        pt(tr("Tangence (Sharpe max, long-only)", "Tangency (max Sharpe, long-only)"), data.tangency, p.series[5], "rect"),
+        pt(tr("Portefeuille optimisé", "Optimised portfolio"), data.optimal, p.series[1], "pin"),
       ],
     };
   }, [data, tickers, req.short_max]);
@@ -118,8 +119,8 @@ export function OptimisationPage() {
       xAxis: { type: "value", axisLabel: { formatter: (v: number) => pct(v, 0) } },
       yAxis: { type: "category", data: tickers, inverse: true },
       series: [
-        { type: "bar", name: "Poids optimisé", color: p.series[1], data: tickers.map((t) => data.optimal.weights[t]) },
-        { type: "bar", name: "Contribution au risque", color: p.series[0], data: tickers.map((t) => data.optimal.risk_contributions[t]) },
+        { type: "bar", name: tr("Poids optimisé", "Optimised weight"), color: p.series[1], data: tickers.map((t) => data.optimal.weights[t]) },
+        { type: "bar", name: tr("Contribution au risque", "Risk contribution"), color: p.series[0], data: tickers.map((t) => data.optimal.risk_contributions[t]) },
         { type: "bar", name: "1/N", color: p.muted, data: tickers.map((t) => data.equal_weight.weights[t]) },
       ],
     };
@@ -129,7 +130,7 @@ export function OptimisationPage() {
     if (!data) return {};
     const c = data.estimates.corr;
     return {
-      tooltip: { formatter: (it: { value: number[] }) => `${tickers[it.value[0]]} / ${tickers[it.value[1]]} : <b>${num(it.value[2], 2)}</b>` },
+      tooltip: { formatter: (it: { value: number[] }) => `${tickers[it.value[0]]} / ${tickers[it.value[1]]}${tr(" : ", ": ")}<b>${num(it.value[2], 2)}</b>` },
       grid: { top: 10, left: 80, bottom: 70 },
       xAxis: { type: "category", data: tickers, axisLabel: { rotate: 45, fontSize: 10 } },
       yAxis: { type: "category", data: tickers, axisLabel: { fontSize: 10 }, inverse: true },
@@ -142,37 +143,37 @@ export function OptimisationPage() {
   return (
     <div className="split">
       <div className="sticky">
-        <Card title="Paramètres">
+        <Card title={tr("Paramètres", "Parameters")}>
           <div className="form">
             <UniversePicker value={req.tickers} onChange={(tickers) => set({ tickers })} />
             <div className="form-sep" />
-            <div className="form-group-title">Estimation</div>
-            <SelectField label="Historique" value={req.lookback_days} onChange={(lookback_days) => set({ lookback_days })}
-              options={[{ value: 126, label: "6 mois" }, { value: 252, label: "1 an" }, { value: 504, label: "2 ans" }]} />
+            <div className="form-group-title">{tr("Estimation", "Estimation")}</div>
+            <SelectField label={tr("Historique", "History")} value={req.lookback_days} onChange={(lookback_days) => set({ lookback_days })}
+              options={[{ value: 126, label: tr("6 mois", "6 months") }, { value: 252, label: tr("1 an", "1 year") }, { value: 504, label: tr("2 ans", "2 years") }]} />
             <div className="form-row">
-              <SelectField label="Rendements espérés" value={req.mean_method} onChange={(mean_method) => set({ mean_method })}
-                options={[{ value: "sample", label: "Moyenne empirique" }, { value: "shrunk", label: "James-Stein" }, { value: "zero", label: "Ignorés" }]} />
+              <SelectField label={tr("Rendements espérés", "Expected returns")} value={req.mean_method} onChange={(mean_method) => set({ mean_method })}
+                options={[{ value: "sample", label: tr("Moyenne empirique", "Sample mean") }, { value: "shrunk", label: "James-Stein" }, { value: "zero", label: tr("Ignorés", "Ignored") }]} />
               <SelectField label="Covariance" value={req.cov_method} onChange={(cov_method) => set({ cov_method })}
-                options={[{ value: "ledoit-wolf", label: "Ledoit-Wolf" }, { value: "sample", label: "Empirique" }]} />
+                options={[{ value: "ledoit-wolf", label: "Ledoit-Wolf" }, { value: "sample", label: tr("Empirique", "Sample") }]} />
             </div>
             <div className="form-sep" />
-            <div className="form-group-title">Objectif et contraintes</div>
+            <div className="form-group-title">{tr("Objectif et contraintes", "Objective and constraints")}</div>
             <Segmented value={req.objective} onChange={(objective) => set({ objective })}
-              options={[{ value: "mean-variance", label: "Moy.-var." }, { value: "min-variance", label: "Min var." }, { value: "max-sharpe", label: "Sharpe max" }]} />
-            {req.objective === "mean-variance" && <NumberField label="Aversion au risque γ" value={req.gamma} min={0.1} max={200} digits={1} onChange={(gamma) => set({ gamma })} />}
-            <Check label="Long-only (pas de vente à découvert)" checked={req.long_only} onChange={(long_only) => set({ long_only })} />
+              options={[{ value: "mean-variance", label: tr("Moy.-var.", "Mean-var.") }, { value: "min-variance", label: "Min var." }, { value: "max-sharpe", label: tr("Sharpe max", "Max Sharpe") }]} />
+            {req.objective === "mean-variance" && <NumberField label={tr("Aversion au risque γ", "Risk aversion γ")} value={req.gamma} min={0.1} max={200} digits={1} onChange={(gamma) => set({ gamma })} />}
+            <Check label={tr("Long-only (pas de vente à découvert)", "Long-only (no short selling)")} checked={req.long_only} onChange={(long_only) => set({ long_only })} />
             <div className="form-row">
-              {!req.long_only && <NumberField label="Short max / actif" value={req.short_max} suffix="%" scale={100} min={0} max={2} digits={0} onChange={(short_max) => set({ short_max })} />}
-              <NumberField label="Poids max / actif" value={req.w_max} suffix="%" scale={100} min={0.05} max={1} digits={0} onChange={(w_max) => set({ w_max })} />
+              {!req.long_only && <NumberField label={tr("Short max / actif", "Max short / asset")} value={req.short_max} suffix="%" scale={100} min={0} max={2} digits={0} onChange={(short_max) => set({ short_max })} />}
+              <NumberField label={tr("Poids max / actif", "Max weight / asset")} value={req.w_max} suffix="%" scale={100} min={0.05} max={1} digits={0} onChange={(w_max) => set({ w_max })} />
             </div>
             <div className="form-row">
-              <NumberField label="LASSO λ₁" value={req.l1} min={0} max={1} digits={4} hint="Pénalité sur Σ|wᵢ| (active seulement avec des shorts)" onChange={(l1) => set({ l1 })} />
-              <NumberField label="Ridge λ₂" value={req.l2} min={0} max={10} digits={3} hint="Pénalité sur Σwᵢ²" onChange={(l2) => set({ l2 })} />
+              <NumberField label="LASSO λ₁" value={req.l1} min={0} max={1} digits={4} hint={tr("Pénalité sur Σ|wᵢ| (active seulement avec des shorts)", "Penalty on Σ|wᵢ| (active only with shorts)")} onChange={(l1) => set({ l1 })} />
+              <NumberField label="Ridge λ₂" value={req.l2} min={0} max={10} digits={3} hint={tr("Pénalité sur Σwᵢ²", "Penalty on Σwᵢ²")} onChange={(l2) => set({ l2 })} />
             </div>
             <div className="form-row">
-              <NumberField label="Coûts de transaction" value={req.cost} suffix="bp" scale={1e4} min={0} max={0.05} digits={0} hint="Depuis le 1/N, amortis sur la durée de détention" onChange={(cost) => set({ cost })} />
-              <SelectField label="Durée de détention" value={req.holding_days} onChange={(holding_days) => set({ holding_days })}
-                options={[{ value: 5, label: "1 semaine" }, { value: 21, label: "1 mois" }, { value: 63, label: "3 mois" }, { value: 252, label: "1 an" }]} />
+              <NumberField label={tr("Coûts de transaction", "Transaction costs")} value={req.cost} suffix="bp" scale={1e4} min={0} max={0.05} digits={0} hint={tr("Depuis le 1/N, amortis sur la durée de détention", "From 1/N, amortised over the holding period")} onChange={(cost) => set({ cost })} />
+              <SelectField label={tr("Durée de détention", "Holding period")} value={req.holding_days} onChange={(holding_days) => set({ holding_days })}
+                options={[{ value: 5, label: tr("1 semaine", "1 week") }, { value: 21, label: tr("1 mois", "1 month") }, { value: 63, label: tr("3 mois", "3 months") }, { value: 252, label: tr("1 an", "1 year") }]} />
             </div>
           </div>
         </Card>
@@ -180,38 +181,42 @@ export function OptimisationPage() {
       <div className="grid">
         <ErrorBox error={error} />
         <Explainer>
-          Markowitz : on cherche le portefeuille qui maximise μ'w − (γ/2) w'Σw sous les contraintes choisies. Les entrées μ et Σ sont
-          estimées sur {data ? `${data.n_obs} jours (${data.start} → ${data.end})` : "l'historique"} de rendements en euros : les
-          actifs américains incluent le risque de change EUR/USD.
+          {tr(<>
+            Markowitz : on cherche le portefeuille qui maximise μ'w − (γ/2) w'Σw sous les contraintes choisies. Les entrées μ et Σ sont
+            estimées sur {data ? `${data.n_obs} jours (${data.start} → ${data.end})` : "l'historique"} de rendements en euros : les
+            actifs américains incluent le risque de change EUR/USD.
+          </>, <>
+            Markowitz: we look for the portfolio that maximises μ'w − (γ/2) w'Σw under the chosen constraints. The inputs μ and Σ are
+            estimated on {data ? `${data.n_obs} days (${data.start} → ${data.end})` : "the history"} of returns in euros: the
+            US assets include the EUR/USD currency risk.
+          </>)}
         </Explainer>
         <div className="grid cols-4">
-          <Stat label="Rendement espéré" value={pct(o?.expected_return, 2)} foot={data ? `Taux sans risque ${pct(data.risk_free, 2)}` : undefined} busy={isFetching} />
-          <Stat label="Volatilité" value={pct(o?.volatility, 2)} foot={o ? `Sharpe ${num(o.sharpe, 2)}` : undefined} busy={isFetching} />
-          <Stat label="Actifs détenus" value={o ? `${o.n_active} / ${tickers.length}` : "—"} foot={o ? `N effectif ${num(o.effective_n, 1)} · exposition brute ${pct(o.gross_exposure, 0)}` : undefined} busy={isFetching} />
-          <Stat label="Rotation depuis 1/N" value={pct(o?.turnover, 0)} foot={data ? `Shrinkage Σ ${pct(data.estimates.cov_shrinkage, 1)} · μ ${pct(data.estimates.mean_shrinkage, 0)}` : undefined} busy={isFetching} />
+          <Stat label={tr("Rendement espéré", "Expected return")} value={pct(o?.expected_return, 2)} foot={data ? tr(`Taux sans risque ${pct(data.risk_free, 2)}`, `Risk-free rate ${pct(data.risk_free, 2)}`) : undefined} busy={isFetching} />
+          <Stat label={tr("Volatilité", "Volatility")} value={pct(o?.volatility, 2)} foot={o ? `Sharpe ${num(o.sharpe, 2)}` : undefined} busy={isFetching} />
+          <Stat label={tr("Actifs détenus", "Assets held")} value={o ? `${o.n_active} / ${tickers.length}` : "—"} foot={o ? tr(`N effectif ${num(o.effective_n, 1)} · exposition brute ${pct(o.gross_exposure, 0)}`, `Effective N ${num(o.effective_n, 1)} · gross exposure ${pct(o.gross_exposure, 0)}`) : undefined} busy={isFetching} />
+          <Stat label={tr("Rotation depuis 1/N", "Turnover from 1/N")} value={pct(o?.turnover, 0)} foot={data ? `Shrinkage Σ ${pct(data.estimates.cov_shrinkage, 1)} · μ ${pct(data.estimates.mean_shrinkage, 0)}` : undefined} busy={isFetching} />
         </div>
-        <Card title="Frontière efficiente">
-          {data ? <EChart option={frontierOption} height={460} ariaLabel="Frontière efficiente et portefeuilles" /> : <Skeleton height={400} />}
+        <Card title={tr("Frontière efficiente", "Efficient frontier")}>
+          {data ? <EChart option={frontierOption} height={460} ariaLabel={tr("Frontière efficiente et portefeuilles", "Efficient frontier and portfolios")} /> : <Skeleton height={400} />}
         </Card>
         <InfoBox>
-          Plus les contraintes sont fortes, plus la frontière recule vers la droite : la frontière sans contrainte (formule fermée de
-          Markowitz) est la meilleure en théorie, mais elle s'appuie sur des positions courtes énormes, construites sur des moyennes
-          historiques très bruitées. Avec 2 ans de données, le rétrécissement de James-Stein ramène toutes les espérances à leur moyenne
-          commune : statistiquement, on ne sait pas distinguer les rendements des actifs.
+          {tr("Plus les contraintes sont fortes, plus la frontière recule vers la droite : la frontière sans contrainte (formule fermée de Markowitz) est la meilleure en théorie, mais elle s'appuie sur des positions courtes énormes, construites sur des moyennes historiques très bruitées. Avec 2 ans de données, le rétrécissement de James-Stein ramène toutes les espérances à leur moyenne commune : statistiquement, on ne sait pas distinguer les rendements des actifs.",
+            "The tighter the constraints, the further the frontier moves to the right: the unconstrained frontier (Markowitz's closed form) is the best in theory, but it relies on huge short positions built on very noisy historical means. With 2 years of data, James-Stein shrinkage pulls every expected return to their common mean: statistically, the assets' returns cannot be told apart.")}
         </InfoBox>
         <div className="grid cols-2">
-          <Card title="Poids et contributions au risque">
-            {data ? <EChart option={weightsOption} height={Math.max(320, tickers.length * 30)} ariaLabel="Poids et contributions au risque" /> : <Skeleton height={300} />}
+          <Card title={tr("Poids et contributions au risque", "Weights and risk contributions")}>
+            {data ? <EChart option={weightsOption} height={Math.max(320, tickers.length * 30)} ariaLabel={tr("Poids et contributions au risque", "Weights and risk contributions")} /> : <Skeleton height={300} />}
           </Card>
-          <Card title={`Corrélations (${data?.estimates.cov_shrinkage ? "Ledoit-Wolf" : "empiriques"})`}>
-            {data ? <EChart option={corrOption} height={Math.max(320, tickers.length * 30)} ariaLabel="Matrice de corrélation" /> : <Skeleton height={300} />}
+          <Card title={tr(`Corrélations (${data?.estimates.cov_shrinkage ? "Ledoit-Wolf" : "empiriques"})`, `Correlations (${data?.estimates.cov_shrinkage ? "Ledoit-Wolf" : "sample"})`)}>
+            {data ? <EChart option={corrOption} height={Math.max(320, tickers.length * 30)} ariaLabel={tr("Matrice de corrélation", "Correlation matrix")} /> : <Skeleton height={300} />}
           </Card>
         </div>
-        <Card title="Estimations par actif" flush>
+        <Card title={tr("Estimations par actif", "Estimates by asset")} flush>
           {data ? (
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>Actif</th><th>Moyenne empirique</th><th>μ utilisé</th><th>Volatilité</th><th>Poids</th><th>Contribution au risque</th></tr></thead>
+                <thead><tr><th>{tr("Actif", "Asset")}</th><th>{tr("Moyenne empirique", "Sample mean")}</th><th>{tr("μ utilisé", "μ used")}</th><th>{tr("Volatilité", "Volatility")}</th><th>{tr("Poids", "Weight")}</th><th>{tr("Contribution au risque", "Risk contribution")}</th></tr></thead>
                 <tbody>
                   {tickers.map((t, i) => (
                     <tr key={t}>
@@ -249,15 +254,15 @@ export function LassoPage() {
     tooltip: { trigger: "axis" },
     xAxis: { type: "category", name: "λ₁", nameLocation: "middle", nameGap: 26, data: path.map((x) => String(x.lambda)) },
     yAxis: [
-      { type: "value", name: "vol annuelle", scale: true, axisLabel: { formatter: (v: number) => pct(v, 1) } },
-      { type: "value", name: "actifs", splitLine: { show: false } },
+      { type: "value", name: tr("vol annuelle", "annual vol"), scale: true, axisLabel: { formatter: (v: number) => pct(v, 1) } },
+      { type: "value", name: tr("actifs", "assets"), splitLine: { show: false } },
     ],
     series: [
-      { type: "line", name: "Vol hors échantillon", color: p.series[1], symbolSize: 7, lineStyle: { width: 2.5 },
+      { type: "line", name: tr("Vol hors échantillon", "Out-of-sample vol"), color: p.series[1], symbolSize: 7, lineStyle: { width: 2.5 },
         tooltip: { valueFormatter: (v: number) => pct(v, 2) }, data: path.map((x) => x.out_of_sample_vol) },
-      { type: "line", name: "Vol dans l'échantillon", color: p.series[0], symbolSize: 6, lineStyle: { width: 2, type: "dashed" },
+      { type: "line", name: tr("Vol dans l'échantillon", "In-sample vol"), color: p.series[0], symbolSize: 6, lineStyle: { width: 2, type: "dashed" },
         tooltip: { valueFormatter: (v: number) => pct(v, 2) }, data: path.map((x) => x.in_sample_vol) },
-      { type: "bar", name: "Actifs détenus", yAxisIndex: 1, color: p.muted, itemStyle: { opacity: 0.35 }, barWidth: "40%", data: path.map((x) => x.n_active) },
+      { type: "bar", name: tr("Actifs détenus", "Assets held"), yAxisIndex: 1, color: p.muted, itemStyle: { opacity: 0.35 }, barWidth: "40%", data: path.map((x) => x.n_active) },
     ],
   }), [path]);
 
@@ -274,36 +279,35 @@ export function LassoPage() {
   return (
     <div className="split">
       <div className="sticky">
-        <Card title="Paramètres">
+        <Card title={tr("Paramètres", "Parameters")}>
           <div className="form">
             <UniversePicker value={tickers} onChange={setTickers} />
             <div className="form-sep" />
-            <NumberField label="Short max / actif" value={shortMax} suffix="%" scale={100} min={0.05} max={2} digits={0} onChange={setShortMax} />
+            <NumberField label={tr("Short max / actif", "Max short / asset")} value={shortMax} suffix="%" scale={100} min={0.05} max={2} digits={0} onChange={setShortMax} />
           </div>
         </Card>
       </div>
       <div className="grid">
         <ErrorBox error={error} />
         <Explainer>
-          Portefeuille de variance minimale avec une pénalité λ₁ Σ|wᵢ| (Brodie et al., 2009 ; DeMiguel et al., 2009). La
-          covariance est estimée sur les 60 % premiers jours, la volatilité est mesurée sur les 40 % suivants. Plus λ₁ augmente,
-          plus les positions courtes disparaissent et plus le portefeuille se concentre sur quelques actifs.
+          {tr("Portefeuille de variance minimale avec une pénalité λ₁ Σ|wᵢ| (Brodie et al., 2009 ; DeMiguel et al., 2009). La covariance est estimée sur les 60 % premiers jours, la volatilité est mesurée sur les 40 % suivants. Plus λ₁ augmente, plus les positions courtes disparaissent et plus le portefeuille se concentre sur quelques actifs.",
+            "Minimum-variance portfolio with a penalty λ₁ Σ|wᵢ| (Brodie et al., 2009; DeMiguel et al., 2009). The covariance is estimated on the first 60% of the days and the volatility is measured on the following 40%. As λ₁ grows, the short positions disappear and the portfolio concentrates on a few assets.")}
         </Explainer>
         <div className="grid cols-4">
-          <Stat label="Sans pénalité" value={pct(path[0]?.out_of_sample_vol, 2)} foot={path[0] ? `${path[0].n_active} actifs, exposition brute ${pct(path[0].gross_exposure, 0)}` : undefined} busy={isFetching} />
-          <Stat label="Meilleur λ₁ hors échantillon" value={best ? String(best.lambda) : "—"} foot={best ? `vol ${pct(best.out_of_sample_vol, 2)}, ${best.n_active} actifs` : undefined} busy={isFetching} />
-          <Stat label="Gain de volatilité" value={best && path[0] ? `${num((path[0].out_of_sample_vol - best.out_of_sample_vol) * 100, 2)} pts` : "—"} foot="Hors échantillon, contre λ₁ = 0" busy={isFetching} />
-          <Stat label="Exposition brute au meilleur λ₁" value={pct(best?.gross_exposure, 0)} foot="100 % = plus aucune vente à découvert" busy={isFetching} />
+          <Stat label={tr("Sans pénalité", "No penalty")} value={pct(path[0]?.out_of_sample_vol, 2)} foot={path[0] ? tr(`${path[0].n_active} actifs, exposition brute ${pct(path[0].gross_exposure, 0)}`, `${path[0].n_active} assets, gross exposure ${pct(path[0].gross_exposure, 0)}`) : undefined} busy={isFetching} />
+          <Stat label={tr("Meilleur λ₁ hors échantillon", "Best out-of-sample λ₁")} value={best ? String(best.lambda) : "—"} foot={best ? tr(`vol ${pct(best.out_of_sample_vol, 2)}, ${best.n_active} actifs`, `vol ${pct(best.out_of_sample_vol, 2)}, ${best.n_active} assets`) : undefined} busy={isFetching} />
+          <Stat label={tr("Gain de volatilité", "Volatility gain")} value={best && path[0] ? `${num((path[0].out_of_sample_vol - best.out_of_sample_vol) * 100, 2)} pts` : "—"} foot={tr("Hors échantillon, contre λ₁ = 0", "Out of sample, against λ₁ = 0")} busy={isFetching} />
+          <Stat label={tr("Exposition brute au meilleur λ₁", "Gross exposure at the best λ₁")} value={pct(best?.gross_exposure, 0)} foot={tr("100 % = plus aucune vente à découvert", "100% = no short selling left")} busy={isFetching} />
         </div>
-        <Card title="Chemin de régularisation : volatilité et nombre d'actifs">
-          {data ? <EChart option={pathOption} height={360} ariaLabel="Volatilité et nombre d'actifs selon lambda" /> : <Skeleton height={300} />}
+        <Card title={tr("Chemin de régularisation : volatilité et nombre d'actifs", "Regularisation path: volatility and number of assets")}>
+          {data ? <EChart option={pathOption} height={360} ariaLabel={tr("Volatilité et nombre d'actifs selon lambda", "Volatility and number of assets by lambda")} /> : <Skeleton height={300} />}
         </Card>
-        <Card title="Poids selon λ₁">
-          {data ? <EChart option={weightsOption} height={360} ariaLabel="Poids de chaque actif selon lambda" /> : <Skeleton height={300} />}
+        <Card title={tr("Poids selon λ₁", "Weights by λ₁")}>
+          {data ? <EChart option={weightsOption} height={360} ariaLabel={tr("Poids de chaque actif selon lambda", "Weight of each asset by lambda")} /> : <Skeleton height={300} />}
         </Card>
         <InfoBox>
-          En long-only, Σ|wᵢ| = Σwᵢ = 1 : la pénalité est constante et ne change rien. C'est la contrainte de non-vente à découvert
-          qui joue alors le rôle de régularisation (Jagannathan et Ma, 2003). La pénalité ne mord que si l'on autorise les shorts.
+          {tr("En long-only, Σ|wᵢ| = Σwᵢ = 1 : la pénalité est constante et ne change rien. C'est la contrainte de non-vente à découvert qui joue alors le rôle de régularisation (Jagannathan et Ma, 2003). La pénalité ne mord que si l'on autorise les shorts.",
+            "In long-only, Σ|wᵢ| = Σwᵢ = 1: the penalty is constant and changes nothing. The no-short-selling constraint then acts as the regularisation (Jagannathan and Ma, 2003). The penalty only bites when shorts are allowed.")}
         </InfoBox>
       </div>
     </div>
@@ -337,23 +341,23 @@ export function BacktestPage() {
   return (
     <div className="split">
       <div className="sticky">
-        <Card title="Paramètres">
+        <Card title={tr("Paramètres", "Parameters")}>
           <div className="form">
             <UniversePicker value={req.tickers} onChange={(tickers) => set({ tickers })} />
             <div className="form-sep" />
             <div className="form-row">
-              <SelectField label="Fenêtre d'estimation" value={req.window} onChange={(window) => set({ window })}
-                options={[{ value: 63, label: "3 mois" }, { value: 126, label: "6 mois" }, { value: 252, label: "1 an" }]} />
-              <SelectField label="Rebalancement" value={req.rebalance_days} onChange={(rebalance_days) => set({ rebalance_days })}
-                options={[{ value: 5, label: "Hebdo" }, { value: 21, label: "Mensuel" }, { value: 63, label: "Trimestriel" }]} />
+              <SelectField label={tr("Fenêtre d'estimation", "Estimation window")} value={req.window} onChange={(window) => set({ window })}
+                options={[{ value: 63, label: tr("3 mois", "3 months") }, { value: 126, label: tr("6 mois", "6 months") }, { value: 252, label: tr("1 an", "1 year") }]} />
+              <SelectField label={tr("Rebalancement", "Rebalancing")} value={req.rebalance_days} onChange={(rebalance_days) => set({ rebalance_days })}
+                options={[{ value: 5, label: tr("Hebdo", "Weekly") }, { value: 21, label: tr("Mensuel", "Monthly") }, { value: 63, label: tr("Trimestriel", "Quarterly") }]} />
             </div>
             <div className="form-row">
-              <NumberField label="Coûts" value={req.cost} suffix="bp" scale={1e4} min={0} max={0.05} digits={0} onChange={(cost) => set({ cost })} />
-              <NumberField label="Aversion γ" value={req.gamma} min={0.1} max={200} digits={1} onChange={(gamma) => set({ gamma })} />
+              <NumberField label={tr("Coûts", "Costs")} value={req.cost} suffix="bp" scale={1e4} min={0} max={0.05} digits={0} onChange={(cost) => set({ cost })} />
+              <NumberField label={tr("Aversion γ", "Aversion γ")} value={req.gamma} min={0.1} max={200} digits={1} onChange={(gamma) => set({ gamma })} />
             </div>
             <div className="form-row">
-              <NumberField label="Short max" value={req.short_max} suffix="%" scale={100} min={0} max={2} digits={0} onChange={(short_max) => set({ short_max })} />
-              <NumberField label="Poids max" value={req.w_max} suffix="%" scale={100} min={0.05} max={1} digits={0} onChange={(w_max) => set({ w_max })} />
+              <NumberField label={tr("Short max", "Max short")} value={req.short_max} suffix="%" scale={100} min={0} max={2} digits={0} onChange={(short_max) => set({ short_max })} />
+              <NumberField label={tr("Poids max", "Max weight")} value={req.w_max} suffix="%" scale={100} min={0.05} max={1} digits={0} onChange={(w_max) => set({ w_max })} />
             </div>
             <NumberField label="Elastic-net λ₁" value={req.l1} min={0} max={1} digits={4} onChange={(l1) => set({ l1 })} />
           </div>
@@ -362,25 +366,23 @@ export function BacktestPage() {
       <div className="grid">
         <ErrorBox error={error} />
         <Explainer>
-          Walk-forward : à chaque rebalancement, chaque règle n'utilise que les {req.window} jours de rendements précédents, puis les
-          poids dérivent avec les prix jusqu'au rebalancement suivant ; les coûts sont prélevés sur le montant échangé. C'est le test
-          de DeMiguel, Garlappi et Uppal (2009) : un portefeuille optimisé bat-il le 1/N une fois l'erreur d'estimation et les coûts
-          pris en compte ?
+          {tr(`Walk-forward : à chaque rebalancement, chaque règle n'utilise que les ${req.window} jours de rendements précédents, puis les poids dérivent avec les prix jusqu'au rebalancement suivant ; les coûts sont prélevés sur le montant échangé. C'est le test de DeMiguel, Garlappi et Uppal (2009) : un portefeuille optimisé bat-il le 1/N une fois l'erreur d'estimation et les coûts pris en compte ?`,
+            `Walk-forward: at each rebalancing every rule uses only the previous ${req.window} days of returns, then the weights drift with prices until the next rebalancing; costs are charged on the amount traded. This is the test of DeMiguel, Garlappi and Uppal (2009): does an optimised portfolio beat 1/N once estimation error and costs are taken into account?`)}
         </Explainer>
         <div className="grid cols-4">
-          <Stat label="Meilleur Sharpe net" value={best ? num(best.stats.sharpe, 2) : "—"} foot={best?.name} busy={isFetching} />
+          <Stat label={tr("Meilleur Sharpe net", "Best net Sharpe")} value={best ? num(best.stats.sharpe, 2) : "—"} foot={best?.name} busy={isFetching} />
           <Stat label="1/N" value={data ? num(data.strategies[0].stats.sharpe, 2) : "—"} foot={data ? `vol ${pct(data.strategies[0].stats.volatility, 1)}` : undefined} busy={isFetching} />
-          <Stat label="Rebalancements" value={data ? String(data.strategies[0].n_rebalances) : "—"} foot={data ? `${data.dates[0]} → ${data.dates[data.dates.length - 1]}` : undefined} busy={isFetching} />
-          <Stat label="Taux sans risque" value={pct(data?.risk_free, 2)} foot="EUR 3 mois, pour le Sharpe" busy={isFetching} />
+          <Stat label={tr("Rebalancements", "Rebalancings")} value={data ? String(data.strategies[0].n_rebalances) : "—"} foot={data ? `${data.dates[0]} → ${data.dates[data.dates.length - 1]}` : undefined} busy={isFetching} />
+          <Stat label={tr("Taux sans risque", "Risk-free rate")} value={pct(data?.risk_free, 2)} foot={tr("EUR 3 mois, pour le Sharpe", "EUR 3-month, for the Sharpe")} busy={isFetching} />
         </div>
-        <Card title="Richesse nette de coûts (départ = 1)">
-          {data ? <EChart option={wealthOption} height={400} ariaLabel="Richesse cumulée de chaque stratégie" /> : <Skeleton height={340} />}
+        <Card title={tr("Richesse nette de coûts (départ = 1)", "Wealth net of costs (start = 1)")}>
+          {data ? <EChart option={wealthOption} height={400} ariaLabel={tr("Richesse cumulée de chaque stratégie", "Cumulative wealth of each strategy")} /> : <Skeleton height={340} />}
         </Card>
-        <Card title="Performances hors échantillon" flush>
+        <Card title={tr("Performances hors échantillon", "Out-of-sample performance")} flush>
           {data ? (
             <div className={`table-wrap${isFetching ? " busy" : ""}`}>
               <table className="data">
-                <thead><tr><th>Stratégie</th><th>Rendement annuel</th><th>Volatilité</th><th>Sharpe</th><th>Drawdown max</th><th>Rotation / rebal.</th><th>Coûts cumulés</th><th style={{ textAlign: "left" }}>Règle</th></tr></thead>
+                <thead><tr><th>{tr("Stratégie", "Strategy")}</th><th>{tr("Rendement annuel", "Annual return")}</th><th>{tr("Volatilité", "Volatility")}</th><th>Sharpe</th><th>{tr("Drawdown max", "Max drawdown")}</th><th>{tr("Rotation / rebal.", "Turnover / rebal.")}</th><th>{tr("Coûts cumulés", "Cumulative costs")}</th><th style={{ textAlign: "left" }}>{tr("Règle", "Rule")}</th></tr></thead>
                 <tbody>
                   {data.strategies.map((s) => (
                     <tr key={s.name}>
@@ -395,10 +397,8 @@ export function BacktestPage() {
           ) : <div className="card-body"><Skeleton height={200} /></div>}
         </Card>
         <InfoBox>
-          Résultat typique : la moyenne-variance aux moyennes empiriques, avec shorts, empile des paris extrêmes sur des moyennes bruitées
-          (rotation énorme, volatilité élevée) et perd contre 1/N. Les contraintes (long-only, poids plafonnés), le shrinkage et la
-          pénalisation des coûts réduisent l'erreur d'estimation et la rotation. Le minimum variance, qui n'utilise pas les moyennes,
-          délivre en général la volatilité la plus basse. Avec 2 ans d'historique, l'échantillon reste court : ces écarts sont indicatifs.
+          {tr("Résultat typique : la moyenne-variance aux moyennes empiriques, avec shorts, empile des paris extrêmes sur des moyennes bruitées (rotation énorme, volatilité élevée) et perd contre 1/N. Les contraintes (long-only, poids plafonnés), le shrinkage et la pénalisation des coûts réduisent l'erreur d'estimation et la rotation. Le minimum variance, qui n'utilise pas les moyennes, délivre en général la volatilité la plus basse. Avec 2 ans d'historique, l'échantillon reste court : ces écarts sont indicatifs.",
+            "Typical result: mean-variance at sample means, with shorts, stacks extreme bets on noisy means (huge turnover, high volatility) and loses to 1/N. Constraints (long-only, capped weights), shrinkage and cost penalties reduce estimation error and turnover. Minimum variance, which does not use the means, usually delivers the lowest volatility. With 2 years of history the sample is still short: these gaps are indicative.")}
         </InfoBox>
       </div>
     </div>

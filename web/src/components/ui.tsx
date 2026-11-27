@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { signed } from "../lib/format";
+import { tr } from "../lib/i18n";
 
 export function Card({ title, actions, children, flush, className = "" }: {
   title?: ReactNode; actions?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
@@ -176,7 +177,7 @@ export function Sparkline({ data, width = 120, height = 32, color }: {
 
 /** Sentiment score in [-1, 1] as a centred bar; the signed number is always shown next to it. */
 export function ScoreBar({ score, palette }: { score: number | null; palette: [string, string, string] }) {
-  if (score === null) return <span className="badge">non scoré</span>;
+  if (score === null) return <span className="badge">{tr("non scoré", "not scored")}</span>;
   const width = Math.min(Math.abs(score), 1) * 50;
   return (
     <div>

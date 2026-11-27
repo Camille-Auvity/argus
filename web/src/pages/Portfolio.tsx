@@ -9,15 +9,19 @@ import { money, num, pct, signedMoney } from "../lib/format";
 import { CDS_PRESETS, CDS_TENORS } from "../lib/credit";
 import { useTickers } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
-const KIND_LABEL: Record<PositionKind, string> = {
-  equity: "Action", option: "Option", barrier: "Barrière", digital: "Digitale", asian: "Asiatique", cliquet: "Cliquet",
-  autocall: "Autocall", bond: "Obligation", future: "Future", cds: "CDS", capfloor: "Cap / floor", fxoption: "Option de change", varswap: "Swap de variance",
+const KIND_PAIRS: Record<PositionKind, [string, string]> = {
+  equity: ["Action", "Equity"], option: ["Option", "Option"], barrier: ["Barrière", "Barrier"], digital: ["Digitale", "Digital"],
+  asian: ["Asiatique", "Asian"], cliquet: ["Cliquet", "Cliquet"], autocall: ["Autocall", "Autocall"], bond: ["Obligation", "Bond"],
+  future: ["Future", "Future"], cds: ["CDS", "CDS"], capfloor: ["Cap / floor", "Cap / floor"], fxoption: ["Option de change", "FX option"],
+  varswap: ["Swap de variance", "Variance swap"],
 };
+const KIND_LABEL = new Proxy({} as Record<PositionKind, string>, { get: (_, k: string) => KIND_PAIRS[k as PositionKind] && tr(...KIND_PAIRS[k as PositionKind]) });
 
 export const PORTFOLIO_PAGES = [
-  { path: "positions", label: "Positions & expositions" },
-  { path: "risques", label: "Stress tests, VaR & P&L" },
+  { path: "positions", label: ["Positions & expositions", "Positions & exposures"] },
+  { path: "risques", label: ["Stress tests, VaR & P&L", "Stress tests, VaR & P&L"] },
 ] as const;
 
 export default function Portfolio() {
@@ -28,22 +32,22 @@ export default function Portfolio() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Portefeuille & risques</h1>
-          <div className="page-sub">Book multi-actifs valorisé aux dernières données de marché, en euros. Chaque scénario de stress est une revalorisation complète.</div>
+          <h1 className="page-title">{tr("Portefeuille & risques", "Portfolio & risk")}</h1>
+          <div className="page-sub">{tr("Book multi-actifs valorisé aux dernières données de marché, en euros. Chaque scénario de stress est une revalorisation complète.", "Multi-asset book valued at the latest market data, in euros. Every stress scenario is a full revaluation.")}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" onClick={() => demo.mutate()} disabled={demo.isPending}>
-            <Wand2 size={14} /> {demo.isPending ? "Chargement…" : "Charger le book de démonstration"}
+            <Wand2 size={14} /> {demo.isPending ? tr("Chargement…", "Loading…") : tr("Charger le book de démonstration", "Load the demo book")}
           </button>
-          <button className="btn ghost" onClick={() => { if (window.confirm("Supprimer toutes les positions ?")) clear.mutate(); }}>
-            <Trash2 size={14} /> Vider
+          <button className="btn ghost" onClick={() => { if (window.confirm(tr("Supprimer toutes les positions ?", "Delete all positions?"))) clear.mutate(); }}>
+            <Trash2 size={14} /> {tr("Vider", "Clear")}
           </button>
         </div>
       </div>
       <ErrorBox error={demo.error ?? clear.error} />
-      <nav className="tabs subnav" aria-label="Portefeuille">
+      <nav className="tabs subnav" aria-label={tr("Portefeuille", "Portfolio")}>
         {PORTFOLIO_PAGES.map((m) => (
-          <NavLink key={m.path} to={`/portfolio/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{m.label}</NavLink>
+          <NavLink key={m.path} to={`/portfolio/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{tr(m.label[0], m.label[1])}</NavLink>
         ))}
       </nav>
       <Outlet />
@@ -58,7 +62,7 @@ function usePortfolio() {
 function Empty() {
   return (
     <div className="card empty">
-      Aucune position. Chargez le book de démonstration ou ajoutez une position.
+      {tr("Aucune position. Chargez le book de démonstration ou ajoutez une position.", "No positions. Load the demo book or add a position.")}
     </div>
   );
 }
@@ -95,24 +99,24 @@ export function PositionsPage() {
       {data && !data.positions.length && <Empty />}
       {t && (
         <div className="grid cols-4">
-          <Stat label="Valeur du book" value={money(t.market_value)} foot={<>P&L <Delta value={t.pnl} digits={0} /> €</>} />
-          <Stat label="Delta cash" value={signedMoney(t.delta_cash)} foot="exposition actions équivalente" />
-          <Stat label="Vega (1 pt de vol)" value={signedMoney(t.vega)} foot={`Gamma 1 % : ${signedMoney(t.gamma_cash)}`} />
-          <Stat label="Theta (1 jour)" value={signedMoney(t.theta)} foot={`Rho 1 % : ${signedMoney(t.rho)} · DV01 ${money(t.dv01)}`} />
+          <Stat label={tr("Valeur du book", "Book value")} value={money(t.market_value)} foot={<>P&L <Delta value={t.pnl} digits={0} /> €</>} />
+          <Stat label="Delta cash" value={signedMoney(t.delta_cash)} foot={tr("exposition actions équivalente", "equivalent equity exposure")} />
+          <Stat label={tr("Vega (1 pt de vol)", "Vega (1 vol pt)")} value={signedMoney(t.vega)} foot={tr(`Gamma 1 % : ${signedMoney(t.gamma_cash)}`, `Gamma 1%: ${signedMoney(t.gamma_cash)}`)} />
+          <Stat label={tr("Theta (1 jour)", "Theta (1 day)")} value={signedMoney(t.theta)} foot={tr(`Rho 1 % : ${signedMoney(t.rho)} · DV01 ${money(t.dv01)}`, `Rho 1%: ${signedMoney(t.rho)} · DV01 ${money(t.dv01)}`)} />
         </div>
       )}
       {t && data?.positions.some((p) => p.kind === "cds") && (
         <div className="grid cols-4">
-          <Stat label="CS01 (+1 bp de spread)" value={signedMoney(t.cs01)} foot="Tous les CDS, courbes re-bootstrapées" />
-          <Stat label="Jump-to-default total" value={signedMoney(t.jtd)} foot="Si tous les émetteurs faisaient défaut" />
-          <Stat label="Pire défaut isolé" value={signedMoney(Math.min(0, ...data.positions.filter((p) => p.kind === "cds").map((p) => p.jtd ?? 0)))}
-            foot="Position CDS la plus exposée" />
-          <Stat label="Notionnel CDS net" value={signedMoney(data.positions.filter((p) => p.kind === "cds").reduce((a, p) => a + p.quantity, 0))}
-            foot="> 0 : acheteur net de protection (devise des contrats)" />
+          <Stat label={tr("CS01 (+1 bp de spread)", "CS01 (+1 bp spread)")} value={signedMoney(t.cs01)} foot={tr("Tous les CDS, courbes re-bootstrapées", "All CDS, curves re-bootstrapped")} />
+          <Stat label={tr("Jump-to-default total", "Total jump-to-default")} value={signedMoney(t.jtd)} foot={tr("Si tous les émetteurs faisaient défaut", "If every issuer defaulted")} />
+          <Stat label={tr("Pire défaut isolé", "Worst single default")} value={signedMoney(Math.min(0, ...data.positions.filter((p) => p.kind === "cds").map((p) => p.jtd ?? 0)))}
+            foot={tr("Position CDS la plus exposée", "Most exposed CDS position")} />
+          <Stat label={tr("Notionnel CDS net", "Net CDS notional")} value={signedMoney(data.positions.filter((p) => p.kind === "cds").reduce((a, p) => a + p.quantity, 0))}
+            foot={tr("> 0 : acheteur net de protection (devise des contrats)", "> 0: net protection buyer (contract currency)")} />
         </div>
       )}
       <Card title={`Positions (${data?.positions.length ?? 0})`} flush actions={
-        <button className="btn primary" onClick={() => setAdding((a) => !a)}><Plus size={14} /> Ajouter une position</button>
+        <button className="btn primary" onClick={() => setAdding((a) => !a)}><Plus size={14} /> {tr("Ajouter une position", "Add a position")}</button>
       }>
         {adding && <div className="card-body" style={{ borderBottom: "1px solid var(--border)" }}><AddPosition onDone={() => setAdding(false)} /></div>}
         {data && data.positions.length > 0 && (
@@ -120,8 +124,8 @@ export function PositionsPage() {
             <table className="data">
               <thead>
                 <tr>
-                  <th>Position</th><th>Book</th><th>Quantité</th><th>Prix unitaire</th><th>Valeur (€)</th><th>P&L (€)</th>
-                  <th>Delta cash</th><th>Vega 1 pt</th><th>Theta 1 j</th><th />
+                  <th>Position</th><th>Book</th><th>{tr("Quantité", "Quantity")}</th><th>{tr("Prix unitaire", "Unit price")}</th><th>{tr("Valeur (€)", "Value (€)")}</th><th>P&L (€)</th>
+                  <th>Delta cash</th><th>Vega 1 pt</th><th>{tr("Theta 1 j", "Theta 1 d")}</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -132,7 +136,7 @@ export function PositionsPage() {
         )}
         {data?.vol_source && Object.keys(data.vol_source).length > 0 && (
           <div className="card-body muted" style={{ fontSize: 12 }}>
-            Volatilité utilisée : {Object.entries(data.vol_source).map(([k, v]) => `${k} (${v})`).join(" · ")}.
+            {tr("Volatilité utilisée :", "Volatility used:")} {Object.entries(data.vol_source).map(([k, v]) => `${k} (${v})`).join(" · ")}.
             {data.eurusd ? ` EUR/USD ${num(data.eurusd, 4)}.` : ""}
           </div>
         )}
@@ -140,16 +144,16 @@ export function PositionsPage() {
       {data && data.by_underlying.length > 0 && (
         <>
           <div className="grid cols-2">
-            <Card title="Delta cash par sous-jacent">
-              <EChart option={exposureOption("delta_cash")} height={Math.max(260, data.by_underlying.length * 34)} ariaLabel="Delta cash par sous-jacent" />
+            <Card title={tr("Delta cash par sous-jacent", "Delta cash by underlying")}>
+              <EChart option={exposureOption("delta_cash")} height={Math.max(260, data.by_underlying.length * 34)} ariaLabel={tr("Delta cash par sous-jacent", "Delta cash by underlying")} />
             </Card>
-            <Card title="Vega par sous-jacent (pour 1 point de vol)">
-              <EChart option={exposureOption("vega")} height={Math.max(260, data.by_underlying.length * 34)} ariaLabel="Vega par sous-jacent" />
+            <Card title={tr("Vega par sous-jacent (pour 1 point de vol)", "Vega by underlying (per vol point)")}>
+              <EChart option={exposureOption("vega")} height={Math.max(260, data.by_underlying.length * 34)} ariaLabel={tr("Vega par sous-jacent", "Vega by underlying")} />
             </Card>
           </div>
           <div className="grid cols-2">
-            <ExposureTable title="Par book" rows={data.by_book} />
-            <ExposureTable title="Par type d'instrument" rows={data.by_kind.map((r) => ({ ...r, key: KIND_LABEL[r.key as PositionKind] ?? r.key }))} />
+            <ExposureTable title={tr("Par book", "By book")} rows={data.by_book} />
+            <ExposureTable title={tr("Par type d'instrument", "By instrument type")} rows={data.by_kind.map((r) => ({ ...r, key: KIND_LABEL[r.key as PositionKind] ?? r.key }))} />
           </div>
         </>
       )}
@@ -170,14 +174,14 @@ function SpreadEditor({ p, onClose }: { p: PositionRow; onClose: () => void }) {
         <div className="form">
           <div className="toolbar-grid">
             {CDS_TENORS.map((t, i) => (
-              <NumberField key={t} label={`${t} an${t > 1 ? "s" : ""}`} value={spreads[i]} suffix="bp" min={0.01} digits={1}
+              <NumberField key={t} label={tr(`${t} an${t > 1 ? "s" : ""}`, `${t} year${t > 1 ? "s" : ""}`)} value={spreads[i]} suffix="bp" min={0.01} digits={1}
                 onChange={(v) => setSpreads((s) => s.map((x, j) => (j === i ? v : x)))} />
             ))}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="btn primary" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? "Revalorisation…" : "Mettre à jour les spreads"}</button>
-            <button className="btn ghost" onClick={onClose}>Annuler</button>
-            <span className="muted" style={{ fontSize: 12 }}>Le prix d'entrée est conservé : l'effet du mouvement de spread apparaît dans le P&L.</span>
+            <button className="btn primary" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? tr("Revalorisation…", "Revaluing…") : tr("Mettre à jour les spreads", "Update the spreads")}</button>
+            <button className="btn ghost" onClick={onClose}>{tr("Annuler", "Cancel")}</button>
+            <span className="muted" style={{ fontSize: 12 }}>{tr("Le prix d'entrée est conservé : l'effet du mouvement de spread apparaît dans le P&L.", "The entry price is kept: the effect of the spread move shows up in the P&L.")}</span>
           </div>
           <ErrorBox error={save.error} />
         </div>
@@ -200,7 +204,7 @@ function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void })
       </td>
       <td className="muted">{p.book}</td>
       <td>{num(p.quantity, 0)}{p.params.multiplier ? <span className="muted"> ×{String(p.params.multiplier)}</span> : null}</td>
-      <td>{cds || p.kind === "capfloor" ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">% nom.</span></>
+      <td>{cds || p.kind === "capfloor" ? <>{num(p.unit_price != null ? p.unit_price * 100 : null, 3)} <span className="muted">{tr("% nom.", "% notional")}</span></>
         : p.kind === "fxoption" ? <>{num(p.unit_price != null ? p.unit_price * 1e4 : null, 1)} <span className="muted">pips</span></>
         : p.kind === "varswap" ? <>{num(p.unit_price, 3)} <span className="muted">× vega</span></>
         : <>{num(p.unit_price, 2)} <span className="muted">{p.currency}</span></>}</td>
@@ -210,8 +214,8 @@ function PositionLine({ p, onDelete }: { p: PositionRow; onDelete: () => void })
       <td>{cds ? <span title="Jump-to-default">{signedMoney(p.jtd)} <span className="muted">JTD</span></span> : signedMoney(p.vega)}</td>
       <td>{signedMoney(p.theta)}</td>
       <td style={{ whiteSpace: "nowrap" }}>
-        {cds && <button className="btn icon ghost" onClick={() => setEditing((e) => !e)} aria-label="Modifier les spreads" title="Mettre à jour la courbe de spreads"><Pencil size={14} /></button>}
-        <button className="btn icon ghost" onClick={onDelete} aria-label="Supprimer la position" title="Supprimer"><Trash2 size={14} /></button>
+        {cds && <button className="btn icon ghost" onClick={() => setEditing((e) => !e)} aria-label={tr("Modifier les spreads", "Edit the spreads")} title={tr("Mettre à jour la courbe de spreads", "Update the spread curve")}><Pencil size={14} /></button>}
+        <button className="btn icon ghost" onClick={onDelete} aria-label={tr("Supprimer la position", "Delete the position")} title={tr("Supprimer", "Delete")}><Trash2 size={14} /></button>
       </td>
     </tr>
     {editing && <SpreadEditor p={p} onClose={() => setEditing(false)} />}
@@ -224,7 +228,7 @@ function ExposureTable({ title, rows }: { title: string; rows: { key: string; ma
     <Card title={title} flush>
       <div className="table-wrap">
         <table className="data">
-          <thead><tr><th>{title.replace("Par ", "")}</th><th>Positions</th><th>Valeur</th><th>P&L</th><th>Delta cash</th><th>Vega</th></tr></thead>
+          <thead><tr><th>{title.replace(/^(Par|By) /, "")}</th><th>Positions</th><th>{tr("Valeur", "Value")}</th><th>P&L</th><th>Delta cash</th><th>Vega</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.key}>
@@ -310,7 +314,7 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         fxoption: { expiry: prm.fx_expiry, strike: prm.fx_strike, option_type: prm.fx_type, atm: prm.fx_atm,
           rr25: prm.fx_rr, bf25: prm.fx_bf },
         varswap: { maturity: prm.vs_maturity, strike_vol: prm.vs_fair ? null : prm.vs_strike },
-        cds: { reference: prm.reference || "Émetteur", currency: prm.cds_currency, maturity: prm.cds_maturity,
+        cds: { reference: prm.reference || tr("Émetteur", "Issuer"), currency: prm.cds_currency, maturity: prm.cds_maturity,
           coupon_bp: prm.coupon_bp, recovery: prm.recovery, spreads_bp: prm.spreads_bp },
       };
       const noTicker = kind === "bond" || kind === "cds" || kind === "capfloor" || kind === "fxoption";
@@ -326,24 +330,24 @@ function AddPosition({ onDone }: { onDone: () => void }) {
   const optionFields = (
     <>
       <NumberField label={`Strike${spot ? ` (spot ${num(spot, 2)})` : ""}`} value={prm.strike as number} min={0.01} digits={2} onChange={set("strike")} />
-      <DateField label="Échéance" value={prm.expiry as string} onChange={set("expiry")} />
+      <DateField label={tr("Échéance", "Expiry")} value={prm.expiry as string} onChange={set("expiry")} />
       <Segmented label="Type" value={prm.option_type as string} onChange={set("option_type")} options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }]} />
-      <NumberField label="Multiplicateur" value={prm.multiplier as number} min={1} digits={0} onChange={set("multiplier")} />
+      <NumberField label={tr("Multiplicateur", "Multiplier")} value={prm.multiplier as number} min={1} digits={0} onChange={set("multiplier")} />
     </>
   );
 
   let fields: ReactNode = null;
   if (kind === "option") {
-    fields = <>{optionFields}<Segmented label="Exercice" value={prm.exercise as string} onChange={set("exercise")} options={[{ value: "european", label: "Européen" }, { value: "american", label: "Américain" }]} /></>;
+    fields = <>{optionFields}<Segmented label={tr("Exercice", "Exercise")} value={prm.exercise as string} onChange={set("exercise")} options={[{ value: "european", label: tr("Européen", "European") }, { value: "american", label: tr("Américain", "American") }]} /></>;
   } else if (kind === "barrier") {
     fields = (
       <>
         {optionFields}
-        <NumberField label="Barrière" value={prm.barrier as number} min={0.01} digits={2} onChange={set("barrier")} />
-        <SelectField label="Type de barrière" value={prm.barrier_type as string} onChange={set("barrier_type")}
+        <NumberField label={tr("Barrière", "Barrier")} value={prm.barrier as number} min={0.01} digits={2} onChange={set("barrier")} />
+        <SelectField label={tr("Type de barrière", "Barrier type")} value={prm.barrier_type as string} onChange={set("barrier_type")}
           options={["down-and-out", "down-and-in", "up-and-out", "up-and-in"].map((v) => ({ value: v, label: v }))} />
-        <SelectField label="Observation" value={prm.monitoring_per_year as number} onChange={set("monitoring_per_year")}
-          options={[{ value: 0, label: "Continue" }, { value: 252, label: "Quotidienne" }, { value: 52, label: "Hebdomadaire" }]} />
+        <SelectField label={tr("Observation", "Monitoring")} value={prm.monitoring_per_year as number} onChange={set("monitoring_per_year")}
+          options={[{ value: 0, label: tr("Continue", "Continuous") }, { value: 252, label: tr("Quotidienne", "Daily") }, { value: 52, label: tr("Hebdomadaire", "Weekly") }]} />
       </>
     );
   } else if (kind === "digital") {
@@ -352,51 +356,51 @@ function AddPosition({ onDone }: { onDone: () => void }) {
         {optionFields}
         <Segmented label="Payoff" value={prm.digital_kind as string} onChange={set("digital_kind")}
           options={[{ value: "cash-or-nothing", label: "Cash" }, { value: "asset-or-nothing", label: "Asset" }]} />
-        {prm.digital_kind === "cash-or-nothing" && <NumberField label="Montant payé" value={prm.cash as number} min={0.01} digits={2} onChange={set("cash")} />}
+        {prm.digital_kind === "cash-or-nothing" && <NumberField label={tr("Montant payé", "Amount paid")} value={prm.cash as number} min={0.01} digits={2} onChange={set("cash")} />}
       </>
     );
   } else if (kind === "asian") {
     fields = (
       <>
         {optionFields}
-        <SelectField label="Fixings (d'aujourd'hui à l'échéance)" value={prm.n_fixings as number} onChange={set("n_fixings")}
+        <SelectField label={tr("Fixings (d'aujourd'hui à l'échéance)", "Fixings (from today to expiry)")} value={prm.n_fixings as number} onChange={set("n_fixings")}
           options={[4, 12, 52].map((v) => ({ value: v, label: String(v) }))} />
-        <Segmented label="Moyenne" value={prm.averaging as string} onChange={set("averaging")}
-          options={[{ value: "arithmetic", label: "Arithmétique" }, { value: "geometric", label: "Géométrique" }]} />
+        <Segmented label={tr("Moyenne", "Average")} value={prm.averaging as string} onChange={set("averaging")}
+          options={[{ value: "arithmetic", label: tr("Arithmétique", "Arithmetic") }, { value: "geometric", label: tr("Géométrique", "Geometric") }]} />
       </>
     );
   } else if (kind === "cliquet") {
     fields = (
       <>
-        <NumberField label="Maturité" value={prm.cliquet_years as number} suffix="ans" min={0.25} max={10} digits={2} onChange={set("cliquet_years")} />
+        <NumberField label={tr("Maturité", "Maturity")} value={prm.cliquet_years as number} suffix={tr("ans", "years")} min={0.25} max={10} digits={2} onChange={set("cliquet_years")} />
         <SelectField label="Resets" value={prm.frequency as number} onChange={set("frequency")}
-          options={[{ value: 12, label: "Mensuels" }, { value: 4, label: "Trimestriels" }, { value: 1, label: "Annuels" }]} />
-        <NumberField label="Floor local" value={prm.local_floor as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_floor")} />
-        <NumberField label="Cap local" value={prm.local_cap as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_cap")} />
-        <NumberField label="Floor global" value={prm.global_floor as number} suffix="%" scale={100} digits={1} onChange={set("global_floor")} />
+          options={[{ value: 12, label: tr("Mensuels", "Monthly") }, { value: 4, label: tr("Trimestriels", "Quarterly") }, { value: 1, label: tr("Annuels", "Annual") }]} />
+        <NumberField label={tr("Floor local", "Local floor")} value={prm.local_floor as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_floor")} />
+        <NumberField label={tr("Cap local", "Local cap")} value={prm.local_cap as number} suffix="%" scale={100} min={-1} digits={1} onChange={set("local_cap")} />
+        <NumberField label={tr("Floor global", "Global floor")} value={prm.global_floor as number} suffix="%" scale={100} digits={1} onChange={set("global_floor")} />
       </>
     );
   } else if (kind === "autocall") {
     fields = (
       <>
-        <NumberField label="Maturité" value={prm.maturity_years as number} suffix="ans" min={0.5} max={10} digits={1} onChange={set("maturity_years")} />
-        <SelectField label="Observations" value={prm.frequency as number} onChange={set("frequency")}
-          options={[{ value: 12, label: "Mensuelles" }, { value: 4, label: "Trimestrielles" }, { value: 1, label: "Annuelles" }]} />
-        <NumberField label="Coupon / période" value={prm.coupon_rate as number} suffix="%" scale={100} digits={2} onChange={set("coupon_rate")} />
-        <NumberField label="Barrière autocall" value={prm.autocall_barrier as number} suffix="%" scale={100} digits={0} onChange={set("autocall_barrier")} />
-        <NumberField label="Barrière coupon" value={prm.coupon_barrier as number} suffix="%" scale={100} digits={0} onChange={set("coupon_barrier")} />
+        <NumberField label={tr("Maturité", "Maturity")} value={prm.maturity_years as number} suffix={tr("ans", "years")} min={0.5} max={10} digits={1} onChange={set("maturity_years")} />
+        <SelectField label={tr("Observations", "Observations")} value={prm.frequency as number} onChange={set("frequency")}
+          options={[{ value: 12, label: tr("Mensuelles", "Monthly") }, { value: 4, label: tr("Trimestrielles", "Quarterly") }, { value: 1, label: tr("Annuelles", "Annual") }]} />
+        <NumberField label={tr("Coupon / période", "Coupon / period")} value={prm.coupon_rate as number} suffix="%" scale={100} digits={2} onChange={set("coupon_rate")} />
+        <NumberField label={tr("Barrière autocall", "Autocall barrier")} value={prm.autocall_barrier as number} suffix="%" scale={100} digits={0} onChange={set("autocall_barrier")} />
+        <NumberField label={tr("Barrière coupon", "Coupon barrier")} value={prm.coupon_barrier as number} suffix="%" scale={100} digits={0} onChange={set("coupon_barrier")} />
         <NumberField label="Protection" value={prm.protection_barrier as number} suffix="%" scale={100} digits={0} onChange={set("protection_barrier")} />
-        <Check label="Effet mémoire" checked={prm.memory as boolean} onChange={set("memory")} />
+        <Check label={tr("Effet mémoire", "Memory effect")} checked={prm.memory as boolean} onChange={set("memory")} />
       </>
     );
   } else if (kind === "bond") {
     fields = (
       <>
-        <Segmented label="Devise" value={prm.currency as string} onChange={set("currency")} options={[{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }]} />
-        <DateField label="Maturité" value={prm.maturity as string} onChange={set("maturity")} />
+        <Segmented label={tr("Devise", "Currency")} value={prm.currency as string} onChange={set("currency")} options={[{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }]} />
+        <DateField label={tr("Maturité", "Maturity")} value={prm.maturity as string} onChange={set("maturity")} />
         <NumberField label="Coupon" value={prm.bond_coupon as number} suffix="%" scale={100} digits={3} onChange={set("bond_coupon")} />
-        <SelectField label="Fréquence" value={prm.bond_frequency as number} onChange={set("bond_frequency")}
-          options={[{ value: 1, label: "Annuel" }, { value: 2, label: "Semestriel" }]} />
+        <SelectField label={tr("Fréquence", "Frequency")} value={prm.bond_frequency as number} onChange={set("bond_frequency")}
+          options={[{ value: 1, label: tr("Annuel", "Annual") }, { value: 2, label: tr("Semestriel", "Semi-annual") }]} />
       </>
     );
   } else if (kind === "capfloor") {
@@ -404,18 +408,18 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     fields = (
       <>
         <Segmented label="Type" value={prm.cf_kind as string} onChange={set("cf_kind")} options={[{ value: "cap", label: "Cap" }, { value: "floor", label: "Floor" }]} />
-        <Segmented label="Courbe" value={prm.cf_currency as string} onChange={set("cf_currency")} options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }]} />
-        <DateField label="Maturité" value={prm.cf_maturity as string} onChange={set("cf_maturity")} />
-        <SelectField label="Fréquence" value={prm.cf_frequency as number} onChange={set("cf_frequency")}
-          options={[{ value: 12, label: "Mensuelle" }, { value: 4, label: "Trimestrielle" }, { value: 2, label: "Semestrielle" }, { value: 1, label: "Annuelle" }]} />
+        <Segmented label={tr("Courbe", "Curve")} value={prm.cf_currency as string} onChange={set("cf_currency")} options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }]} />
+        <DateField label={tr("Maturité", "Maturity")} value={prm.cf_maturity as string} onChange={set("cf_maturity")} />
+        <SelectField label={tr("Fréquence", "Frequency")} value={prm.cf_frequency as number} onChange={set("cf_frequency")}
+          options={[{ value: 12, label: tr("Mensuelle", "Monthly") }, { value: 4, label: tr("Trimestrielle", "Quarterly") }, { value: 2, label: tr("Semestrielle", "Semi-annual") }, { value: 1, label: tr("Annuelle", "Annual") }]} />
         <SelectField label="Strike" value={prm.cf_atm ? "atm" : "fixed"} onChange={(v: string) => set("cf_atm")(v === "atm")}
-          options={[{ value: "atm", label: "ATM (fixé à l'ajout)" }, { value: "fixed", label: "Niveau fixé" }]} />
-        {!prm.cf_atm && <NumberField label="Niveau du strike" value={prm.cf_strike as number} suffix="%" scale={100} digits={3} onChange={set("cf_strike")} />}
-        <Segmented label="Modèle" value={prm.cf_model as string} onChange={(v: string) => setPrm((q) => ({ ...q, cf_model: v, cf_vol: v === "bachelier" ? 0.01 : 0.25 }))}
+          options={[{ value: "atm", label: tr("ATM (fixé à l'ajout)", "ATM (set when added)") }, { value: "fixed", label: tr("Niveau fixé", "Fixed level") }]} />
+        {!prm.cf_atm && <NumberField label={tr("Niveau du strike", "Strike level")} value={prm.cf_strike as number} suffix="%" scale={100} digits={3} onChange={set("cf_strike")} />}
+        <Segmented label={tr("Modèle", "Model")} value={prm.cf_model as string} onChange={(v: string) => setPrm((q) => ({ ...q, cf_model: v, cf_vol: v === "bachelier" ? 0.01 : 0.25 }))}
           options={[{ value: "bachelier", label: "Normal" }, { value: "black", label: "Log-normal" }]} />
         {normal
-          ? <NumberField label="Vol normale" value={prm.cf_vol as number} suffix="bp" scale={1e4} min={0.0001} digits={1} onChange={set("cf_vol")} />
-          : <NumberField label="Vol log-normale" value={prm.cf_vol as number} suffix="%" scale={100} min={0.01} digits={1} onChange={set("cf_vol")} />}
+          ? <NumberField label={tr("Vol normale", "Normal vol")} value={prm.cf_vol as number} suffix="bp" scale={1e4} min={0.0001} digits={1} onChange={set("cf_vol")} />
+          : <NumberField label={tr("Vol log-normale", "Lognormal vol")} value={prm.cf_vol as number} suffix="%" scale={100} min={0.01} digits={1} onChange={set("cf_vol")} />}
       </>
     );
   } else if (kind === "fxoption") {
@@ -423,7 +427,7 @@ function AddPosition({ onDone }: { onDone: () => void }) {
       <>
         <Segmented label="Type" value={prm.fx_type as string} onChange={set("fx_type")}
           options={[{ value: "call", label: "Call EUR" }, { value: "put", label: "Put EUR" }]} />
-        <DateField label="Échéance" value={prm.fx_expiry as string} onChange={set("fx_expiry")} />
+        <DateField label={tr("Échéance", "Expiry")} value={prm.fx_expiry as string} onChange={set("fx_expiry")} />
         <NumberField label="Strike EUR/USD" value={prm.fx_strike as number} min={0.0001} digits={4} onChange={set("fx_strike")} />
         <NumberField label="Vol ATM" value={prm.fx_atm as number} suffix="%" scale={100} min={0.001} digits={2} onChange={set("fx_atm")} />
         <NumberField label="Risk reversal 25Δ" value={prm.fx_rr as number} suffix="%" scale={100} digits={2} onChange={set("fx_rr")} />
@@ -433,9 +437,9 @@ function AddPosition({ onDone }: { onDone: () => void }) {
   } else if (kind === "varswap") {
     fields = (
       <>
-        <DateField label="Échéance" value={prm.vs_maturity as string} onChange={set("vs_maturity")} />
+        <DateField label={tr("Échéance", "Expiry")} value={prm.vs_maturity as string} onChange={set("vs_maturity")} />
         <SelectField label="Strike" value={prm.vs_fair ? "fair" : "fixed"} onChange={(v: string) => set("vs_fair")(v === "fair")}
-          options={[{ value: "fair", label: "Strike juste du jour" }, { value: "fixed", label: "Niveau fixé" }]} />
+          options={[{ value: "fair", label: tr("Strike juste du jour", "Today's fair strike") }, { value: "fixed", label: tr("Niveau fixé", "Fixed level") }]} />
         {!prm.vs_fair && <NumberField label="Strike (vol)" value={prm.vs_strike as number} suffix="%" scale={100} min={0.01} digits={2} onChange={set("vs_strike")} />}
       </>
     );
@@ -443,17 +447,17 @@ function AddPosition({ onDone }: { onDone: () => void }) {
     const spreads = prm.spreads_bp as number[];
     fields = (
       <>
-        <TextField label="Entité de référence" value={prm.reference as string} onChange={set("reference")} />
-        <Segmented label="Devise" value={prm.cds_currency as string} onChange={set("cds_currency")} options={[{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }]} />
-        <DateField label="Maturité" value={prm.cds_maturity as string} onChange={set("cds_maturity")} />
-        <SelectField label="Coupon standard" value={prm.coupon_bp as number} onChange={set("coupon_bp")}
-          options={[{ value: 100, label: "100 bp" }, { value: 500, label: "500 bp" }, { value: 25, label: "25 bp" }, { value: 1000, label: "1 000 bp" }]} />
-        <NumberField label="Recouvrement" value={prm.recovery as number} suffix="%" scale={100} min={0} max={0.95} digits={0} onChange={set("recovery")} />
-        <SelectField label="Courbe de spreads" value={prm.cds_preset as string} onChange={(k: string) => setPrm((q) => ({
+        <TextField label={tr("Entité de référence", "Reference entity")} value={prm.reference as string} onChange={set("reference")} />
+        <Segmented label={tr("Devise", "Currency")} value={prm.cds_currency as string} onChange={set("cds_currency")} options={[{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }]} />
+        <DateField label={tr("Maturité", "Maturity")} value={prm.cds_maturity as string} onChange={set("cds_maturity")} />
+        <SelectField label={tr("Coupon standard", "Standard coupon")} value={prm.coupon_bp as number} onChange={set("coupon_bp")}
+          options={[{ value: 100, label: "100 bp" }, { value: 500, label: "500 bp" }, { value: 25, label: "25 bp" }, { value: 1000, label: tr("1 000 bp", "1,000 bp") }]} />
+        <NumberField label={tr("Recouvrement", "Recovery")} value={prm.recovery as number} suffix="%" scale={100} min={0} max={0.95} digits={0} onChange={set("recovery")} />
+        <SelectField label={tr("Courbe de spreads", "Spread curve")} value={prm.cds_preset as string} onChange={(k: string) => setPrm((q) => ({
           ...q, cds_preset: k, ...(CDS_PRESETS[k] ? { spreads_bp: CDS_PRESETS[k].spreads, recovery: CDS_PRESETS[k].recovery } : {}) }))}
-          options={[...Object.entries(CDS_PRESETS).map(([value, c]) => ({ value, label: c.label })), { value: "custom", label: "Personnalisée" }]} />
+          options={[...Object.entries(CDS_PRESETS).map(([value, c]) => ({ value, label: c.label })), { value: "custom", label: tr("Personnalisée", "Custom") }]} />
         {CDS_TENORS.map((t, i) => (
-          <NumberField key={t} label={`Spread ${t} an${t > 1 ? "s" : ""}`} value={spreads[i]} suffix="bp" min={0.01} digits={1}
+          <NumberField key={t} label={tr(`Spread ${t} an${t > 1 ? "s" : ""}`, `${t}-year spread`)} value={spreads[i]} suffix="bp" min={0.01} digits={1}
             onChange={(v) => setPrm((q) => ({ ...q, cds_preset: "custom", spreads_bp: (q.spreads_bp as number[]).map((x, j) => (j === i ? v : x)) }))} />
         ))}
       </>
@@ -461,8 +465,8 @@ function AddPosition({ onDone }: { onDone: () => void }) {
   } else if (kind === "future") {
     fields = (
       <>
-        <DateField label="Échéance" value={prm.expiry as string} onChange={set("expiry")} />
-        <NumberField label="Multiplicateur" value={prm.multiplier as number} min={1} digits={0} onChange={set("multiplier")} />
+        <DateField label={tr("Échéance", "Expiry")} value={prm.expiry as string} onChange={set("expiry")} />
+        <NumberField label={tr("Multiplicateur", "Multiplier")} value={prm.multiplier as number} min={1} digits={0} onChange={set("multiplier")} />
       </>
     );
   }
@@ -470,32 +474,32 @@ function AddPosition({ onDone }: { onDone: () => void }) {
   return (
     <div className="form">
       <div style={{ maxWidth: 320 }}>
-        <SelectField label="Type d'instrument" value={kind} onChange={(k: PositionKind) => {
+        <SelectField label={tr("Type d'instrument", "Instrument type")} value={kind} onChange={(k: PositionKind) => {
         // a CDS quantity is a notional: switch between unit counts and notionals with sensible defaults
         // notional-quoted kinds get a sensible default size when the type changes
         const defaults: Partial<Record<PositionKind, number>> = { cds: 10_000_000, capfloor: 10_000_000, fxoption: 10_000_000, varswap: 100_000 };
         if (defaults[k] !== defaults[kind]) setQuantity(defaults[k] ?? 1);
         setKind(k);
-      }} options={(Object.keys(KIND_LABEL) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
+      }} options={(Object.keys(KIND_PAIRS) as PositionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
       </div>
       <div className="toolbar-grid">
         {!["bond", "cds", "capfloor", "fxoption"].includes(kind) && (
-          <SelectField label="Sous-jacent" value={ticker} onChange={setTicker}
+          <SelectField label={tr("Sous-jacent", "Underlying")} value={ticker} onChange={setTicker}
             options={(tickers ?? []).map((t) => ({ value: t.ticker, label: `${t.ticker} — ${t.name}` }))} />
         )}
-        <NumberField label={kind === "autocall" || kind === "cliquet" ? "Nombre de notes (nominal 100)" : kind === "bond" ? "Nombre de titres (nominal 100)"
-          : kind === "cds" ? "Nominal (> 0 achat de protection, < 0 vente)"
-          : kind === "capfloor" ? "Nominal (négatif = vente)" : kind === "fxoption" ? "Nominal en EUR (négatif = vente)"
-          : kind === "varswap" ? "Notionnel vega (> 0 achat de variance)" : "Quantité (négatif = vente)"}
+        <NumberField label={kind === "autocall" || kind === "cliquet" ? tr("Nombre de notes (nominal 100)", "Number of notes (100 notional)") : kind === "bond" ? tr("Nombre de titres (nominal 100)", "Number of bonds (100 notional)")
+          : kind === "cds" ? tr("Nominal (> 0 achat de protection, < 0 vente)", "Notional (> 0 buy protection, < 0 sell)")
+          : kind === "capfloor" ? tr("Nominal (négatif = vente)", "Notional (negative = sell)") : kind === "fxoption" ? tr("Nominal en EUR (négatif = vente)", "EUR notional (negative = sell)")
+          : kind === "varswap" ? tr("Notionnel vega (> 0 achat de variance)", "Vega notional (> 0 buy variance)") : tr("Quantité (négatif = vente)", "Quantity (negative = sell)")}
           value={quantity} digits={2} onChange={setQuantity} />
         {fields}
         <TextField label="Book" value={book} onChange={setBook} />
-        <TextField label="Libellé (optionnel)" value={label} onChange={setLabel} />
+        <TextField label={tr("Libellé (optionnel)", "Label (optional)")} value={label} onChange={setLabel} />
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button className="btn primary" onClick={() => add.mutate()} disabled={add.isPending}>{add.isPending ? "Valorisation…" : "Ajouter au book"}</button>
-        <button className="btn ghost" onClick={onDone}>Annuler</button>
-        <span className="muted" style={{ fontSize: 12 }}>Le prix d'entrée est le prix modèle actuel : le P&L part de zéro.</span>
+        <button className="btn primary" onClick={() => add.mutate()} disabled={add.isPending}>{add.isPending ? tr("Valorisation…", "Valuing…") : tr("Ajouter au book", "Add to the book")}</button>
+        <button className="btn ghost" onClick={onDone}>{tr("Annuler", "Cancel")}</button>
+        <span className="muted" style={{ fontSize: 12 }}>{tr("Le prix d'entrée est le prix modèle actuel : le P&L part de zéro.", "The entry price is the current model price: the P&L starts at zero.")}</span>
       </div>
       <ErrorBox error={add.error} />
     </div>
@@ -521,7 +525,7 @@ export function RiskPage() {
       grid: { left: 8, right: 16, top: 10, bottom: 50, containLabel: true },
       tooltip: { trigger: "item", formatter: (it: { value: [number, number, number] }) =>
         `Spot ${pct(s.spot_shocks[it.value[0]], 0)} · vol ${s.vol_shocks[it.value[1]] >= 0 ? "+" : ""}${num(s.vol_shocks[it.value[1]] * 100, 0)} pts<br/>P&L <b>${signedMoney(it.value[2])}</b>` },
-      xAxis: { type: "category", data: s.spot_shocks.map((x) => `${x > 0 ? "+" : ""}${num(x * 100, 0)} %`), name: "choc sur les actions", nameLocation: "middle", nameGap: 28, splitLine: { show: false } },
+      xAxis: { type: "category", data: s.spot_shocks.map((x) => `${x > 0 ? "+" : ""}${pct(x, 0)}`), name: tr("choc sur les actions", "equity shock"), nameLocation: "middle", nameGap: 28, splitLine: { show: false } },
       yAxis: { type: "category", data: s.vol_shocks.map((x) => `${x >= 0 ? "+" : ""}${num(x * 100, 0)} pts`), name: "vol", splitLine: { show: false } },
       visualMap: { show: false, min: -m, max: m, inRange: { color: [p.diverging[0], p.diverging[1], p.diverging[2]] } },
       series: [{ type: "heatmap", data: cells, label: { show: true, color: p.text, fontSize: 11, formatter: (it: { value: number[] }) => signedMoney(it.value[2]) },
@@ -539,12 +543,12 @@ export function RiskPage() {
       xAxis: { type: "value", scale: true, axisLabel: { formatter: (x: number) => money(x) } },
       yAxis: { type: "value", axisLabel: { formatter: (x: number) => pct(x, 0) } },
       series: [{
-        type: "line", step: "middle", name: "Fréquence", showSymbol: false, color: p.series[0], areaStyle: { opacity: 0.3 },
+        type: "line", step: "middle", name: tr("Fréquence", "Frequency"), showSymbol: false, color: p.series[0], areaStyle: { opacity: 0.3 },
         data: h.counts.map((c, i) => [(h.edges[i] + h.edges[i + 1]) / 2, c / total]),
         markLine: { symbol: "none", silent: true, label: { color: p.textSecondary, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: [
-            { xAxis: -(v.var_95 ?? 0), name: "VaR 95 %", lineStyle: { color: p.series[1], type: "dashed" } },
-            { xAxis: -(v.var_99 ?? 0), name: "VaR 99 %", lineStyle: { color: p.critical, type: "dashed" } },
+            { xAxis: -(v.var_95 ?? 0), name: tr("VaR 95 %", "95% VaR"), lineStyle: { color: p.series[1], type: "dashed" } },
+            { xAxis: -(v.var_99 ?? 0), name: tr("VaR 99 %", "99% VaR"), lineStyle: { color: p.critical, type: "dashed" } },
           ] },
       }],
     };
@@ -553,7 +557,8 @@ export function RiskPage() {
   const explainOption = useCallback((p: ChartPalette) => {
     if (!data) return {};
     const t = data.pnl_explain.totals;
-    const items = [["Delta", t.delta], ["Gamma", t.gamma], ["Theta", t.theta], ["Résiduel", t.residual], ["P&L réel", t.actual]] as const;
+    const actualLabel = tr("P&L réel", "Actual P&L");
+    const items = [["Delta", t.delta], ["Gamma", t.gamma], ["Theta", t.theta], [tr("Résiduel", "Residual"), t.residual], [actualLabel, t.actual]] as const;
     return {
       grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
       tooltip: { trigger: "item", formatter: (it: { name: string; value: number }) => `${it.name}<br/><b>${signedMoney(it.value)}</b>` },
@@ -561,7 +566,7 @@ export function RiskPage() {
       yAxis: { type: "value", axisLabel: { formatter: (x: number) => money(x) } },
       series: [{
         type: "bar", barMaxWidth: 48,
-        data: items.map(([name, v]) => ({ value: v, itemStyle: { color: name === "P&L réel" ? p.text : v >= 0 ? p.diverging[2] : p.diverging[0], borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
+        data: items.map(([name, v]) => ({ value: v, itemStyle: { color: name === actualLabel ? p.text : v >= 0 ? p.diverging[2] : p.diverging[0], borderRadius: v >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4] } })),
         label: { show: true, position: "top", color: p.textSecondary, formatter: (it: { value: number }) => signedMoney(it.value) },
       }],
     };
@@ -576,27 +581,27 @@ export function RiskPage() {
       {data && v && (
         <>
           <div className="grid cols-4">
-            <Stat label="VaR 99 % (1 jour, historique)" value={money(v.var_99)} foot={`ES 99 % : ${money(v.es_99)}`} />
-            <Stat label="VaR 95 % (1 jour, historique)" value={money(v.var_95)} foot={`ES 95 % : ${money(v.es_95)}`} />
-            <Stat label="VaR 99 % paramétrique" value={money(v.parametric_var_99)} foot="delta-normale, même historique" />
-            <Stat label="Scénarios historiques" value={num(v.n_scenarios, 0)} foot={`${data.history_days} jours communs à tous les sous-jacents`} />
+            <Stat label={tr("VaR 99 % (1 jour, historique)", "99% VaR (1 day, historical)")} value={money(v.var_99)} foot={tr(`ES 99 % : ${money(v.es_99)}`, `99% ES: ${money(v.es_99)}`)} />
+            <Stat label={tr("VaR 95 % (1 jour, historique)", "95% VaR (1 day, historical)")} value={money(v.var_95)} foot={tr(`ES 95 % : ${money(v.es_95)}`, `95% ES: ${money(v.es_95)}`)} />
+            <Stat label={tr("VaR 99 % paramétrique", "Parametric 99% VaR")} value={money(v.parametric_var_99)} foot={tr("delta-normale, même historique", "delta-normal, same history")} />
+            <Stat label={tr("Scénarios historiques", "Historical scenarios")} value={num(v.n_scenarios, 0)} foot={tr(`${data.history_days} jours communs à tous les sous-jacents`, `${data.history_days} days common to every underlying`)} />
           </div>
-          <Card title="Stress test : P&L par choc actions × choc de volatilité (revalorisation complète)">
-            <EChart option={stressOption} height={360} ariaLabel="Matrice de stress actions et volatilité" />
+          <Card title={tr("Stress test : P&L par choc actions × choc de volatilité (revalorisation complète)", "Stress test: P&L by equity shock × volatility shock (full revaluation)")}>
+            <EChart option={stressOption} height={360} ariaLabel={tr("Matrice de stress actions et volatilité", "Equity and volatility stress matrix")} />
           </Card>
           <div className="grid cols-2">
-            <Card title="Distribution du P&L journalier (scénarios historiques)">
-              <EChart option={histOption} height={320} ariaLabel="Distribution historique du P&L" />
+            <Card title={tr("Distribution du P&L journalier (scénarios historiques)", "Daily P&L distribution (historical scenarios)")}>
+              <EChart option={histOption} height={320} ariaLabel={tr("Distribution historique du P&L", "Historical P&L distribution")} />
               {v.worst_scenarios && (
                 <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  Pires jours : {v.worst_scenarios.map((w) => `${w.date} (${signedMoney(w.pnl)})`).join(" · ")}
+                  {tr("Pires jours :", "Worst days:")} {v.worst_scenarios.map((w) => `${w.date} (${signedMoney(w.pnl)})`).join(" · ")}
                 </div>
               )}
             </Card>
-            <Card title="Chocs de taux parallèles" flush>
+            <Card title={tr("Chocs de taux parallèles", "Parallel rate shocks")} flush>
               <div className="table-wrap">
                 <table className="data">
-                  <thead><tr><th>Choc</th><th>P&L</th></tr></thead>
+                  <thead><tr><th>{tr("Choc", "Shock")}</th><th>P&L</th></tr></thead>
                   <tbody>
                     {data.stress.rate_shocks.map((r) => (
                       <tr key={r.shift}><td className="strong">{r.shift > 0 ? "+" : ""}{num(r.shift * 1e4, 0)} bp</td><td><Delta value={r.pnl} digits={0} /> €</td></tr>
@@ -606,14 +611,14 @@ export function RiskPage() {
               </div>
               <div className="card-body">
                 <InfoBox>
-                  La VaR historique rejoue les variations journalières réelles des sous-jacents (approximation delta-gamma).
-                  Les risques de taux et de volatilité sont mesurés par les stress tests, en revalorisation complète.
+                  {tr("La VaR historique rejoue les variations journalières réelles des sous-jacents (approximation delta-gamma). Les risques de taux et de volatilité sont mesurés par les stress tests, en revalorisation complète.",
+                    "Historical VaR replays the actual daily moves of the underlyings (delta-gamma approximation). Rate and volatility risks are measured by the stress tests, with full revaluation.")}
                 </InfoBox>
               </div>
             </Card>
           </div>
           {data.stress.spread_shocks.length > 0 && (
-            <Card title="Chocs de spreads de crédit (positions CDS, courbes re-bootstrapées)" flush>
+            <Card title={tr("Chocs de spreads de crédit (positions CDS, courbes re-bootstrapées)", "Credit spread shocks (CDS positions, curves re-bootstrapped)")} flush>
               <div className="table-wrap">
                 <table className="data">
                   <thead><tr>{data.stress.spread_shocks.map((r) => <th key={r.shift}>{r.shift > 0 ? "+" : ""}{num(r.shift * 1e4, 0)} bp</th>)}</tr></thead>
@@ -623,13 +628,13 @@ export function RiskPage() {
             </Card>
           )}
           <div className="grid cols-2">
-            <Card title="Explication du P&L depuis la clôture précédente">
-              <EChart option={explainOption} height={300} ariaLabel="Décomposition du P&L du jour" />
+            <Card title={tr("Explication du P&L depuis la clôture précédente", "P&L explain since the previous close")}>
+              <EChart option={explainOption} height={300} ariaLabel={tr("Décomposition du P&L du jour", "Breakdown of today's P&L")} />
             </Card>
-            <Card title="P&L par position" flush>
+            <Card title={tr("P&L par position", "P&L by position")} flush>
               <div className="table-wrap" style={{ maxHeight: 340, overflowY: "auto" }}>
                 <table className="data">
-                  <thead><tr><th>Position</th><th>Var. spot</th><th>Réel</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Résiduel</th></tr></thead>
+                  <thead><tr><th>Position</th><th>{tr("Var. spot", "Spot move")}</th><th>{tr("Réel", "Actual")}</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>{tr("Résiduel", "Residual")}</th></tr></thead>
                   <tbody>
                     {data.pnl_explain.rows.map((r) => (
                       <tr key={r.id}>

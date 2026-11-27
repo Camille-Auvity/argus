@@ -7,10 +7,11 @@ import { Card, ErrorBox, InfoBox, NumberField, SelectField, Skeleton, Stat } fro
 import { ccySymbol, money, num, pct } from "../lib/format";
 import { useDebounced, useTicker } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
 export const VARIANCE_PAGES = [
-  { path: "replication", label: "Strike juste et réplication" },
-  { path: "prime", label: "Prime de risque de variance" },
+  { path: "replication", label: ["Strike juste et réplication", "Fair strike and replication"] },
+  { path: "prime", label: ["Prime de risque de variance", "Variance risk premium"] },
 ] as const;
 
 export default function Variance() {
@@ -19,16 +20,16 @@ export default function Variance() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Swaps de variance et de volatilité — {ticker}</h1>
+          <h1 className="page-title">{tr("Swaps de variance et de volatilité", "Variance and volatility swaps")} — {ticker}</h1>
           <div className="page-sub">
-            Strike juste par réplication statique sur le smile, comparaison des modèles, convexité du swap de vol, VIX
-            recalculé et prime de risque de variance.
+            {tr("Strike juste par réplication statique sur le smile, comparaison des modèles, convexité du swap de vol, VIX recalculé et prime de risque de variance.",
+              "Fair strike by static replication on the smile, model comparison, vol swap convexity, recomputed VIX and the variance risk premium.")}
           </div>
         </div>
       </div>
-      <nav className="tabs subnav" aria-label="Swaps de variance">
+      <nav className="tabs subnav" aria-label={tr("Swaps de variance", "Variance swaps")}>
         {VARIANCE_PAGES.map((m) => (
-          <NavLink key={m.path} to={`/variance/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{m.label}</NavLink>
+          <NavLink key={m.path} to={`/variance/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{tr(m.label[0], m.label[1])}</NavLink>
         ))}
       </nav>
       <Outlet />
@@ -42,7 +43,7 @@ function Explainer({ children }: { children: ReactNode }) {
 
 function NotAvailable({ error }: { error: unknown }) {
   if (error instanceof ApiError && error.status === 404) {
-    return <InfoBox>{error.message}. Le strike juste se calcule sur un smile coté : choisissez SPY, QQQ, AAPL, MSFT ou NVDA.</InfoBox>;
+    return <InfoBox>{error.message}. {tr("Le strike juste se calcule sur un smile coté : choisissez SPY, QQQ, AAPL, MSFT ou NVDA.", "The fair strike needs a quoted smile: pick SPY, QQQ, AAPL, MSFT or NVDA.")}</InfoBox>;
   }
   return <ErrorBox error={error} />;
 }
@@ -60,7 +61,7 @@ export function ReplicationPage() {
     placeholderData: keepPreviousData, retry: false });
   const d = swap.data;
   const busy = swap.isFetching;
-  const heston = d?.models.find((m) => m.model.startsWith("Heston (formule"));
+  const heston = d?.models.find((m) => m.model.startsWith("Heston (formule") || m.model.startsWith("Heston (closed"));
 
   const termOption = useCallback((p: ChartPalette) => {
     const rows = term.data?.rows ?? [];
@@ -68,13 +69,13 @@ export function ReplicationPage() {
       legend: {},
       grid: { top: 34 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
-      xAxis: { type: "value", name: "jours", nameLocation: "middle", nameGap: 26 },
+      xAxis: { type: "value", name: tr("jours", "days"), nameLocation: "middle", nameGap: 26 },
       yAxis: { type: "value", scale: true, axisLabel: { formatter: (v: number) => pct(v, 0) } },
       series: [
-        { type: "line", name: "Strike juste √K_var (réplication)", color: p.series[0], symbolSize: 7, lineStyle: { width: 2.5 },
+        { type: "line", name: tr("Strike juste √K_var (réplication)", "Fair strike √K_var (replication)"), color: p.series[0], symbolSize: 7, lineStyle: { width: 2.5 },
           data: rows.map((r) => [r.days, r.fair_vol]) },
         { type: "line", name: "Vol ATM", color: p.series[1], symbolSize: 6, lineStyle: { width: 2, type: "dashed" }, data: rows.map((r) => [r.days, r.atm_vol]) },
-        { type: "line", name: "Heston calibré", color: p.series[2], symbolSize: 5, lineStyle: { width: 1.5 }, data: rows.map((r) => [r.days, r.heston_vol]) },
+        { type: "line", name: tr("Heston calibré", "Calibrated Heston"), color: p.series[2], symbolSize: 5, lineStyle: { width: 1.5 }, data: rows.map((r) => [r.days, r.heston_vol]) },
       ],
     };
   }, [term.data]);
@@ -111,7 +112,7 @@ export function ReplicationPage() {
     return {
       grid: { top: 20 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 5) },
-      xAxis: { type: "category", name: "strike coté", nameLocation: "middle", nameGap: 26, data: l.strikes.map((k) => num(k, 0)), axisLabel: { hideOverlap: true } },
+      xAxis: { type: "category", name: tr("strike coté", "listed strike"), nameLocation: "middle", nameGap: 26, data: l.strikes.map((k) => num(k, 0)), axisLabel: { hideOverlap: true } },
       yAxis: { type: "value" },
       series: [{ type: "bar", name: "(2/T) e^{rT} ΔK Q(K) / K²", barCategoryGap: "10%",
         data: l.strikes.map((k, i) => ({ value: l.contributions[i], itemStyle: { color: k < l.forward ? p.series[1] : p.series[0] } })) }],
@@ -126,13 +127,13 @@ export function ReplicationPage() {
     return {
       grid: { top: 20 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 1) },
-      xAxis: { type: "value", name: "vol réalisée", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax", axisLabel: { formatter: (v: number) => pct(v, 0) } },
+      xAxis: { type: "value", name: tr("vol réalisée", "realised vol"), nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax", axisLabel: { formatter: (v: number) => pct(v, 0) } },
       yAxis: { type: "value", axisLabel: { formatter: (v: number) => pct(v, 0) } },
-      series: [{ type: "bar", name: "Fréquence", color: p.series[2], barWidth: "90%", data: mid.map((m, i) => [m, counts[i] / total]),
+      series: [{ type: "bar", name: tr("Fréquence", "Frequency"), color: p.series[2], barWidth: "90%", data: mid.map((m, i) => [m, counts[i] / total]),
         markLine: { symbol: "none", silent: true, label: { color: p.textSecondary, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: heston ? [
-            { xAxis: heston.fair_vol, name: "√E[V] (swap de variance)", lineStyle: { color: p.series[0], width: 2 } },
-            { xAxis: heston.vol_swap ?? 0, name: "E[√V] (swap de vol)", lineStyle: { color: p.series[1], width: 2, type: "dashed" } },
+            { xAxis: heston.fair_vol, name: tr("√E[V] (swap de variance)", "√E[V] (variance swap)"), lineStyle: { color: p.series[0], width: 2 } },
+            { xAxis: heston.vol_swap ?? 0, name: tr("E[√V] (swap de vol)", "E[√V] (vol swap)"), lineStyle: { color: p.series[1], width: 2, type: "dashed" } },
           ] : [] } }],
     };
   }, [d, heston]);
@@ -144,11 +145,11 @@ export function ReplicationPage() {
       legend: {},
       grid: { top: 34, left: 70 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => money(v, ccy) },
-      xAxis: { type: "value", name: "vol réalisée (points)", nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax" },
+      xAxis: { type: "value", name: tr("vol réalisée (points)", "realised vol (points)"), nameLocation: "middle", nameGap: 26, min: "dataMin", max: "dataMax" },
       yAxis: { type: "value", axisLabel: { formatter: (v: number) => money(v, ccy) } },
       series: [
-        { type: "line", name: "Swap de variance", showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: pr.realized_vol.map((v, i) => [v, pr.variance_swap[i]]) },
-        { type: "line", name: "Swap de vol", showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: pr.realized_vol.map((v, i) => [v, pr.volatility_swap[i]]) },
+        { type: "line", name: tr("Swap de variance", "Variance swap"), showSymbol: false, color: p.series[0], lineStyle: { width: 2.5 }, data: pr.realized_vol.map((v, i) => [v, pr.variance_swap[i]]) },
+        { type: "line", name: tr("Swap de vol", "Vol swap"), showSymbol: false, color: p.series[1], lineStyle: { width: 2, type: "dashed" }, data: pr.realized_vol.map((v, i) => [v, pr.volatility_swap[i]]) },
       ],
     };
   }, [d, ccy]);
@@ -157,61 +158,67 @@ export function ReplicationPage() {
   return (
     <div className="split">
       <div className="sticky">
-        <Card title="Contrat">
+        <Card title={tr("Contrat", "Contract")}>
           <div className="form">
-            <SelectField label="Maturité" value={req.maturity_days} onChange={(maturity_days) => set({ maturity_days, elapsed_days: Math.min(req.elapsed_days, maturity_days - 1) })}
-              options={[30, 61, 91, 182, 273, 365, 547].map((v) => ({ value: v, label: v < 365 ? `${Math.round(v / 30.4)} mois` : `${num(v / 365, 1)} an${v >= 730 ? "s" : ""}` }))} />
-            <NumberField label="Notionnel vega" value={req.vega_notional} suffix={ccySymbol(ccy)} min={1} digits={0}
-              hint="Gain par point de vol réalisée au-dessus du strike (près du strike)" onChange={(vega_notional) => set({ vega_notional })} />
-            <NumberField label="Strike du contrat" value={req.strike_vol ?? 0} suffix="%" scale={100} min={0} digits={2}
-              hint="0 = strike juste du jour" onChange={(v) => set({ strike_vol: v > 0 ? v : null })} />
-            <NumberField label="Jours déjà écoulés" value={req.elapsed_days} suffix="j" min={0} max={req.maturity_days - 1} digits={0}
-              hint="Swap en cours : la variance réalisée vient de l'historique" onChange={(elapsed_days) => set({ elapsed_days })} />
-            <SelectField label="Trajectoires Monte Carlo" value={req.n_paths} onChange={(n_paths) => set({ n_paths })}
-              options={[5_000, 20_000, 50_000].map((v) => ({ value: v, label: v.toLocaleString("fr-FR") }))} />
+            <SelectField label={tr("Maturité", "Maturity")} value={req.maturity_days} onChange={(maturity_days) => set({ maturity_days, elapsed_days: Math.min(req.elapsed_days, maturity_days - 1) })}
+              options={[30, 61, 91, 182, 273, 365, 547].map((v) => ({ value: v, label: v < 365 ? tr(`${Math.round(v / 30.4)} mois`, `${Math.round(v / 30.4)} months`) : tr(`${num(v / 365, 1)} an${v >= 730 ? "s" : ""}`, `${num(v / 365, 1)} year${v >= 730 ? "s" : ""}`) }))} />
+            <NumberField label={tr("Notionnel vega", "Vega notional")} value={req.vega_notional} suffix={ccySymbol(ccy)} min={1} digits={0}
+              hint={tr("Gain par point de vol réalisée au-dessus du strike (près du strike)", "Gain per point of realised vol above the strike (near the strike)")} onChange={(vega_notional) => set({ vega_notional })} />
+            <NumberField label={tr("Strike du contrat", "Contract strike")} value={req.strike_vol ?? 0} suffix="%" scale={100} min={0} digits={2}
+              hint={tr("0 = strike juste du jour", "0 = today's fair strike")} onChange={(v) => set({ strike_vol: v > 0 ? v : null })} />
+            <NumberField label={tr("Jours déjà écoulés", "Days already elapsed")} value={req.elapsed_days} suffix={tr("j", "d")} min={0} max={req.maturity_days - 1} digits={0}
+              hint={tr("Swap en cours : la variance réalisée vient de l'historique", "Seasoned swap: the realised variance comes from history")} onChange={(elapsed_days) => set({ elapsed_days })} />
+            <SelectField label={tr("Trajectoires Monte Carlo", "Monte Carlo paths")} value={req.n_paths} onChange={(n_paths) => set({ n_paths })}
+              options={[5_000, 20_000, 50_000].map((v) => ({ value: v, label: num(v, 0) }))} />
           </div>
         </Card>
       </div>
       <div className="grid">
         <Explainer>
-          Un swap de variance paie N<sub>var</sub> (σ²<sub>réalisée</sub> − K<sub>var</sub>). La variance réalisée est celle d'un contrat log
-          couvert en delta, et ce contrat se réplique par une bande d'options hors de la monnaie pondérées en 1/K² : le strike juste
-          ne dépend que du smile du jour, sans modèle. Comme les puts bas sont chers (skew), √K<sub>var</sub> dépasse la vol ATM.
+          {tr(<>
+            Un swap de variance paie N<sub>var</sub> (σ²<sub>réalisée</sub> − K<sub>var</sub>). La variance réalisée est celle d'un contrat log
+            couvert en delta, et ce contrat se réplique par une bande d'options hors de la monnaie pondérées en 1/K² : le strike juste
+            ne dépend que du smile du jour, sans modèle. Comme les puts bas sont chers (skew), √K<sub>var</sub> dépasse la vol ATM.
+          </>, <>
+            A variance swap pays N<sub>var</sub> (σ²<sub>realised</sub> − K<sub>var</sub>). The realised variance is that of a delta-hedged
+            log contract, and that contract is replicated by a strip of out-of-the-money options weighted in 1/K²: the fair strike
+            depends only on today's smile, with no model. Since low-strike puts are expensive (skew), √K<sub>var</sub> exceeds the ATM vol.
+          </>)}
         </Explainer>
         <div className="grid cols-4">
-          <Stat label="Strike juste √K_var" value={pct(d?.fair_vol, 2)} foot={d ? `Vol ATM ${pct(d.atm_vol, 2)} · prime de skew +${num((d.fair_vol - d.atm_vol) * 100, 2)} pts` : undefined} busy={busy} />
-          <Stat label="Part des puts" value={pct(d?.put_share, 1)} foot="Contribution des strikes sous le forward" busy={busy} />
-          <Stat label="Swap de vol (Heston, MC)" value={pct(heston?.vol_swap, 2)} foot={heston ? `Convexité ${num((heston.convexity ?? 0) * 100, 2)} pts sous √K_var` : undefined} busy={busy} />
-          <Stat label="Strikes cotés (formule du VIX)" value={pct(d?.listed?.listed_vol, 2)}
-            foot={d?.listed ? `${d.listed.n_strikes} strikes, échéance ${d.listed.days} j ; surface ${pct(d.listed.surface_vol, 2)}` : "—"} busy={busy} />
+          <Stat label={tr("Strike juste √K_var", "Fair strike √K_var")} value={pct(d?.fair_vol, 2)} foot={d ? tr(`Vol ATM ${pct(d.atm_vol, 2)} · prime de skew +${num((d.fair_vol - d.atm_vol) * 100, 2)} pts`, `ATM vol ${pct(d.atm_vol, 2)} · skew premium +${num((d.fair_vol - d.atm_vol) * 100, 2)} pts`) : undefined} busy={busy} />
+          <Stat label={tr("Part des puts", "Share of puts")} value={pct(d?.put_share, 1)} foot={tr("Contribution des strikes sous le forward", "Contribution of strikes below the forward")} busy={busy} />
+          <Stat label={tr("Swap de vol (Heston, MC)", "Vol swap (Heston, MC)")} value={pct(heston?.vol_swap, 2)} foot={heston ? tr(`Convexité ${num((heston.convexity ?? 0) * 100, 2)} pts sous √K_var`, `Convexity ${num((heston.convexity ?? 0) * 100, 2)} pts below √K_var`) : undefined} busy={busy} />
+          <Stat label={tr("Strikes cotés (formule du VIX)", "Listed strikes (VIX formula)")} value={pct(d?.listed?.listed_vol, 2)}
+            foot={d?.listed ? tr(`${d.listed.n_strikes} strikes, échéance ${d.listed.days} j ; surface ${pct(d.listed.surface_vol, 2)}`, `${d.listed.n_strikes} strikes, expiry ${d.listed.days} d; surface ${pct(d.listed.surface_vol, 2)}`) : "—"} busy={busy} />
         </div>
         <div className="grid cols-4">
-          <Stat label="Notionnel variance" value={d ? num(d.contract.variance_notional, 1) : "—"} foot="N_vega / (2 K) par point² de variance" busy={busy} />
-          <Stat label="Valeur du contrat" value={money(d?.contract.value, ccy)} foot={d ? `Strike ${pct(d.contract.strike_vol, 2)}` : undefined} busy={busy} />
-          <Stat label="Vega (1 pt de vol implicite)" value={money(d?.contract.vega, ccy)} foot="Sur la durée restante" busy={busy} />
-          <Stat label="Vol réalisée depuis le départ" value={d && d.contract.elapsed_days > 0 ? pct(d.contract.realized_vol_so_far, 2) : "—"}
-            foot={d && d.contract.elapsed_days > 0 ? `${d.contract.elapsed_days} jours d'historique` : "Contrat qui démarre aujourd'hui"} busy={busy} />
+          <Stat label={tr("Notionnel variance", "Variance notional")} value={d ? num(d.contract.variance_notional, 1) : "—"} foot={tr("N_vega / (2 K) par point² de variance", "N_vega / (2 K) per variance point²")} busy={busy} />
+          <Stat label={tr("Valeur du contrat", "Contract value")} value={money(d?.contract.value, ccy)} foot={d ? `Strike ${pct(d.contract.strike_vol, 2)}` : undefined} busy={busy} />
+          <Stat label={tr("Vega (1 pt de vol implicite)", "Vega (1 implied vol pt)")} value={money(d?.contract.vega, ccy)} foot={tr("Sur la durée restante", "Over the remaining life")} busy={busy} />
+          <Stat label={tr("Vol réalisée depuis le départ", "Realised vol since inception")} value={d && d.contract.elapsed_days > 0 ? pct(d.contract.realized_vol_so_far, 2) : "—"}
+            foot={d && d.contract.elapsed_days > 0 ? tr(`${d.contract.elapsed_days} jours d'historique`, `${d.contract.elapsed_days} days of history`) : tr("Contrat qui démarre aujourd'hui", "Contract starting today")} busy={busy} />
         </div>
-        <Card title="Structure par terme : strike juste, vol ATM et Heston">
-          {term.data ? <EChart option={termOption} height={320} ariaLabel="Strike juste des swaps de variance par échéance" /> : <Skeleton height={280} />}
+        <Card title={tr("Structure par terme : strike juste, vol ATM et Heston", "Term structure: fair strike, ATM vol and Heston")}>
+          {term.data ? <EChart option={termOption} height={320} ariaLabel={tr("Strike juste des swaps de variance par échéance", "Fair variance swap strike by expiry")} /> : <Skeleton height={280} />}
         </Card>
         <div className="grid cols-2">
-          <Card title="Réplication : d'où vient la variance">
-            {d ? <EChart option={densityOption} height={320} ariaLabel="Contribution de chaque strike au strike de variance" /> : <Skeleton height={280} />}
+          <Card title={tr("Réplication : d'où vient la variance", "Replication: where the variance comes from")}>
+            {d ? <EChart option={densityOption} height={320} ariaLabel={tr("Contribution de chaque strike au strike de variance", "Contribution of each strike to the variance strike")} /> : <Skeleton height={280} />}
           </Card>
-          <Card title={d?.listed ? `Strikes cotés : échéance ${d.listed.expiry}` : "Strikes cotés"}>
-            {d?.listed ? <EChart option={listedOption} height={320} ariaLabel="Contribution de chaque strike coté" /> : <Skeleton height={280} />}
+          <Card title={d?.listed ? tr(`Strikes cotés : échéance ${d.listed.expiry}`, `Listed strikes: expiry ${d.listed.expiry}`) : tr("Strikes cotés", "Listed strikes")}>
+            {d?.listed ? <EChart option={listedOption} height={320} ariaLabel={tr("Contribution de chaque strike coté", "Contribution of each listed strike")} /> : <Skeleton height={280} />}
           </Card>
         </div>
         <InfoBox>
-          Avec les seuls strikes cotés (formule du VIX), la bande s'arrête là où les cotations disparaissent : les ailes manquent et
-          la variance est un peu sous-estimée par rapport à la surface SVI, qui extrapole les ailes.
+          {tr("Avec les seuls strikes cotés (formule du VIX), la bande s'arrête là où les cotations disparaissent : les ailes manquent et la variance est un peu sous-estimée par rapport à la surface SVI, qui extrapole les ailes.",
+            "With listed strikes only (VIX formula), the strip stops where quotes disappear: the wings are missing and the variance is slightly underestimated compared with the SVI surface, which extrapolates the wings.")}
         </InfoBox>
-        <Card title="Strike juste selon le modèle" flush>
+        <Card title={tr("Strike juste selon le modèle", "Fair strike by model")} flush>
           {d ? (
             <div className={`table-wrap${busy ? " busy" : ""}`}>
               <table className="data">
-                <thead><tr><th>Modèle</th><th>Swap de variance √E[V]</th><th>Swap de vol E[√V]</th><th>Convexité</th><th>Écart-type vol réalisée</th><th>Remarque</th></tr></thead>
+                <thead><tr><th>{tr("Modèle", "Model")}</th><th>{tr("Swap de variance √E[V]", "Variance swap √E[V]")}</th><th>{tr("Swap de vol E[√V]", "Vol swap E[√V]")}</th><th>{tr("Convexité", "Convexity")}</th><th>{tr("Écart-type vol réalisée", "Realised vol std. dev.")}</th><th>{tr("Remarque", "Note")}</th></tr></thead>
                 <tbody>
                   {d.models.map((m) => (
                     <tr key={m.model}>
@@ -226,20 +233,27 @@ export function ReplicationPage() {
           ) : <div className="card-body"><Skeleton height={160} /></div>}
         </Card>
         <div className="grid cols-2">
-          <Card title="Heston : distribution de la vol réalisée">
-            {d ? <EChart option={distOption} height={300} ariaLabel="Distribution de la vol réalisée sous Heston" /> : <Skeleton height={260} />}
+          <Card title={tr("Heston : distribution de la vol réalisée", "Heston: distribution of realised vol")}>
+            {d ? <EChart option={distOption} height={300} ariaLabel={tr("Distribution de la vol réalisée sous Heston", "Distribution of realised vol under Heston")} /> : <Skeleton height={260} />}
             {d && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Approximation de convexité √E[V] − Var(V) / (8 E[V]^3/2) : {pct(d.heston.convexity_approx_vol, 2)} (vol de la variance σ = {num(d.heston.sigma, 2)}).
+              {tr(`Approximation de convexité √E[V] − Var(V) / (8 E[V]^3/2) : ${pct(d.heston.convexity_approx_vol, 2)} (vol de la variance σ = ${num(d.heston.sigma, 2)}).`,
+                `Convexity approximation √E[V] − Var(V) / (8 E[V]^3/2): ${pct(d.heston.convexity_approx_vol, 2)} (vol of variance σ = ${num(d.heston.sigma, 2)}).`)}
             </div>}
           </Card>
-          <Card title="Payoff selon la vol réalisée">
-            {d ? <EChart option={payoffOption} height={300} ariaLabel="Payoff du swap de variance et du swap de vol" /> : <Skeleton height={260} />}
+          <Card title={tr("Payoff selon la vol réalisée", "Payoff by realised vol")}>
+            {d ? <EChart option={payoffOption} height={300} ariaLabel={tr("Payoff du swap de variance et du swap de vol", "Payoff of the variance swap and the vol swap")} /> : <Skeleton height={260} />}
           </Card>
         </div>
         <InfoBox>
-          Le payoff du swap de variance est convexe en vol réalisée : l'acheteur gagne davantage sur une forte hausse de vol qu'il ne
-          perd sur une baisse. Cette convexité a un prix : le strike d'un swap de vol, linéaire, est sous √K<sub>var</sub>, d'autant
-          plus que la vol de la variance est forte. Contrairement au swap de variance, le swap de vol ne se réplique pas sans modèle.
+          {tr(<>
+            Le payoff du swap de variance est convexe en vol réalisée : l'acheteur gagne davantage sur une forte hausse de vol qu'il ne
+            perd sur une baisse. Cette convexité a un prix : le strike d'un swap de vol, linéaire, est sous √K<sub>var</sub>, d'autant
+            plus que la vol de la variance est forte. Contrairement au swap de variance, le swap de vol ne se réplique pas sans modèle.
+          </>, <>
+            The variance swap payoff is convex in realised vol: the buyer gains more on a large rise in vol than they
+            lose on a fall. That convexity has a price: the strike of a vol swap, which is linear, sits below √K<sub>var</sub>, all the
+            more so when the vol of variance is high. Unlike the variance swap, the vol swap cannot be replicated without a model.
+          </>)}
         </InfoBox>
       </div>
     </div>
@@ -261,11 +275,11 @@ export function PremiumPage() {
       grid: { top: 34 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 1) },
       xAxis: { type: "category", data: a.date, axisLabel: { hideOverlap: true } },
-      yAxis: { type: "value", name: "vol (points)" },
+      yAxis: { type: "value", name: tr("vol (points)", "vol (points)") },
       dataZoom: [{ type: "inside" }],
       series: [
-        { type: "line", name: "VIX (implicite 30 j)", showSymbol: false, color: p.series[1], lineStyle: { width: 1.5 }, data: a.implied },
-        { type: "line", name: "Vol réalisée de SPY sur les 21 jours suivants", showSymbol: false, color: p.series[0], lineStyle: { width: 1.5 }, data: a.realized_next },
+        { type: "line", name: tr("VIX (implicite 30 j)", "VIX (30-day implied)"), showSymbol: false, color: p.series[1], lineStyle: { width: 1.5 }, data: a.implied },
+        { type: "line", name: tr("Vol réalisée de SPY sur les 21 jours suivants", "SPY realised vol over the next 21 days"), showSymbol: false, color: p.series[0], lineStyle: { width: 1.5 }, data: a.realized_next },
       ],
     };
   }, [vrp.data]);
@@ -277,8 +291,8 @@ export function PremiumPage() {
       grid: { top: 20 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => `${num(v, 2)} × vega` },
       xAxis: { type: "category", data: m.map((x) => x.date), axisLabel: { hideOverlap: true } },
-      yAxis: { type: "value", name: "P&L / notionnel vega" },
-      series: [{ type: "bar", name: "Vente d'un swap de variance 1 mois", data: m.map((x) => ({ value: x.pnl,
+      yAxis: { type: "value", name: tr("P&L / notionnel vega", "P&L / vega notional") },
+      series: [{ type: "bar", name: tr("Vente d'un swap de variance 1 mois", "Short 1-month variance swap"), data: m.map((x) => ({ value: x.pnl,
         itemStyle: { color: x.pnl >= 0 ? p.diverging[2] : p.diverging[0], borderRadius: x.pnl >= 0 ? [3, 3, 0, 0] : [0, 0, 3, 3] } })) }],
     };
   }, [vrp.data]);
@@ -293,8 +307,8 @@ export function PremiumPage() {
       xAxis: { type: "category", data: r.map((x) => x.date), axisLabel: { hideOverlap: true } },
       yAxis: { type: "value", scale: true },
       series: [
-        { type: "line", name: "VIX officiel (CBOE, options S&P 500)", color: p.series[1], symbolSize: 6, lineStyle: { width: 2 }, data: r.map((x) => x.vix) },
-        { type: "line", name: "Recalculé par Argus (options SPY en base)", color: p.series[0], symbolSize: 6, lineStyle: { width: 2, type: "dashed" }, data: r.map((x) => x.argus) },
+        { type: "line", name: tr("VIX officiel (CBOE, options S&P 500)", "Official VIX (CBOE, S&P 500 options)"), color: p.series[1], symbolSize: 6, lineStyle: { width: 2 }, data: r.map((x) => x.vix) },
+        { type: "line", name: tr("Recalculé par Argus (options SPY en base)", "Recomputed by Argus (stored SPY options)"), color: p.series[0], symbolSize: 6, lineStyle: { width: 2, type: "dashed" }, data: r.map((x) => x.argus) },
       ],
     };
   }, [vix.data]);
@@ -303,35 +317,48 @@ export function PremiumPage() {
     <div className="grid">
       <ErrorBox error={vrp.error} />
       <Explainer>
-        Le VIX est le strike juste d'un swap de variance à 30 jours sur le S&P 500 (en points de vol). On le compare à la vol que
-        SPY réalise ensuite sur 21 jours de bourse : l'écart est la <b>prime de risque de variance</b>, ce que l'acheteur de variance
-        paie pour se protéger des hausses de volatilité.
+        {tr(<>
+          Le VIX est le strike juste d'un swap de variance à 30 jours sur le S&P 500 (en points de vol). On le compare à la vol que
+          SPY réalise ensuite sur 21 jours de bourse : l'écart est la <b>prime de risque de variance</b>, ce que l'acheteur de variance
+          paie pour se protéger des hausses de volatilité.
+        </>, <>
+          The VIX is the fair strike of a 30-day variance swap on the S&P 500 (in vol points). We compare it with the vol that
+          SPY then realises over 21 trading days: the gap is the <b>variance risk premium</b>, what the variance buyer
+          pays for protection against rises in volatility.
+        </>)}
       </Explainer>
       <div className="grid cols-4">
-        <Stat label="VIX moyen" value={s ? num(s.mean_implied, 1) : "—"} foot={s ? `Vol réalisée ensuite : ${num(s.mean_realized, 1)}` : undefined} />
-        <Stat label="Prime moyenne" value={s ? `+${num(s.mean_premium_vol_pts, 2)} pts` : "—"} foot={s ? `Implicite > réalisée ${pct(s.share_implied_above, 0)} des jours` : undefined} />
-        <Stat label="Vente mensuelle de variance" value={s?.monthly_hit_rate != null ? pct(s.monthly_hit_rate, 0) : "—"} foot="Part des mois gagnants" />
-        <Stat label="Gain moyen / pire mois" value={s?.monthly_mean_pnl != null ? `${num(s.monthly_mean_pnl, 2)} / ${num(s.monthly_worst_pnl, 1)}` : "—"}
-          foot="En multiple du notionnel vega" />
+        <Stat label={tr("VIX moyen", "Mean VIX")} value={s ? num(s.mean_implied, 1) : "—"} foot={s ? tr(`Vol réalisée ensuite : ${num(s.mean_realized, 1)}`, `Realised vol afterwards: ${num(s.mean_realized, 1)}`) : undefined} />
+        <Stat label={tr("Prime moyenne", "Mean premium")} value={s ? `+${num(s.mean_premium_vol_pts, 2)} pts` : "—"} foot={s ? tr(`Implicite > réalisée ${pct(s.share_implied_above, 0)} des jours`, `Implied > realised on ${pct(s.share_implied_above, 0)} of days`) : undefined} />
+        <Stat label={tr("Vente mensuelle de variance", "Monthly variance selling")} value={s?.monthly_hit_rate != null ? pct(s.monthly_hit_rate, 0) : "—"} foot={tr("Part des mois gagnants", "Share of winning months")} />
+        <Stat label={tr("Gain moyen / pire mois", "Mean gain / worst month")} value={s?.monthly_mean_pnl != null ? `${num(s.monthly_mean_pnl, 2)} / ${num(s.monthly_worst_pnl, 1)}` : "—"}
+          foot={tr("En multiple du notionnel vega", "As a multiple of the vega notional")} />
       </div>
-      <Card title="VIX contre la vol réalisée qui a suivi">
-        {vrp.data ? <EChart option={seriesOption} height={360} ariaLabel="VIX et vol réalisée suivante de SPY" /> : <Skeleton height={300} />}
+      <Card title={tr("VIX contre la vol réalisée qui a suivi", "VIX against the realised vol that followed")}>
+        {vrp.data ? <EChart option={seriesOption} height={360} ariaLabel={tr("VIX et vol réalisée suivante de SPY", "VIX and the following SPY realised vol")} /> : <Skeleton height={300} />}
       </Card>
-      <Card title="P&L de la vente d'un swap de variance à 1 mois, chaque mois">
-        {vrp.data ? <EChart option={monthlyOption} height={300} ariaLabel="P&L mensuel de la vente de variance" /> : <Skeleton height={260} />}
+      <Card title={tr("P&L de la vente d'un swap de variance à 1 mois, chaque mois", "P&L of selling a 1-month variance swap, every month")}>
+        {vrp.data ? <EChart option={monthlyOption} height={300} ariaLabel={tr("P&L mensuel de la vente de variance", "Monthly P&L of selling variance")} /> : <Skeleton height={260} />}
       </Card>
       <InfoBox>
-        Vendre de la variance gagne presque tous les mois une petite prime, mais perd beaucoup lors des chocs de volatilité : le
-        profil est celui d'une assurance vendue. C'est le payoff convexe du swap de variance qui crée ces pertes extrêmes.
+        {tr("Vendre de la variance gagne presque tous les mois une petite prime, mais perd beaucoup lors des chocs de volatilité : le profil est celui d'une assurance vendue. C'est le payoff convexe du swap de variance qui crée ces pertes extrêmes.",
+          "Selling variance earns a small premium almost every month, but loses a lot in volatility shocks: the profile is that of a sold insurance policy. The convex payoff of the variance swap is what creates these extreme losses.")}
       </InfoBox>
-      <Card title="Validation : le VIX recalculé à partir de nos chaînes d'options">
+      <Card title={tr("Validation : le VIX recalculé à partir de nos chaînes d'options", "Validation: the VIX recomputed from our option chains")}>
         <Explainer>
-          La formule officielle du CBOE (bande d'options OTM pondérées par ΔK/K², deux échéances interpolées à 30 jours) appliquée
-          aux chaînes SPY stockées chaque jour. Écart médian avec le VIX officiel :{" "}
-          <b>{vix.data?.summary.median_abs_gap != null ? `${num(vix.data.summary.median_abs_gap, 2)} point` : "…"}</b>{" "}
-          sur {vix.data?.summary.n ?? "…"} jours (SPY contre S&P 500, heure du snapshot contre clôture, options américaines).
+          {tr(<>
+            La formule officielle du CBOE (bande d'options OTM pondérées par ΔK/K², deux échéances interpolées à 30 jours) appliquée
+            aux chaînes SPY stockées chaque jour. Écart médian avec le VIX officiel :{" "}
+            <b>{vix.data?.summary.median_abs_gap != null ? `${num(vix.data.summary.median_abs_gap, 2)} point` : "…"}</b>{" "}
+            sur {vix.data?.summary.n ?? "…"} jours (SPY contre S&P 500, heure du snapshot contre clôture, options américaines).
+          </>, <>
+            The official CBOE formula (strip of OTM options weighted by ΔK/K², two expiries interpolated to 30 days) applied
+            to the SPY chains stored every day. Median gap with the official VIX:{" "}
+            <b>{vix.data?.summary.median_abs_gap != null ? `${num(vix.data.summary.median_abs_gap, 2)} point` : "…"}</b>{" "}
+            over {vix.data?.summary.n ?? "…"} days (SPY against the S&P 500, snapshot time against the close, American options).
+          </>)}
         </Explainer>
-        {vix.error ? <ErrorBox error={vix.error} /> : vix.data ? <EChart option={vixOption} height={300} ariaLabel="VIX officiel et VIX recalculé" /> : <Skeleton height={260} />}
+        {vix.error ? <ErrorBox error={vix.error} /> : vix.data ? <EChart option={vixOption} height={300} ariaLabel={tr("VIX officiel et VIX recalculé", "Official and recomputed VIX")} /> : <Skeleton height={260} />}
       </Card>
     </div>
   );

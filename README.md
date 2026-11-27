@@ -66,7 +66,9 @@ Le site est alors généré dans `web/dist/`, prévu pour être servi sous `/arg
 
 ## Documentation
 
-La documentation technique complète, avec toutes les formules, est dans [docs/METHODOLOGIE.md](docs/METHODOLOGIE.md). Elle couvre les conventions, les courbes et le bootstrap, les obligations et futures, Black-Scholes et ses grecques, l'arbre CRR, Monte Carlo et Longstaff-Schwartz, les barrières (Reiner-Rubinstein, BGK), les autocalls, les digitales, asiatiques et cliquets, le smile, les données et le sentiment. Le même fichier s'affiche dans la plateforme (menu « Documentation »), avec les formules mises en forme.
+La documentation technique complète, avec toutes les formules, est dans [docs/METHODOLOGIE.md](docs/METHODOLOGIE.md). Elle couvre les conventions, les courbes et le bootstrap, les obligations et futures, Black-Scholes et ses grecques, l'arbre CRR, Monte Carlo et Longstaff-Schwartz, les barrières (Reiner-Rubinstein, BGK), les autocalls, les digitales, asiatiques et cliquets, le smile, les données et le sentiment. Le même fichier s'affiche dans la plateforme (menu « Documentation »), avec les formules mises en forme. Sa traduction anglaise, [docs/METHODOLOGY.md](docs/METHODOLOGY.md), s'affiche quand le site est en anglais.
+
+**Langues.** Le site est en anglais par défaut ; le français se choisit dans le menu secret (trois clics sur le logo ou taper « argus ») ou avec `?lang=fr`. Les textes de l'interface sont écrits en paires inline `tr("français", "English")` (`web/src/lib/i18n.tsx`) ; les textes renvoyés par l'API restent en français dans le code et sont traduits à la sortie par un middleware (`api/i18n.py`), selon l'en-tête `X-Lang` ou le paramètre `_lang=en` de la version statique.
 
 ## Architecture : 4 couches découplées
 

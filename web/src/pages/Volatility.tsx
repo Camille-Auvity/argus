@@ -6,6 +6,7 @@ import { Card, ErrorBox, InfoBox, Segmented, Skeleton, Stat } from "../component
 import { num, pct, signed } from "../lib/format";
 import { useTicker } from "../lib/hooks";
 import { useTheme, type ChartPalette } from "../lib/theme";
+import { locale, tr } from "../lib/i18n";
 
 const MAX_SERIES = 6; // fixed categorical slots; more expiries would need folding
 
@@ -64,15 +65,15 @@ export default function Volatility() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Volatilité implicite — {ticker}</h1>
+          <h1 className="page-title">{tr("Volatilité implicite", "Implied volatility")} — {ticker}</h1>
           <div className="page-sub">
-            Options OTM, mid bid/ask, IV recalculée par le solveur interne (Brent sur Black-Scholes, taux zéro de la courbe).
+            {tr("Options OTM, mid bid/ask, IV recalculée par le solveur interne (Brent sur Black-Scholes, taux zéro de la courbe).", "OTM options, bid/ask mid, IV recomputed by the in-house solver (Brent on Black-Scholes, zero rate from the curve).")}
           </div>
         </div>
         {data && <Segmented value={axis} onChange={setAxis} options={[{ value: "moneyness", label: "Moneyness" }, { value: "strike", label: "Strike" }]} />}
       </div>
       {notAvailable ? (
-        <InfoBox>{(error as ApiError).message}. Le smile est disponible pour les sous-jacents US (SPY, QQQ, AAPL…) ; les pricers restent utilisables avec la volatilité réalisée.</InfoBox>
+        <InfoBox>{(error as ApiError).message}. {tr("Le smile est disponible pour les sous-jacents US (SPY, QQQ, AAPL…) ; les pricers restent utilisables avec la volatilité réalisée.", "The smile is available for the US underlyings (SPY, QQQ, AAPL…); the pricers still work with the realised volatility.")}</InfoBox>
       ) : (
         <ErrorBox error={error} />
       )}
@@ -80,14 +81,14 @@ export default function Volatility() {
       {data && (
         <div className="grid">
           <div className="grid cols-4">
-            <Stat label="Spot de référence" value={num(data.spot)} foot={`Snapshot ${new Date(data.asof).toLocaleString("fr-FR")}`} />
-            <Stat label={`Vol ATM ${near ? `${Math.round(near.T * 365)} j` : ""}`} value={pct(near?.iv, 2)} />
-            <Stat label={`Vol ATM ${far ? `${Math.round(far.T * 365)} j` : ""}`} value={pct(far?.iv, 2)}
-              foot={near && far && far !== near ? `Pente ${signed((far.iv - near.iv) * 100, 2)} pts de vol` : undefined} />
-            <Stat label="Échéances / options" value={`${data.expiries.length} / ${data.expiries.reduce((n, e) => n + e.points.length, 0)}`}
+            <Stat label={tr("Spot de référence", "Reference spot")} value={num(data.spot)} foot={`Snapshot ${new Date(data.asof).toLocaleString(locale())}`} />
+            <Stat label={tr(`Vol ATM ${near ? `${Math.round(near.T * 365)} j` : ""}`, `ATM vol ${near ? `${Math.round(near.T * 365)} d` : ""}`)} value={pct(near?.iv, 2)} />
+            <Stat label={tr(`Vol ATM ${far ? `${Math.round(far.T * 365)} j` : ""}`, `ATM vol ${far ? `${Math.round(far.T * 365)} d` : ""}`)} value={pct(far?.iv, 2)}
+              foot={near && far && far !== near ? tr(`Pente ${signed((far.iv - near.iv) * 100, 2)} pts de vol`, `Slope ${signed((far.iv - near.iv) * 100, 2)} vol pts`) : undefined} />
+            <Stat label={tr("Échéances / options", "Expiries / options")} value={`${data.expiries.length} / ${data.expiries.reduce((n, e) => n + e.points.length, 0)}`}
               foot={`q = ${pct(data.dividend_yield, 2)}`} />
           </div>
-          <Card title="Smile par échéance" actions={
+          <Card title={tr("Smile par échéance", "Smile by expiry")} actions={
             <div className="chip-row">
               {data.expiries.map((e) => {
                 const on = selected.includes(e.expiry);
@@ -96,22 +97,22 @@ export default function Volatility() {
                     disabled={!on && selected.length >= MAX_SERIES}
                     onClick={() => setSelected((s) => on ? s.filter((x) => x !== e.expiry) : [...s, e.expiry])}>
                     <i style={{ background: on ? colorOf(e.expiry, palette) : "transparent", border: `1px solid ${colorOf(e.expiry, palette)}` }} />
-                    {e.days} j
+                    {e.days} {tr("j", "d")}
                   </button>
                 );
               })}
             </div>
           }>
-            <EChart option={smileOption} height={520} ariaLabel={`Smile de volatilité implicite de ${ticker}`} />
+            <EChart option={smileOption} height={520} ariaLabel={tr(`Smile de volatilité implicite de ${ticker}`, `${ticker} implied volatility smile`)} />
           </Card>
           <div className="grid cols-2">
-            <Card title="Structure par terme de la vol ATM">
-              <EChart option={termOption} height={360} ariaLabel="Volatilité ATM par maturité" />
+            <Card title={tr("Structure par terme de la vol ATM", "ATM vol term structure")}>
+              <EChart option={termOption} height={360} ariaLabel={tr("Volatilité ATM par maturité", "ATM volatility by maturity")} />
             </Card>
-            <Card title="IV interne vs fournisseur" flush>
+            <Card title={tr("IV interne vs fournisseur", "In-house IV vs vendor")} flush>
               <div className="table-wrap" style={{ maxHeight: 400, overflowY: "auto" }}>
                 <table className="data">
-                  <thead><tr><th>Échéance</th><th>Type</th><th>Strike</th><th>Mid</th><th>IV interne</th><th>IV Yahoo</th></tr></thead>
+                  <thead><tr><th>{tr("Échéance", "Expiry")}</th><th>Type</th><th>Strike</th><th>Mid</th><th>{tr("IV interne", "In-house IV")}</th><th>IV Yahoo</th></tr></thead>
                   <tbody>
                     {points.map((p) => (
                       <tr key={`${p.expiry}-${p.option_type}-${p.strike}`}>

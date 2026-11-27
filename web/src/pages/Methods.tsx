@@ -10,13 +10,14 @@ import { Card, ErrorBox, InfoBox, NumberField, Segmented, SelectField, Skeleton,
 import { ccySymbol, num, pct } from "../lib/format";
 import { useDebounced, useTicker } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
 export const METHOD_PAGES = [
-  { path: "black-scholes", label: "Black-Scholes" },
-  { path: "arbre-binomial", label: "Arbre binomial" },
-  { path: "monte-carlo", label: "Monte Carlo" },
-  { path: "longstaff-schwartz", label: "Longstaff-Schwartz" },
-  { path: "grecques", label: "Grecques (différences finies)" },
+  { path: "black-scholes", label: ["Black-Scholes", "Black-Scholes"] },
+  { path: "arbre-binomial", label: ["Arbre binomial", "Binomial tree"] },
+  { path: "monte-carlo", label: ["Monte Carlo", "Monte Carlo"] },
+  { path: "longstaff-schwartz", label: ["Longstaff-Schwartz", "Longstaff-Schwartz"] },
+  { path: "grecques", label: ["Grecques (différences finies)", "Greeks (finite differences)"] },
 ] as const;
 
 /** Layout shared by the method sub-pages: option parameters on top, the selected method below. */
@@ -41,35 +42,35 @@ function MethodsShell() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Méthodes de pricing — {ticker}</h1>
-          <div className="page-sub">Chaque méthode, étape par étape : les chiffres intermédiaires et les graphiques viennent du même moteur que les prix de la plateforme.</div>
+          <h1 className="page-title">{tr("Méthodes de pricing", "Pricing methods")} — {ticker}</h1>
+          <div className="page-sub">{tr("Chaque méthode, étape par étape : les chiffres intermédiaires et les graphiques viennent du même moteur que les prix de la plateforme.", "Each method, step by step: the intermediate figures and the charts come from the same engine as the platform's prices.")}</div>
         </div>
       </div>
-      <Card title="Option étudiée" className="param-bar">
+      <Card title={tr("Option étudiée", "Option studied")} className="param-bar">
         <div className="toolbar-grid">
           <NumberField label={`Spot (${ccy})`} value={req.spot} min={0.0001} digits={2} onChange={(spot) => set({ spot })} />
-          <NumberField label="Volatilité" value={req.vol} suffix="%" scale={100} min={0.001} max={5} digits={2} onChange={(vol) => set({ vol })} />
+          <NumberField label={tr("Volatilité", "Volatility")} value={req.vol} suffix="%" scale={100} min={0.001} max={5} digits={2} onChange={(vol) => set({ vol })} />
           <NumberField label="Dividend yield" value={req.dividend_yield} suffix="%" scale={100} digits={3} onChange={(dividend_yield) => set({ dividend_yield })} />
           <NumberField label={`Strike (${ccy})`} value={req.strike} min={0.0001} digits={2} onChange={(strike) => set({ strike })} />
-          <NumberField label="Maturité" value={req.expiry} suffix="jours" scale={365} min={1 / 365} max={30} digits={0} onChange={(expiry) => set({ expiry })} />
-          <SelectField label="Trajectoires MC" value={req.mc_paths} onChange={(mc_paths) => set({ mc_paths })}
-            options={[10_000, 50_000, 100_000, 200_000].map((v) => ({ value: v, label: v.toLocaleString("fr-FR") }))} />
+          <NumberField label={tr("Maturité", "Maturity")} value={req.expiry} suffix={tr("jours", "days")} scale={365} min={1 / 365} max={30} digits={0} onChange={(expiry) => set({ expiry })} />
+          <SelectField label={tr("Trajectoires MC", "MC paths")} value={req.mc_paths} onChange={(mc_paths) => set({ mc_paths })}
+            options={[10_000, 50_000, 100_000, 200_000].map((v) => ({ value: v, label: num(v, 0) }))} />
           <Segmented label="Type" value={req.option_type} onChange={(option_type) => set({ option_type })}
             options={[{ value: "call", label: "Call" }, { value: "put", label: "Put" }]} />
-          <Segmented label="Exercice" value={req.exercise} onChange={(exercise) => set({ exercise })}
-            options={[{ value: "european", label: "Européen" }, { value: "american", label: "Américain" }]} />
-          <Segmented label="Taux sans risque" value={rate.mode === "flat" ? "flat" : rate.currency}
-            options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }, { value: "flat", label: "Fixe" }]}
+          <Segmented label={tr("Exercice", "Exercise")} value={req.exercise} onChange={(exercise) => set({ exercise })}
+            options={[{ value: "european", label: tr("Européen", "European") }, { value: "american", label: tr("Américain", "American") }]} />
+          <Segmented label={tr("Taux sans risque", "Risk-free rate")} value={rate.mode === "flat" ? "flat" : rate.currency}
+            options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }, { value: "flat", label: tr("Fixe", "Flat") }]}
             onChange={(v) => set({ rate: v === "flat" ? { ...rate, mode: "flat" } : { ...rate, mode: "curve", currency: v as Currency } })} />
           {rate.mode === "flat" && (
-            <NumberField label="Taux fixe" value={rate.flat_rate} suffix="%" scale={100} digits={3}
+            <NumberField label={tr("Taux fixe", "Flat rate")} value={rate.flat_rate} suffix="%" scale={100} digits={3}
               onChange={(flat_rate) => set({ rate: { ...rate, flat_rate } })} />
           )}
         </div>
       </Card>
-      <nav className="tabs subnav" aria-label="Méthodes">
+      <nav className="tabs subnav" aria-label={tr("Méthodes", "Methods")}>
         {METHOD_PAGES.map((m) => (
-          <NavLink key={m.path} to={`/methods/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{m.label}</NavLink>
+          <NavLink key={m.path} to={`/methods/${m.path}`} className={({ isActive }) => (isActive ? "on" : "")}>{tr(m.label[0], m.label[1])}</NavLink>
         ))}
       </nav>
       <Outlet context={debounced} />
@@ -87,7 +88,7 @@ function StepsTable({ steps, resultLabel }: { steps: CalcStep[]; resultLabel?: s
   return (
     <div className="table-wrap">
       <table className="data steps-table">
-        <thead><tr><th>Étape</th><th style={{ textAlign: "left" }}>Formule</th><th>Valeur</th><th style={{ textAlign: "left" }}>Commentaire</th></tr></thead>
+        <thead><tr><th>{tr("Étape", "Step")}</th><th style={{ textAlign: "left" }}>{tr("Formule", "Formula")}</th><th>{tr("Valeur", "Value")}</th><th style={{ textAlign: "left" }}>{tr("Commentaire", "Comment")}</th></tr></thead>
         <tbody>
           {steps.map((s, i) => (
             <tr key={s.label} className={s.label === resultLabel ? "result" : ""}>
@@ -147,9 +148,9 @@ export function BlackScholesTab() {
       xAxis: { type: "value", scale: true },
       yAxis: { type: "value", axisLabel: { show: false } },
       series: [
-        { type: "line", name: "Densité risque-neutre de S_T", showSymbol: false, color: p.series[0], lineStyle: { width: 2 }, data: pts,
+        { type: "line", name: tr("Densité risque-neutre de S_T", "Risk-neutral density of S_T"), showSymbol: false, color: p.series[0], lineStyle: { width: 2 }, data: pts,
           markLine: markers(p, [{ x: data.inputs.strike, name: "K" }, { x: data.inputs.spot, name: "S" }, { x: data.forward, name: "F" }]) },
-        { type: "line", name: `Zone dans la monnaie (proba ${pct(data.prob_itm, 1)})`, showSymbol: false, color: p.series[2],
+        { type: "line", name: tr(`Zone dans la monnaie (proba ${pct(data.prob_itm, 1)})`, `In-the-money region (probability ${pct(data.prob_itm, 1)})`), showSymbol: false, color: p.series[2],
           lineStyle: { width: 0 }, areaStyle: { opacity: 0.35 }, data: itm },
       ],
     };
@@ -157,21 +158,26 @@ export function BlackScholesTab() {
   return (
     <div className={`grid${isFetching ? " busy" : ""}`}>
       <Explainer>
-        Sous la probabilité risque-neutre, <b>ln S_T suit une loi normale</b> de moyenne ln S + (r − q − σ²/2)T et de variance σ²T.
-        Le prix est l'espérance actualisée du payoff, qui se calcule exactement : c'est la formule fermée, évaluée ici terme à terme.
+        {tr(<>
+          Sous la probabilité risque-neutre, <b>ln S_T suit une loi normale</b> de moyenne ln S + (r − q − σ²/2)T et de variance σ²T.
+          Le prix est l'espérance actualisée du payoff, qui se calcule exactement : c'est la formule fermée, évaluée ici terme à terme.
+        </>, <>
+          Under the risk-neutral probability, <b>ln S_T is normally distributed</b> with mean ln S + (r − q − σ²/2)T and variance σ²T.
+          The price is the discounted expectation of the payoff, which can be computed exactly: it is the closed form, evaluated here term by term.
+        </>)}
       </Explainer>
       <ErrorBox error={error} />
       {!data ? <Skeleton height={300} /> : (
         <>
           <div className="grid cols-4">
-            <Stat label="Terme sous-jacent" value={num(data.steps[6].value, 4)} foot={<Formula text={data.steps[6].formula} />} />
-            <Stat label="Terme strike" value={num(data.steps[7].value, 4)} foot={<Formula text={data.steps[7].formula} />} />
-            <Stat label="Prix" value={num(data.price, 4)} foot="différence des deux termes" />
-            <Stat label="Proba de finir dans la monnaie" value={pct(data.prob_itm, 2)} foot="N(d₂) sous la mesure risque-neutre" />
+            <Stat label={tr("Terme sous-jacent", "Underlying term")} value={num(data.steps[6].value, 4)} foot={<Formula text={data.steps[6].formula} />} />
+            <Stat label={tr("Terme strike", "Strike term")} value={num(data.steps[7].value, 4)} foot={<Formula text={data.steps[7].formula} />} />
+            <Stat label={tr("Prix", "Price")} value={num(data.price, 4)} foot={tr("différence des deux termes", "difference of the two terms")} />
+            <Stat label={tr("Proba de finir dans la monnaie", "Probability of ending in the money")} value={pct(data.prob_itm, 2)} foot={tr("N(d₂) sous la mesure risque-neutre", "N(d₂) under the risk-neutral measure")} />
           </div>
-          <Card title="Calcul pas à pas" flush><StepsTable steps={data.steps} resultLabel="Prix" /></Card>
-          <Card title="Distribution de S_T à l'échéance">
-            <EChart option={option} height={460} ariaLabel="Densité risque-neutre du sous-jacent à l'échéance" />
+          <Card title={tr("Calcul pas à pas", "Step-by-step calculation")} flush><StepsTable steps={data.steps} resultLabel={tr("Prix", "Price")} /></Card>
+          <Card title={tr("Distribution de S_T à l'échéance", "Distribution of S_T at expiry")}>
+            <EChart option={option} height={460} ariaLabel={tr("Densité risque-neutre du sous-jacent à l'échéance", "Risk-neutral density of the underlying at expiry")} />
           </Card>
         </>
       )}
@@ -196,7 +202,7 @@ export function TreeTab() {
       xAxis: { type: "value", min: 0 },
       yAxis: { type: "value", scale: true },
       series: [{
-        type: "line", name: "Prix de l'arbre selon le nombre de pas N", symbol: "circle", symbolSize: 4, color: p.series[0],
+        type: "line", name: tr("Prix de l'arbre selon le nombre de pas N", "Tree price by number of steps N"), symbol: "circle", symbolSize: 4, color: p.series[0],
         lineStyle: { width: 1.5 }, data: data.convergence.n.map((n, i) => [n, data.convergence.price[i]]),
         markLine: { symbol: "none", silent: true, lineStyle: { color: p.series[1], type: "dashed", width: 1.5 },
           label: { formatter: `${data.reference_label} : ${num(data.reference, 4)}`, color: p.textSecondary, position: "insideEndTop" },
@@ -209,9 +215,9 @@ export function TreeTab() {
     if (!data?.boundary) return {};
     return {
       tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 2) },
-      xAxis: { type: "value", axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} j` } },
+      xAxis: { type: "value", axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} ${tr("j", "d")}` } },
       yAxis: { type: "value", scale: true },
-      series: [{ type: "line", name: "Spot critique d'exercice", showSymbol: false, step: "end", color: p.series[0], lineStyle: { width: 2 },
+      series: [{ type: "line", name: tr("Spot critique d'exercice", "Critical exercise spot"), showSymbol: false, step: "end", color: p.series[0], lineStyle: { width: 2 },
         areaStyle: { opacity: 0.12 }, data: data.boundary.t.map((t, i) => [t, data.boundary!.s[i]]) }],
     };
   }, [data]);
@@ -219,40 +225,46 @@ export function TreeTab() {
   return (
     <div className={`grid${isFetching ? " busy" : ""}`}>
       <Explainer>
-        Le temps est découpé en N pas. À chaque pas le sous-jacent est multiplié par <b>u</b> (hausse) ou <b>d</b> (baisse),
-        avec la probabilité risque-neutre <b>p</b>. On part des payoffs à l'échéance (colonne de droite) puis on remonte :
-        chaque nœud vaut l'espérance actualisée de ses deux successeurs{req.exercise === "american" ? ", ou la valeur d'exercice si elle est supérieure (nœuds encadrés en rouge)" : ""}.
+        {tr(<>
+          Le temps est découpé en N pas. À chaque pas le sous-jacent est multiplié par <b>u</b> (hausse) ou <b>d</b> (baisse),
+          avec la probabilité risque-neutre <b>p</b>. On part des payoffs à l'échéance (colonne de droite) puis on remonte :
+          chaque nœud vaut l'espérance actualisée de ses deux successeurs{req.exercise === "american" ? ", ou la valeur d'exercice si elle est supérieure (nœuds encadrés en rouge)" : ""}.
+        </>, <>
+          Time is cut into N steps. At each step the underlying is multiplied by <b>u</b> (up) or <b>d</b> (down),
+          with the risk-neutral probability <b>p</b>. We start from the payoffs at expiry (right-hand column) and work backwards:
+          each node is worth the discounted expectation of its two successors{req.exercise === "american" ? ", or the exercise value if that is higher (nodes framed in red)" : ""}.
+        </>)}
       </Explainer>
       <ErrorBox error={error} />
       {!data ? <Skeleton height={360} /> : (
         <>
           <div className="grid cols-4">
-            <Stat label="u / d" value={`${num(data.params.u, 4)} / ${num(data.params.d, 4)}`} foot={`Δt = ${num(data.params.dt * 365, 1)} jours`} />
-            <Stat label="Probabilité p (1er pas)" value={num(data.params.p, 4)} foot={`actualisation ${num(data.params.step_discount, 5)}`} />
-            <Stat label={`Prix avec ${data.params.steps} pas`} value={num(data.price_display, 4)} foot="valeur du nœud racine" />
-            <Stat label={data.reference_label} value={num(data.reference, 4)} foot={`écart ${num(data.price_display - data.reference, 4)}`} />
+            <Stat label="u / d" value={`${num(data.params.u, 4)} / ${num(data.params.d, 4)}`} foot={tr(`Δt = ${num(data.params.dt * 365, 1)} jours`, `Δt = ${num(data.params.dt * 365, 1)} days`)} />
+            <Stat label={tr("Probabilité p (1er pas)", "Probability p (1st step)")} value={num(data.params.p, 4)} foot={tr(`actualisation ${num(data.params.step_discount, 5)}`, `discount ${num(data.params.step_discount, 5)}`)} />
+            <Stat label={tr(`Prix avec ${data.params.steps} pas`, `Price with ${data.params.steps} steps`)} value={num(data.price_display, 4)} foot={tr("valeur du nœud racine", "value of the root node")} />
+            <Stat label={data.reference_label} value={num(data.reference, 4)} foot={tr(`écart ${num(data.price_display - data.reference, 4)}`, `gap ${num(data.price_display - data.reference, 4)}`)} />
           </div>
-          <Card title="Arbre (prix du sous-jacent / valeur de l'option)" actions={
+          <Card title={tr("Arbre (prix du sous-jacent / valeur de l'option)", "Tree (underlying price / option value)")} actions={
             <label className="slider">
-              {data.params.steps} pas
+              {data.params.steps} {tr("pas", "steps")}
               <input type="range" min={1} max={10} value={displaySteps} onChange={(e) => setDisplaySteps(Number(e.target.value))} />
             </label>
           }>
             <TreeDiagram tree={data} />
             <div className="legend" style={{ marginTop: 10 }}>
-              <span><i style={{ background: "var(--accent)" }} />racine : prix de l'option aujourd'hui</span>
-              {data.boundary && <span><i style={{ background: "var(--critical)" }} />exercice anticipé optimal</span>}
-              <span className="muted">Survolez un nœud pour le détail (continuation, valeur d'exercice).</span>
+              <span><i style={{ background: "var(--accent)" }} />{tr("racine : prix de l'option aujourd'hui", "root: option price today")}</span>
+              {data.boundary && <span><i style={{ background: "var(--critical)" }} />{tr("exercice anticipé optimal", "optimal early exercise")}</span>}
+              <span className="muted">{tr("Survolez un nœud pour le détail (continuation, valeur d'exercice).", "Hover a node for details (continuation, exercise value).")}</span>
             </div>
           </Card>
-          <Card title="Calcul pas à pas" flush><StepsTable steps={data.steps} resultLabel="Valeur d'un nœud" /></Card>
+          <Card title={tr("Calcul pas à pas", "Step-by-step calculation")} flush><StepsTable steps={data.steps} resultLabel={tr("Valeur d'un nœud", "Value of a node")} /></Card>
           <div className="grid">
-            <Card title="Convergence quand N augmente">
-              <EChart option={convOption} height={420} ariaLabel="Convergence du prix de l'arbre" />
+            <Card title={tr("Convergence quand N augmente", "Convergence as N grows")}>
+              <EChart option={convOption} height={420} ariaLabel={tr("Convergence du prix de l'arbre", "Convergence of the tree price")} />
             </Card>
             {data.boundary && (
-              <Card title="Frontière d'exercice anticipé (arbre 300 pas)">
-                <EChart option={boundaryOption} height={420} ariaLabel="Frontière d'exercice anticipé selon le temps" />
+              <Card title={tr("Frontière d'exercice anticipé (arbre 300 pas)", "Early-exercise boundary (300-step tree)")}>
+                <EChart option={boundaryOption} height={420} ariaLabel={tr("Frontière d'exercice anticipé selon le temps", "Early-exercise boundary over time")} />
               </Card>
             )}
           </div>
@@ -273,12 +285,13 @@ function TreeDiagram({ tree }: { tree: ExplainTree }) {
   });
   const byKey = new Map(tree.nodes.map((nd) => [`${nd.i}:${nd.j}`, nd]));
   const detail = (nd: TreeNode) =>
-    `t = ${num(nd.t * 365, 1)} j\nS = ${num(nd.spot, 4)}\nValeur = ${num(nd.value, 4)}\nContinuation = ${num(nd.continuation, 4)}\nExercice immédiat = ${num(nd.exercise_value, 4)}${nd.exercised ? "\n→ exercice optimal" : ""}`;
+    tr(`t = ${num(nd.t * 365, 1)} j\nS = ${num(nd.spot, 4)}\nValeur = ${num(nd.value, 4)}\nContinuation = ${num(nd.continuation, 4)}\nExercice immédiat = ${num(nd.exercise_value, 4)}${nd.exercised ? "\n→ exercice optimal" : ""}`,
+      `t = ${num(nd.t * 365, 1)} d\nS = ${num(nd.spot, 4)}\nValue = ${num(nd.value, 4)}\nContinuation = ${num(nd.continuation, 4)}\nImmediate exercise = ${num(nd.exercise_value, 4)}${nd.exercised ? "\n→ optimal exercise" : ""}`);
 
   return (
     <div style={{ overflowX: "auto" }}>
       <svg className="tree-svg" viewBox={`0 0 ${width} ${height}`} style={{ minWidth: Math.min(width, 640) }} role="img"
-        aria-label={`Arbre binomial à ${n} pas`}>
+        aria-label={tr(`Arbre binomial à ${n} pas`, `${n}-step binomial tree`)}>
         {tree.nodes.filter((nd) => nd.i < n).map((nd) => {
           const a = pos(nd);
           return [0, 1].map((dj) => {
@@ -301,7 +314,7 @@ function TreeDiagram({ tree }: { tree: ExplainTree }) {
         })}
         {Array.from({ length: n + 1 }, (_, i) => (
           <text key={i} className="axis-label num" x={pad + i * colW + nodeW / 2} y={height - 6} textAnchor="middle">
-            {i === 0 ? "t = 0" : `${num((i * tree.params.dt) * 365, 0)} j`}
+            {i === 0 ? "t = 0" : `${num((i * tree.params.dt) * 365, 0)} ${tr("j", "d")}`}
           </text>
         ))}
       </svg>
@@ -319,11 +332,11 @@ export function MonteCarloTab() {
     if (!data) return {};
     return {
       tooltip: { trigger: "item", formatter: (it: { seriesName: string; value: number[] }) =>
-        `${it.seriesName}<br/>t = ${num(it.value[0] * 365, 0)} j · S = ${num(it.value[1], 2)}` },
-      xAxis: { type: "value", max: data.paths.t[data.paths.t.length - 1], axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} j` } },
+        `${it.seriesName}<br/>t = ${num(it.value[0] * 365, 0)} ${tr("j", "d")} · S = ${num(it.value[1], 2)}` },
+      xAxis: { type: "value", max: data.paths.t[data.paths.t.length - 1], axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} ${tr("j", "d")}` } },
       yAxis: { type: "value", scale: true },
       series: data.paths.s.map((path, k) => ({
-        type: "line", name: `Trajectoire ${k + 1}`, showSymbol: false, color: p.series[0],
+        type: "line", name: tr(`Trajectoire ${k + 1}`, `Path ${k + 1}`), showSymbol: false, color: p.series[0],
         lineStyle: { width: 1, opacity: 0.45 }, emphasis: { lineStyle: { width: 2, opacity: 1 } },
         data: path.map((s, i) => [data.paths.t[i], s]),
         markLine: k === 0 ? { symbol: "none", silent: true, lineStyle: { color: p.series[1], type: "dashed", width: 1.5 },
@@ -340,7 +353,7 @@ export function MonteCarloTab() {
       tooltip: { trigger: "axis", valueFormatter: (v: number) => pct(v, 2) },
       xAxis: { type: "value", scale: true },
       yAxis: { type: "value", axisLabel: { formatter: (v: number) => pct(v, 1) } },
-      series: [{ type: "line", name: "Fréquence de S_T", step: "middle", showSymbol: false, color: p.series[0],
+      series: [{ type: "line", name: tr("Fréquence de S_T", "Frequency of S_T"), step: "middle", showSymbol: false, color: p.series[0],
         lineStyle: { width: 1.5 }, areaStyle: { opacity: 0.3 },
         data: counts.map((c, i) => [(edges[i] + edges[i + 1]) / 2, c / total]),
         markLine: markers(p, [{ x: req.strike, name: "K", color: p.series[1] }, { x: req.spot, name: "S" }]) }],
@@ -351,23 +364,24 @@ export function MonteCarloTab() {
     if (!data) return {};
     const c = data.convergence;
     return {
-      legend: { data: ["Estimation Monte Carlo", "Intervalle de confiance 95 %"] },
+      legend: { data: [tr("Estimation Monte Carlo", "Monte Carlo estimate"), tr("Intervalle de confiance 95 %", "95% confidence interval")] },
       grid: { top: 30 },
       tooltip: {
         trigger: "axis",
         formatter: (items: { dataIndex: number }[]) => {
           const i = items[0].dataIndex;
-          return `N = ${c.n[i].toLocaleString("fr-FR")}<br/>Estimation <b>${num(c.mean[i], 4)}</b><br/>IC 95 % [${num(c.lo[i], 4)} ; ${num(c.hi[i], 4)}]`;
+          return tr(`N = ${num(c.n[i], 0)}<br/>Estimation <b>${num(c.mean[i], 4)}</b><br/>IC 95 % [${num(c.lo[i], 4)} ; ${num(c.hi[i], 4)}]`,
+            `N = ${num(c.n[i], 0)}<br/>Estimate <b>${num(c.mean[i], 4)}</b><br/>95% CI [${num(c.lo[i], 4)}, ${num(c.hi[i], 4)}]`);
         },
       },
       // checkpoints are log-spaced, so a category axis reads as a log scale
-      xAxis: { type: "category", boundaryGap: false, data: c.n.map((n) => n.toLocaleString("fr-FR")), axisLabel: { hideOverlap: true } },
+      xAxis: { type: "category", boundaryGap: false, data: c.n.map((n) => num(n, 0)), axisLabel: { hideOverlap: true } },
       yAxis: { type: "value", scale: true },
       series: [
-        { type: "line", name: "IC bas", stack: "ci", showSymbol: false, lineStyle: { opacity: 0 }, data: c.lo, tooltip: { show: false } },
-        { type: "line", name: "Intervalle de confiance 95 %", stack: "ci", showSymbol: false, color: p.series[0], lineStyle: { opacity: 0 },
+        { type: "line", name: tr("IC bas", "CI low"), stack: "ci", showSymbol: false, lineStyle: { opacity: 0 }, data: c.lo, tooltip: { show: false } },
+        { type: "line", name: tr("Intervalle de confiance 95 %", "95% confidence interval"), stack: "ci", showSymbol: false, color: p.series[0], lineStyle: { opacity: 0 },
           areaStyle: { opacity: 0.2 }, data: c.hi.map((h, i) => h - c.lo[i]) },
-        { type: "line", name: "Estimation Monte Carlo", showSymbol: false, color: p.series[0], lineStyle: { width: 2 },
+        { type: "line", name: tr("Estimation Monte Carlo", "Monte Carlo estimate"), showSymbol: false, color: p.series[0], lineStyle: { width: 2 },
           data: c.mean,
           markLine: { symbol: "none", silent: true, lineStyle: { color: p.series[1], type: "dashed", width: 1.5 },
             label: { formatter: `Black-Scholes ${num(data.reference, 4)}`, color: p.textSecondary, position: "insideEndTop" }, data: [{ yAxis: data.reference }] } },
@@ -378,32 +392,39 @@ export function MonteCarloTab() {
   return (
     <div className={`grid${isFetching ? " busy" : ""}`}>
       <Explainer>
-        On simule un grand nombre de valeurs de S_T sous la probabilité risque-neutre, on calcule le payoff de chacune, puis on
-        prend la <b>moyenne actualisée</b>. La loi des grands nombres garantit la convergence, à la vitesse <b>1/√N</b> : diviser
-        l'erreur par 2 coûte 4 fois plus de trajectoires. Les variables antithétiques (Z et −Z) réduisent la variance gratuitement.
-        {req.exercise === "american" && " L'option est traitée ici en européen ; l'exercice américain est dans l'onglet Longstaff-Schwartz."}
+        {tr(<>
+          On simule un grand nombre de valeurs de S_T sous la probabilité risque-neutre, on calcule le payoff de chacune, puis on
+          prend la <b>moyenne actualisée</b>. La loi des grands nombres garantit la convergence, à la vitesse <b>1/√N</b> : diviser
+          l'erreur par 2 coûte 4 fois plus de trajectoires. Les variables antithétiques (Z et −Z) réduisent la variance gratuitement.
+          {req.exercise === "american" && " L'option est traitée ici en européen ; l'exercice américain est dans l'onglet Longstaff-Schwartz."}
+        </>, <>
+          We simulate a large number of values of S_T under the risk-neutral probability, compute the payoff of each, then
+          take the <b>discounted mean</b>. The law of large numbers guarantees convergence, at speed <b>1/√N</b>: halving
+          the error costs 4 times more paths. Antithetic variables (Z and −Z) reduce the variance for free.
+          {req.exercise === "american" && " The option is treated as European here; American exercise is in the Longstaff-Schwartz tab."}
+        </>)}
       </Explainer>
       <ErrorBox error={error} />
       {!data ? <Skeleton height={360} /> : (
         <>
           <div className="grid cols-4">
-            <Stat label="Prix Monte Carlo" value={num(data.price, 4)} foot={`± ${num(1.96 * data.std_error, 4)} (IC 95 %)`} />
+            <Stat label={tr("Prix Monte Carlo", "Monte Carlo price")} value={num(data.price, 4)} foot={tr(`± ${num(1.96 * data.std_error, 4)} (IC 95 %)`, `± ${num(1.96 * data.std_error, 4)} (95% CI)`)} />
             <Stat label="Black-Scholes (exact)" value={num(data.reference, 4)}
-              foot={`écart ${num(data.price - data.reference, 4)} = ${num((data.price - data.reference) / data.std_error, 2)} σ`} />
-            <Stat label="Erreur standard" value={num(data.std_error, 5)} foot={`sans antithétiques : ${num(data.antithetic.without.std_error, 5)}`} />
-            <Stat label="Gain des antithétiques" value={data.antithetic.variance_reduction ? `× ${num(data.antithetic.variance_reduction, 1)}` : "—"}
-              foot="réduction de variance à N égal" />
+              foot={tr(`écart ${num(data.price - data.reference, 4)} = ${num((data.price - data.reference) / data.std_error, 2)} σ`, `gap ${num(data.price - data.reference, 4)} = ${num((data.price - data.reference) / data.std_error, 2)} σ`)} />
+            <Stat label={tr("Erreur standard", "Standard error")} value={num(data.std_error, 5)} foot={tr(`sans antithétiques : ${num(data.antithetic.without.std_error, 5)}`, `without antithetics: ${num(data.antithetic.without.std_error, 5)}`)} />
+            <Stat label={tr("Gain des antithétiques", "Antithetic gain")} value={data.antithetic.variance_reduction ? `× ${num(data.antithetic.variance_reduction, 1)}` : "—"}
+              foot={tr("réduction de variance à N égal", "variance reduction for the same N")} />
           </div>
-          <Card title={`${data.paths.s.length} trajectoires simulées (illustration)`}>
-            <EChart option={pathsOption} height={480} ariaLabel="Trajectoires simulées du sous-jacent" />
+          <Card title={tr(`${data.paths.s.length} trajectoires simulées (illustration)`, `${data.paths.s.length} simulated paths (illustration)`)}>
+            <EChart option={pathsOption} height={480} ariaLabel={tr("Trajectoires simulées du sous-jacent", "Simulated paths of the underlying")} />
           </Card>
-          <Card title="Distribution des S_T simulés">
-            <EChart option={histOption} height={420} ariaLabel="Histogramme des valeurs finales simulées" />
+          <Card title={tr("Distribution des S_T simulés", "Distribution of the simulated S_T")}>
+            <EChart option={histOption} height={420} ariaLabel={tr("Histogramme des valeurs finales simulées", "Histogram of the simulated final values")} />
           </Card>
-          <Card title="Convergence de l'estimation">
-            <EChart option={convOption} height={440} ariaLabel="Convergence de l'estimation Monte Carlo avec intervalle de confiance" />
+          <Card title={tr("Convergence de l'estimation", "Convergence of the estimate")}>
+            <EChart option={convOption} height={440} ariaLabel={tr("Convergence de l'estimation Monte Carlo avec intervalle de confiance", "Convergence of the Monte Carlo estimate with confidence interval")} />
           </Card>
-          <Card title="Calcul pas à pas" flush><StepsTable steps={data.steps} resultLabel="Prix" /></Card>
+          <Card title={tr("Calcul pas à pas", "Step-by-step calculation")} flush><StepsTable steps={data.steps} resultLabel={tr("Prix", "Price")} /></Card>
         </>
       )}
     </div>
@@ -431,13 +452,13 @@ export function LsmTab() {
       xAxis: { type: "value", scale: true },
       yAxis: { type: "value" },
       series: [
-        { type: "scatter", name: "Trajectoire : on continue", symbolSize: 4, color: p.series[0], itemStyle: { opacity: 0.45 },
+        { type: "scatter", name: tr("Trajectoire : on continue", "Path: continue"), symbolSize: 4, color: p.series[0], itemStyle: { opacity: 0.45 },
           data: pts.filter((x) => !x[2]).map((x) => [x[0], x[1]]) },
-        { type: "scatter", name: "Trajectoire : on exerce", symbolSize: 4, color: p.series[1], itemStyle: { opacity: 0.55 },
+        { type: "scatter", name: tr("Trajectoire : on exerce", "Path: exercise"), symbolSize: 4, color: p.series[1], itemStyle: { opacity: 0.55 },
           data: pts.filter((x) => x[2]).map((x) => [x[0], x[1]]) },
-        { type: "line", name: "Continuation estimée (régression)", showSymbol: false, color: p.text, lineStyle: { width: 2 },
+        { type: "line", name: tr("Continuation estimée (régression)", "Estimated continuation (regression)"), showSymbol: false, color: p.text, lineStyle: { width: 2 },
           data: r.fit.s.map((s, i) => [s, r.fit.continuation[i]]) },
-        { type: "line", name: "Valeur d'exercice immédiat", showSymbol: false, color: p.series[2], lineStyle: { width: 2, type: "dashed" },
+        { type: "line", name: tr("Valeur d'exercice immédiat", "Immediate exercise value"), showSymbol: false, color: p.series[2], lineStyle: { width: 2, type: "dashed" },
           data: r.fit.s.map((s, i) => [s, r.fit.exercise[i]]) },
       ],
     };
@@ -449,12 +470,12 @@ export function LsmTab() {
       legend: {},
       grid: { top: 30 },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => num(v, 2) },
-      xAxis: { type: "value", min: 0, max: req.expiry, axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} j` } },
+      xAxis: { type: "value", min: 0, max: req.expiry, axisLabel: { formatter: (v: number) => `${num(v * 365, 0)} ${tr("j", "d")}` } },
       yAxis: { type: "value", scale: true },
       series: [
-        { type: "line", name: "Frontière de l'arbre (300 pas)", showSymbol: false, step: "end", color: p.series[1], lineStyle: { width: 2 },
+        { type: "line", name: tr("Frontière de l'arbre (300 pas)", "Tree boundary (300 steps)"), showSymbol: false, step: "end", color: p.series[1], lineStyle: { width: 2 },
           data: data.tree_boundary.t.map((t, i) => [t, data.tree_boundary.s[i]]) },
-        { type: "scatter", name: "Frontière estimée par LSM", symbolSize: 7, color: p.series[0],
+        { type: "scatter", name: tr("Frontière estimée par LSM", "Boundary estimated by LSM"), symbolSize: 7, color: p.series[0],
           itemStyle: { borderColor: p.surface, borderWidth: 1 }, data: data.boundary.t.map((t, i) => [t, data.boundary.s[i]]) },
       ],
     };
@@ -464,47 +485,54 @@ export function LsmTab() {
   return (
     <div className={`grid${isFetching ? " busy" : ""}`}>
       <Explainer>
-        Pour une option américaine, il faut décider à chaque date s'il vaut mieux exercer. Longstaff-Schwartz remonte le temps
-        sur les trajectoires simulées : à chaque date, on <b>régresse les cash-flows futurs actualisés sur le spot</b> (polynôme de
-        degré 3, trajectoires dans la monnaie seulement) pour estimer la valeur de continuation, puis on exerce là où la valeur
-        d'exercice la dépasse. {req.exercise === "european" && "L'option du panneau est traitée ici en américaine."}
+        {tr(<>
+          Pour une option américaine, il faut décider à chaque date s'il vaut mieux exercer. Longstaff-Schwartz remonte le temps
+          sur les trajectoires simulées : à chaque date, on <b>régresse les cash-flows futurs actualisés sur le spot</b> (polynôme de
+          degré 3, trajectoires dans la monnaie seulement) pour estimer la valeur de continuation, puis on exerce là où la valeur
+          d'exercice la dépasse. {req.exercise === "european" && "L'option du panneau est traitée ici en américaine."}
+        </>, <>
+          For an American option one must decide at each date whether exercising is better. Longstaff-Schwartz goes back in time
+          along the simulated paths: at each date we <b>regress the discounted future cash flows on the spot</b> (degree-3
+          polynomial, in-the-money paths only) to estimate the continuation value, then exercise where the exercise value
+          exceeds it. {req.exercise === "european" && "The option in the panel is treated as American here."}
+        </>)}
       </Explainer>
       <ErrorBox error={error} />
       {req.option_type === "call" && req.dividend_yield <= 0 && (
-        <InfoBox>Sans dividende, exercer un call américain avant l'échéance n'est jamais optimal : la frontière est vide. Passez en put pour voir l'exercice anticipé.</InfoBox>
+        <InfoBox>{tr("Sans dividende, exercer un call américain avant l'échéance n'est jamais optimal : la frontière est vide. Passez en put pour voir l'exercice anticipé.", "Without dividends, exercising an American call before expiry is never optimal: the boundary is empty. Switch to a put to see early exercise.")}</InfoBox>
       )}
       {!data ? <Skeleton height={360} /> : (
         <>
           <div className="grid cols-4">
-            <Stat label="Prix LSM" value={num(data.price, 4)} foot={`± ${num(1.96 * data.std_error, 4)} (IC 95 %)`} />
-            <Stat label="Arbre 1000 pas (référence)" value={num(data.tree_price, 4)} foot={`écart ${num(data.price - data.tree_price, 4)}`} />
-            <Stat label="Européenne (Black-Scholes)" value={num(data.european_price, 4)} />
-            <Stat label="Prime d'exercice anticipé" value={num(data.price - data.european_price, 4)} foot={pct((data.price - data.european_price) / data.european_price, 1)} />
+            <Stat label={tr("Prix LSM", "LSM price")} value={num(data.price, 4)} foot={tr(`± ${num(1.96 * data.std_error, 4)} (IC 95 %)`, `± ${num(1.96 * data.std_error, 4)} (95% CI)`)} />
+            <Stat label={tr("Arbre 1000 pas (référence)", "1,000-step tree (reference)")} value={num(data.tree_price, 4)} foot={tr(`écart ${num(data.price - data.tree_price, 4)}`, `gap ${num(data.price - data.tree_price, 4)}`)} />
+            <Stat label={tr("Européenne (Black-Scholes)", "European (Black-Scholes)")} value={num(data.european_price, 4)} />
+            <Stat label={tr("Prime d'exercice anticipé", "Early-exercise premium")} value={num(data.price - data.european_price, 4)} foot={pct((data.price - data.european_price) / data.european_price, 1)} />
           </div>
-          <Card title={r ? `Régression à la date ${snapshot + 1} / ${data.lsm_steps} (t = ${num(r.t * 365, 0)} j)` : "Régression"} actions={
+          <Card title={r ? tr(`Régression à la date ${snapshot + 1} / ${data.lsm_steps} (t = ${num(r.t * 365, 0)} j)`, `Regression at date ${snapshot + 1} / ${data.lsm_steps} (t = ${num(r.t * 365, 0)} d)`) : tr("Régression", "Regression")} actions={
             <label className="slider">
-              Date
+              {tr("Date", "Date")}
               <input type="range" min={0} max={data.lsm_steps - 2} value={snapshot} onChange={(e) => setSnapshot(Number(e.target.value))} />
             </label>
           }>
             {r ? (
               <>
-                <EChart option={regOption} height={500} ariaLabel="Régression de Longstaff-Schwartz à une date" />
+                <EChart option={regOption} height={500} ariaLabel={tr("Régression de Longstaff-Schwartz à une date", "Longstaff-Schwartz regression at one date")} />
                 <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  {r.n_itm.toLocaleString("fr-FR")} trajectoires dans la monnaie à cette date, dont {r.n_exercised.toLocaleString("fr-FR")} exercées.
-                  Coefficients (x = S/K) : {r.coefficients.map((c) => num(c, 3)).join(" ; ")}.
+                  {tr(`${num(r.n_itm, 0)} trajectoires dans la monnaie à cette date, dont ${num(r.n_exercised, 0)} exercées.`, `${num(r.n_itm, 0)} in-the-money paths at this date, ${num(r.n_exercised, 0)} of them exercised.`)}{" "}
+                  {tr("Coefficients (x = S/K) :", "Coefficients (x = S/K):")} {r.coefficients.map((c) => num(c, 3)).join(" ; ")}.
                 </div>
               </>
-            ) : <div className="empty">Aucune trajectoire dans la monnaie à cette date.</div>}
+            ) : <div className="empty">{tr("Aucune trajectoire dans la monnaie à cette date.", "No in-the-money path at this date.")}</div>}
           </Card>
-          <Card title="Frontière d'exercice : LSM vs arbre">
-            <EChart option={boundaryOption} height={440} ariaLabel="Frontière d'exercice estimée par LSM et par l'arbre" />
+          <Card title={tr("Frontière d'exercice : LSM vs arbre", "Exercise boundary: LSM vs tree")}>
+            <EChart option={boundaryOption} height={440} ariaLabel={tr("Frontière d'exercice estimée par LSM et par l'arbre", "Exercise boundary estimated by LSM and by the tree")} />
             <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              La frontière LSM découle d'une régression polynomiale, donc approximative. Le prix reste précis : se tromper de
-              décision près de la frontière, là où exercer et continuer valent presque autant, ne coûte presque rien.
+              {tr("La frontière LSM découle d'une régression polynomiale, donc approximative. Le prix reste précis : se tromper de décision près de la frontière, là où exercer et continuer valent presque autant, ne coûte presque rien.",
+                "The LSM boundary comes from a polynomial regression, so it is approximate. The price stays accurate: a wrong decision near the boundary, where exercising and continuing are worth almost the same, costs almost nothing.")}
             </div>
           </Card>
-          <Card title="Calcul pas à pas" flush><StepsTable steps={data.steps} resultLabel="Prix LSM" /></Card>
+          <Card title={tr("Calcul pas à pas", "Step-by-step calculation")} flush><StepsTable steps={data.steps} resultLabel={tr("Prix LSM", "LSM price")} /></Card>
         </>
       )}
     </div>
@@ -523,12 +551,19 @@ export function GreeksTab() {
   return (
     <div className={`grid${isFetching ? " busy" : ""}`}>
       <Explainer>
-        Les méthodes numériques n'ont pas de formule pour les grecques : on <b>re-price l'option avec un paramètre légèrement décalé</b>{" "}
-        (« bump ») et on applique une différence finie centrée. Ce code est écrit une seule fois dans la classe parente commune.
-        En Monte Carlo, chaque repricing réutilise les mêmes nombres aléatoires, sans quoi le bruit écraserait la différence.
-        Les valeurs sont des dérivées brutes (vega et rho pour 1,00 de vol ou de taux, theta par an).
+        {tr(<>
+          Les méthodes numériques n'ont pas de formule pour les grecques : on <b>re-price l'option avec un paramètre légèrement décalé</b>{" "}
+          (« bump ») et on applique une différence finie centrée. Ce code est écrit une seule fois dans la classe parente commune.
+          En Monte Carlo, chaque repricing réutilise les mêmes nombres aléatoires, sans quoi le bruit écraserait la différence.
+          Les valeurs sont des dérivées brutes (vega et rho pour 1,00 de vol ou de taux, theta par an).
+        </>, <>
+          Numerical methods have no formula for the Greeks: we <b>reprice the option with a slightly shifted parameter</b>{" "}
+          (a "bump") and apply a central finite difference. This code is written once, in the common parent class.
+          In Monte Carlo every repricing reuses the same random numbers, otherwise the noise would swamp the difference.
+          Values are raw derivatives (vega and rho per 1.00 of vol or rate, theta per year).
+        </>)}
       </Explainer>
-      <Segmented value={method} onChange={setMethod} options={[{ value: "tree", label: "Arbre binomial" }, { value: "mc", label: "Monte Carlo" }]} />
+      <Segmented value={method} onChange={setMethod} options={[{ value: "tree", label: tr("Arbre binomial", "Binomial tree") }, { value: "mc", label: "Monte Carlo" }]} />
       <ErrorBox error={error} />
       {!data ? <Skeleton height={260} /> : <GreeksBreakdown data={data} />}
     </div>
@@ -542,8 +577,8 @@ function GreeksBreakdown({ data }: { data: ExplainGreeks }) {
         <table className="data steps-table">
           <thead>
             <tr>
-              <th>Grecque et formule</th><th>Bump</th>
-              <th style={{ textAlign: "left" }}>Prix re-calculés</th><th>Différence finie</th><th>Formule fermée</th><th>Écart</th>
+              <th>{tr("Grecque et formule", "Greek and formula")}</th><th>Bump</th>
+              <th style={{ textAlign: "left" }}>{tr("Prix re-calculés", "Repriced values")}</th><th>{tr("Différence finie", "Finite difference")}</th><th>{tr("Formule fermée", "Closed form")}</th><th>{tr("Écart", "Gap")}</th>
             </tr>
           </thead>
           <tbody>
@@ -568,7 +603,7 @@ function GreeksBreakdown({ data }: { data: ExplainGreeks }) {
           </tbody>
         </table>
       </div>
-      {!data.closed_form && <div className="card-body muted" style={{ fontSize: 12 }}>Pas de formule fermée pour l'exercice américain.</div>}
+      {!data.closed_form && <div className="card-body muted" style={{ fontSize: 12 }}>{tr("Pas de formule fermée pour l'exercice américain.", "No closed form for American exercise.")}</div>}
     </Card>
   );
 }

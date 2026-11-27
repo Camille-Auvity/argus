@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.routers import allocation, caps_fx, credit, explain, market, models, portfolio, pricing, rates, research, theory, variance
+from api.i18n import TranslateMiddleware
 from api.services import MissingDataError
 
 DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
@@ -25,6 +26,7 @@ app = FastAPI(
                 "market data, volatility smile and LLM news sentiment.",
 )
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(TranslateMiddleware)   # English responses when the interface asks for them
 
 for r in (market.router, pricing.router, rates.router, explain.router, models.router, portfolio.router, credit.router, caps_fx.router, variance.router, allocation.router, research.router, theory.router):
     app.include_router(r)

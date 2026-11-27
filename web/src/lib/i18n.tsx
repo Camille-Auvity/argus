@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 /** Interface language. Texts are written inline as pairs, `tr("français", "English")`, next to where they are
@@ -42,15 +43,18 @@ export function LangProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
+  const qc = useQueryClient();
   const setLang = useCallback((l: Lang) => {
     current = l;
+    // API texts come back in the requested language: drop the cached responses of the other one
+    qc.removeQueries();
     setLangState(l);
     try {
       localStorage.setItem("argus-lang", l);
     } catch {
       /* storage unavailable: the language still switches for this page */
     }
-  }, []);
+  }, [qc]);
 
   const value = useMemo(() => ({ lang, setLang }), [lang, setLang]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

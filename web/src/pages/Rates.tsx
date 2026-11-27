@@ -6,8 +6,9 @@ import { Card, ErrorBox, NumberField, Segmented, Skeleton, Stat } from "../compo
 import { bp, ccySymbol, num, pct, tenorLabel } from "../lib/format";
 import { useDebounced, useTicker } from "../lib/hooks";
 import type { ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
-const INTERP_LABEL: Record<string, string> = { loglinear_df: "log-linéaire DF", linear_zero: "linéaire zéro" };
+const interpLabel = (k: string) => (k === "loglinear_df" ? tr("log-linéaire DF", "log-linear DF") : k === "linear_zero" ? tr("linéaire zéro", "linear zero") : k);
 
 export default function Rates() {
   const { snapshot, ticker } = useTicker();
@@ -27,13 +28,13 @@ export default function Rates() {
       xAxis: { type: "value", max: 30, axisLabel: { formatter: tenorLabel } },
       yAxis: { type: "value", scale: true, axisLabel: { formatter: (v: number) => pct(v, 1) } },
       series: [
-        { type: "scatter", name: c.quote_type === "zero" ? "Quotes zéro (marché)" : "Par yields (marché)", symbolSize: 9,
+        { type: "scatter", name: c.quote_type === "zero" ? tr("Quotes zéro (marché)", "Zero quotes (market)") : tr("Par yields (marché)", "Par yields (market)"), symbolSize: 9,
           color: p.text, itemStyle: { borderColor: p.surface, borderWidth: 2 }, z: 5,
           data: c.quotes.map((q) => [q.tenor, q.rate]) },
         ...interps.flatMap((k, i) => [
-          { type: "line", name: `Zéro (${INTERP_LABEL[k]})`, showSymbol: false, lineStyle: { width: 2 }, color: p.series[i * 2],
+          { type: "line", name: tr(`Zéro (${interpLabel(k)})`, `Zero (${interpLabel(k)})`), showSymbol: false, lineStyle: { width: 2 }, color: p.series[i * 2],
             data: c.grid.map((t, j) => [t, c.curves[k].zero[j]]) },
-          { type: "line", name: `Forward (${INTERP_LABEL[k]})`, showSymbol: false, lineStyle: { width: 1.5, type: "dashed" },
+          { type: "line", name: `Forward (${interpLabel(k)})`, showSymbol: false, lineStyle: { width: 1.5, type: "dashed" },
             color: p.series[i * 2 + 1], data: c.grid.map((t, j) => [t, c.curves[k].forward[j]]) },
         ]),
       ],
@@ -73,27 +74,27 @@ export default function Rates() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Courbes de taux & obligations</h1>
+          <h1 className="page-title">{tr("Courbes de taux & obligations", "Rate curves & bonds")}</h1>
           <div className="page-sub">
             {c ? (c.quote_type === "zero"
-              ? `BCE — souverains AAA zone euro (Svensson), taux zéro continus du ${c.asof}, utilisés directement comme piliers.`
-              : `Treasury par yields du ${c.asof} (source ${c.source}), bootstrappés : bills ≤ 6M en dépôts, ≥ 1Y en obligations au pair semestrielles.`)
-              : "Chargement…"}
+              ? tr(`BCE — souverains AAA zone euro (Svensson), taux zéro continus du ${c.asof}, utilisés directement comme piliers.`, `ECB — AAA euro-area sovereigns (Svensson), continuous zero rates of ${c.asof}, used directly as pillars.`)
+              : tr(`Treasury par yields du ${c.asof} (source ${c.source}), bootstrappés : bills ≤ 6M en dépôts, ≥ 1Y en obligations au pair semestrielles.`, `Treasury par yields of ${c.asof} (source ${c.source}), bootstrapped: bills ≤ 6M as deposits, ≥ 1Y as semi-annual par bonds.`))
+              : tr("Chargement…", "Loading…")}
           </div>
         </div>
-        <Segmented value={ccy} onChange={setCcy} options={[{ value: "USD", label: "USD · Treasury" }, { value: "EUR", label: "EUR · BCE" }]} />
+        <Segmented value={ccy} onChange={setCcy} options={[{ value: "USD", label: "USD · Treasury" }, { value: "EUR", label: tr("EUR · BCE", "EUR · ECB") }]} />
       </div>
       <ErrorBox error={curve.error} />
       <div className="grid">
-        <Card title="Zéro-coupon et forwards instantanés">
-          {c ? <EChart option={curveOption} height={480} ariaLabel={`Courbe ${ccy}`} /> : <Skeleton height={360} />}
+        <Card title={tr("Zéro-coupon et forwards instantanés", "Zero-coupon and instantaneous forwards")}>
+          {c ? <EChart option={curveOption} height={480} ariaLabel={tr(`Courbe ${ccy}`, `${ccy} curve`)} /> : <Skeleton height={360} />}
         </Card>
         <div className="grid cols-2">
-          <Card title="Spread de taux zéro USD − EUR">
-            <EChart option={spreadOption} height={340} ariaLabel="Écart de taux zéro entre USD et EUR" />
+          <Card title={tr("Spread de taux zéro USD − EUR", "USD − EUR zero-rate spread")}>
+            <EChart option={spreadOption} height={340} ariaLabel={tr("Écart de taux zéro entre USD et EUR", "Zero-rate gap between USD and EUR")} />
           </Card>
-          <Card title="Historique (30 dernières séances)">
-            <EChart option={historyOption} height={340} ariaLabel="Historique des taux par maturité" />
+          <Card title={tr("Historique (30 dernières séances)", "History (last 30 sessions)")}>
+            <EChart option={historyOption} height={340} ariaLabel={tr("Historique des taux par maturité", "Rate history by maturity")} />
           </Card>
         </div>
         <BondDesk ccy={ccy} />
@@ -109,22 +110,22 @@ function BondDesk({ ccy }: { ccy: Currency }) {
   const { data, error, isFetching } = useQuery({ queryKey: ["bond", req], queryFn: () => api.bond(req), placeholderData: keepPreviousData });
   const set = (patch: Partial<BondRequest>) => setBond((b) => ({ ...b, ...patch }));
   return (
-    <Card title={`Pricing obligataire · courbe ${ccy}`}>
+    <Card title={tr(`Pricing obligataire · courbe ${ccy}`, `Bond pricing · ${ccy} curve`)}>
       <div className="split" style={{ gridTemplateColumns: "280px minmax(0,1fr)" }}>
         <div className="form">
           <div className="form-row">
-            <NumberField label="Maturité" value={bond.maturity} suffix="ans" min={0.1} max={50} digits={2} onChange={(maturity) => set({ maturity })} />
+            <NumberField label={tr("Maturité", "Maturity")} value={bond.maturity} suffix={tr("ans", "years")} min={0.1} max={50} digits={2} onChange={(maturity) => set({ maturity })} />
             <NumberField label="Coupon" value={bond.coupon_rate} suffix="%" scale={100} min={0} max={1} digits={3} onChange={(coupon_rate) => set({ coupon_rate })} />
           </div>
-          <Segmented label="Fréquence des coupons" value={bond.frequency} onChange={(frequency) => set({ frequency })}
-            options={[{ value: 1, label: "Annuel" }, { value: 2, label: "Semestriel" }, { value: 4, label: "Trimestriel" }]} />
+          <Segmented label={tr("Fréquence des coupons", "Coupon frequency")} value={bond.frequency} onChange={(frequency) => set({ frequency })}
+            options={[{ value: 1, label: tr("Annuel", "Annual") }, { value: 2, label: tr("Semestriel", "Semi-annual") }, { value: 4, label: tr("Trimestriel", "Quarterly") }]} />
           <ErrorBox error={error} />
         </div>
         <div className={`grid cols-4${isFetching ? " busy" : ""}`}>
-          <Stat label="Prix pied de coupon" value={num(data?.clean_price, 4)} foot={`Plein ${num(data?.dirty_price, 4)}`} />
-          <Stat label="Rendement actuariel" value={pct(data?.ytm, 3)} foot={`Couru ${num(data?.accrued, 4)}`} />
-          <Stat label="Duration modifiée" value={num(data?.modified_duration, 3)} foot={`Macaulay ${num(data?.macaulay_duration, 3)}`} />
-          <Stat label="DV01 (pour 100)" value={num(data?.dv01, 4)} foot={`Convexité ${num(data?.convexity, 2)}`} />
+          <Stat label={tr("Prix pied de coupon", "Clean price")} value={num(data?.clean_price, 4)} foot={tr(`Plein ${num(data?.dirty_price, 4)}`, `Dirty ${num(data?.dirty_price, 4)}`)} />
+          <Stat label={tr("Rendement actuariel", "Yield to maturity")} value={pct(data?.ytm, 3)} foot={tr(`Couru ${num(data?.accrued, 4)}`, `Accrued ${num(data?.accrued, 4)}`)} />
+          <Stat label={tr("Duration modifiée", "Modified duration")} value={num(data?.modified_duration, 3)} foot={`Macaulay ${num(data?.macaulay_duration, 3)}`} />
+          <Stat label={tr("DV01 (pour 100)", "DV01 (per 100)")} value={num(data?.dv01, 4)} foot={tr(`Convexité ${num(data?.convexity, 2)}`, `Convexity ${num(data?.convexity, 2)}`)} />
         </div>
       </div>
     </Card>
@@ -144,27 +145,27 @@ function FuturesDesk({ ccy, ticker, tickerCcy }: { ccy: Currency; ticker: string
   });
   return (
     <div className="grid cols-2">
-      <Card title={`Future sur ${ticker} · courbe ${tickerCcy ?? ""}`}>
+      <Card title={tr(`Future sur ${ticker} · courbe ${tickerCcy ?? ""}`, `Future on ${ticker} · ${tickerCcy ?? ""} curve`)}>
         <div className="grid" style={{ gridTemplateColumns: "160px 1fr", alignItems: "end" }}>
-          <NumberField label="Échéance" value={eqT} suffix="ans" min={0.01} max={10} digits={2} onChange={setEqT} />
+          <NumberField label={tr("Échéance", "Expiry")} value={eqT} suffix={tr("ans", "years")} min={0.01} max={10} digits={2} onChange={setEqT} />
           <div className="grid cols-2">
-            <Stat label="Prix théorique" value={`${num(eq.data?.price, 2)} ${ccySymbol(tickerCcy)}`} />
-            <Stat label="Base (F − S)" value={num(eq.data?.basis, 2)} />
+            <Stat label={tr("Prix théorique", "Theoretical price")} value={`${num(eq.data?.price, 2)} ${ccySymbol(tickerCcy)}`} />
+            <Stat label={tr("Base (F − S)", "Basis (F − S)")} value={num(eq.data?.basis, 2)} />
           </div>
         </div>
         <ErrorBox error={eq.error} />
       </Card>
-      <Card title={`Future obligataire · courbe ${ccy}`}>
+      <Card title={tr(`Future obligataire · courbe ${ccy}`, `Bond future · ${ccy} curve`)}>
         <div className="form">
           <div className="form-row">
-            <NumberField label="Maturité du livrable" value={bf.maturity} suffix="ans" min={0.5} max={50} digits={2} onChange={(maturity) => setBf((b) => ({ ...b, maturity }))} />
-            <NumberField label="Coupon du livrable" value={bf.coupon_rate} suffix="%" scale={100} digits={3} onChange={(coupon_rate) => setBf((b) => ({ ...b, coupon_rate }))} />
+            <NumberField label={tr("Maturité du livrable", "Deliverable maturity")} value={bf.maturity} suffix={tr("ans", "years")} min={0.5} max={50} digits={2} onChange={(maturity) => setBf((b) => ({ ...b, maturity }))} />
+            <NumberField label={tr("Coupon du livrable", "Deliverable coupon")} value={bf.coupon_rate} suffix="%" scale={100} digits={3} onChange={(coupon_rate) => setBf((b) => ({ ...b, coupon_rate }))} />
           </div>
           <div className="form-row">
-            <NumberField label="Livraison" value={bf.delivery} suffix="ans" min={0.01} digits={2} onChange={(delivery) => setBf((b) => ({ ...b, delivery }))} />
-            <NumberField label="Facteur de conversion" value={bf.conversion_factor} min={0.01} digits={4} onChange={(conversion_factor) => setBf((b) => ({ ...b, conversion_factor }))} />
+            <NumberField label={tr("Livraison", "Delivery")} value={bf.delivery} suffix={tr("ans", "years")} min={0.01} digits={2} onChange={(delivery) => setBf((b) => ({ ...b, delivery }))} />
+            <NumberField label={tr("Facteur de conversion", "Conversion factor")} value={bf.conversion_factor} min={0.01} digits={4} onChange={(conversion_factor) => setBf((b) => ({ ...b, conversion_factor }))} />
           </div>
-          <Stat label="Prix du future (livrable unique, sans option CTD)" value={bf.delivery < bf.maturity ? num(bfut.data?.price, 4) : "livraison > maturité"} />
+          <Stat label={tr("Prix du future (livrable unique, sans option CTD)", "Future price (single deliverable, no CTD option)")} value={bf.delivery < bf.maturity ? num(bfut.data?.price, 4) : tr("livraison > maturité", "delivery > maturity")} />
         </div>
       </Card>
     </div>

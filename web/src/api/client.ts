@@ -2,6 +2,7 @@
 // In the static build the same API runs in the browser (see src/engine).
 
 import { engineRequest, STATIC_MODE } from "../engine/bridge";
+import { currentLang } from "../lib/i18n";
 
 export type Currency = "USD" | "EUR";
 
@@ -258,9 +259,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const english = currentLang() === "en";
   if (STATIC_MODE) {
-    // static build: the API runs in the browser (Pyodide worker), same routes and payloads
-    const { status, body } = await engineRequest(init?.method ?? "GET", path, (init?.body as string | undefined) ?? null);
+    // static build: the API runs in the browser (Pyodide worker), same routes and payloads; the language rides as a
+    // query parameter because the bridge forwards only the path
+    const langPath = english ? `${path}${path.includes("?") ? "&" : "?"}_lang=en` : path;
+    const { status, body } = await engineRequest(init?.method ?? "GET", langPath, (init?.body as string | undefined) ?? null);
     let parsed: unknown = null;
     try {
       parsed = JSON.parse(body);
@@ -275,7 +279,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...(english ? { "X-Lang": "en" } : {}), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     let detail = res.statusText;

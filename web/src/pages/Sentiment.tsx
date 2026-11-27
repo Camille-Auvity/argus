@@ -7,6 +7,7 @@ import { Card, ErrorBox, ScoreBar, Segmented, Skeleton, Stat } from "../componen
 import { num, relativeTime, signed } from "../lib/format";
 import { useStatus, useTicker } from "../lib/hooks";
 import { useTheme, type ChartPalette } from "../lib/theme";
+import { tr } from "../lib/i18n";
 
 export default function Sentiment() {
   const { ticker } = useTicker();
@@ -24,7 +25,7 @@ export default function Sentiment() {
   const barOption = useCallback((rows: { label: string; value: number; n: number }[]) => (p: ChartPalette) => ({
     grid: { left: 8, right: 40, top: 8, bottom: 8, containLabel: true },
     tooltip: { trigger: "item", formatter: (it: { name: string; value: number; dataIndex: number }) =>
-      `${it.name}<br/>Sentiment <b>${signed(it.value, 2)}</b> · ${rows[it.dataIndex].n} articles` },
+      `${it.name}<br/>Sentiment <b>${signed(it.value, 2)}</b> · ${rows[it.dataIndex].n} ${tr("articles", "articles")}` },
     xAxis: { type: "value", min: -1, max: 1, axisLabel: { formatter: (v: number) => signed(v, 1) } },
     yAxis: { type: "category", data: rows.map((r) => r.label), axisLine: { show: false } },
     series: [{
@@ -48,39 +49,40 @@ export default function Sentiment() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">News & sentiment IA</h1>
+          <h1 className="page-title">{tr("News & sentiment IA", "News & AI sentiment")}</h1>
           <div className="page-sub">
-            Titres scorés par {status?.sentiment_model ?? "Claude"} de −1 à +1 (impact attendu à quelques séances), moyenne pondérée par la récence (demi-vie 3 jours).
+            {tr(`Titres scorés par ${status?.sentiment_model ?? "Claude"} de −1 à +1 (impact attendu à quelques séances), moyenne pondérée par la récence (demi-vie 3 jours).`,
+              `Headlines scored by ${status?.sentiment_model ?? "Claude"} from −1 to +1 (expected impact over a few sessions), recency-weighted average (3-day half-life).`)}
           </div>
         </div>
         {!status?.static && (
           <button className="btn primary" onClick={() => score.mutate()} disabled={score.isPending || !s?.pending}>
-            <Bot size={15} /> {score.isPending ? "Scoring…" : `Scorer ${s?.pending ?? 0} news en attente`}
+            <Bot size={15} /> {score.isPending ? "Scoring…" : tr(`Scorer ${s?.pending ?? 0} news en attente`, `Score ${s?.pending ?? 0} pending news`)}
           </button>
         )}
       </div>
       <ErrorBox error={score.error ?? summary.error} />
-      {score.data && <div className="info-box" style={{ marginBottom: 12 }}>{score.data.scored} news scorées.</div>}
+      {score.data && <div className="info-box" style={{ marginBottom: 12 }}>{tr(`${score.data.scored} news scorées.`, `${score.data.scored} news scored.`)}</div>}
       <div className="grid">
         <div className="grid cols-4">
-          <Stat label={`Sentiment ${ticker}`} value={mine ? signed(mine.sentiment, 2) : "—"} foot={mine ? `${mine.n_articles} articles` : "aucun article scoré"} />
-          <Stat label="Articles en base" value={num(s ? s.by_ticker.reduce((n, r) => n + r.n_articles, 0) + s.pending : null, 0)} foot={`${s?.pending ?? 0} en attente de scoring`} />
-          <Stat label="Plus positif" value={tickerRows.at(-1)?.label ?? "—"} foot={tickerRows.length ? signed(tickerRows.at(-1)!.value, 2) : undefined} />
-          <Stat label="Plus négatif" value={tickerRows[0]?.label ?? "—"} foot={tickerRows.length ? signed(tickerRows[0].value, 2) : undefined} />
+          <Stat label={`Sentiment ${ticker}`} value={mine ? signed(mine.sentiment, 2) : "—"} foot={mine ? `${mine.n_articles} articles` : tr("aucun article scoré", "no scored article")} />
+          <Stat label={tr("Articles en base", "Articles stored")} value={num(s ? s.by_ticker.reduce((n, r) => n + r.n_articles, 0) + s.pending : null, 0)} foot={tr(`${s?.pending ?? 0} en attente de scoring`, `${s?.pending ?? 0} awaiting scoring`)} />
+          <Stat label={tr("Plus positif", "Most positive")} value={tickerRows.at(-1)?.label ?? "—"} foot={tickerRows.length ? signed(tickerRows.at(-1)!.value, 2) : undefined} />
+          <Stat label={tr("Plus négatif", "Most negative")} value={tickerRows[0]?.label ?? "—"} foot={tickerRows.length ? signed(tickerRows[0].value, 2) : undefined} />
         </div>
         <div className="grid cols-2">
-          <Card title="Par sous-jacent">
-            {s ? <EChart option={barOption(tickerRows)} height={Math.max(220, tickerRows.length * 26)} ariaLabel="Sentiment par sous-jacent" /> : <Skeleton height={260} />}
+          <Card title={tr("Par sous-jacent", "By underlying")}>
+            {s ? <EChart option={barOption(tickerRows)} height={Math.max(220, tickerRows.length * 26)} ariaLabel={tr("Sentiment par sous-jacent", "Sentiment by underlying")} /> : <Skeleton height={260} />}
           </Card>
-          <Card title="Par secteur (pondéré par le nombre d'articles)">
-            {s ? <EChart option={barOption(sectorRows)} height={Math.max(220, sectorRows.length * 30)} ariaLabel="Sentiment par secteur" /> : <Skeleton height={260} />}
+          <Card title={tr("Par secteur (pondéré par le nombre d'articles)", "By sector (weighted by number of articles)")}>
+            {s ? <EChart option={barOption(sectorRows)} height={Math.max(220, sectorRows.length * 30)} ariaLabel={tr("Sentiment par secteur", "Sentiment by sector")} /> : <Skeleton height={260} />}
           </Card>
         </div>
-        <Card title={`Fil de news (${scored.length} scorées)`} flush actions={
-          <Segmented value={scope} onChange={setScope} options={[{ value: "ticker", label: ticker }, { value: "all", label: "Tous" }]} />
+        <Card title={tr(`Fil de news (${scored.length} scorées)`, `News feed (${scored.length} scored)`)} flush actions={
+          <Segmented value={scope} onChange={setScope} options={[{ value: "ticker", label: ticker }, { value: "all", label: tr("Tous", "All") }]} />
         }>
           {!news.data && <div className="card-body"><Skeleton height={200} /></div>}
-          {news.data?.length === 0 && <div className="empty">Aucune news en base pour {ticker}.</div>}
+          {news.data?.length === 0 && <div className="empty">{tr(`Aucune news en base pour ${ticker}.`, `No news stored for ${ticker}.`)}</div>}
           {news.data?.map((n) => (
             <div key={n.id} className="news-item">
               <div>
